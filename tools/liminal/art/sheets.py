@@ -15,6 +15,7 @@ from __future__ import annotations
 from typing import Callable
 
 from . import chipsets as ct
+from . import landmarks as lm
 from .canvas import Canvas, TRANSPARENT, blend, cooler, outline_in, warmer
 from .chipsets import ChipsetBuild, ChipsetBuilder
 from .palette import PALETTES, Palette
@@ -168,6 +169,20 @@ def _decals(cb: ChipsetBuilder, pal: Palette, world: str, ground: Canvas) -> Non
            passable=False)
 
 
+# The unique structures each world is remembered for.  They go on the upper
+# tile layer, which sits almost empty at ten of a hundred and forty-four slots
+# while the lower layer is nearly full — and upper tiles draw over the floor
+# with the player in front of them, which is what a tall thing you walk past
+# needs.  Nothing here is repeated between worlds.
+LANDMARKS: dict[str, list[tuple[str, object, dict]]] = {}
+
+
+def _landmarks(cb: ChipsetBuilder, pal: Palette, world: str) -> None:
+    for name, maker, kwargs in LANDMARKS.get(world, []):
+        art = maker(pal, **kwargs)
+        cb.add_object(f"mark_{name}", art, solid="bottom2", upper=True)
+
+
 def _finish(cb: ChipsetBuilder, ground: Canvas) -> ChipsetBuild:
     cb.fill_autotile_area(ground)
     return cb.finish()
@@ -220,6 +235,7 @@ def build_room() -> ChipsetBuild:
 
     cb.add_upper("lamp", ct.lamp_post(pal, 1, 1).sub(0, 0, TILE, TILE), above=True)
     _shadows(cb, pal)
+    _landmarks(cb, pal, "room")
     _animate(cb, pal, "room")
     _decals(cb, pal, "room", boards)
     return _finish(cb, boards)
@@ -245,6 +261,7 @@ def build_nexus() -> ChipsetBuild:
     cb.add_object("arch", arch, solid="none", upper=True, above=True)
 
     _shadows(cb, pal)
+    _landmarks(cb, pal, "nexus")
     _animate(cb, pal, "nexus")
     _decals(cb, pal, "nexus", ground)
     return _finish(cb, ground)
@@ -276,6 +293,7 @@ def build_pink() -> ChipsetBuild:
     cb.add_object("column", col, solid="bottom", ground=ground)
 
     _shadows(cb, pal)
+    _landmarks(cb, pal, "pink")
     _animate(cb, pal, "pink")
     _decals(cb, pal, "pink", ground)
     return _finish(cb, ground)
@@ -298,6 +316,7 @@ def build_numbers() -> ChipsetBuild:
     cb.add_object("plinth", ct.number_plinth(pal, 3, 2), solid="all", ground=ground)
     cb.add_object("door", ct.door_frame(pal, 2, 3, glow=pal.accent), ground=ground)
     _shadows(cb, pal)
+    _landmarks(cb, pal, "numbers")
     _animate(cb, pal, "numbers")
     _decals(cb, pal, "numbers", ground)
     return _finish(cb, ground)
@@ -321,6 +340,7 @@ def build_blocks() -> ChipsetBuild:
     cb.add_object("ball", ct.ball_toy(pal, colors[2], 2, 2), solid="all", ground=ground)
     cb.add_object("door", ct.door_frame(pal, 2, 3, glow=pal.accent), ground=ground)
     _shadows(cb, pal)
+    _landmarks(cb, pal, "blocks")
     _animate(cb, pal, "blocks")
     _decals(cb, pal, "blocks", ground)
     return _finish(cb, ground)
@@ -356,6 +376,7 @@ def build_stairs() -> ChipsetBuild:
     cb.add_object("door", ct.door_frame(pal, 2, 3, glow=pal.accent), ground=ground)
     cb.add_object("lamp", ct.lamp_post(pal, 1, 3), solid="bottom", ground=ground)
     _shadows(cb, pal)
+    _landmarks(cb, pal, "stairs")
     _animate(cb, pal, "stairs")
     _decals(cb, pal, "stairs", ground)
     return _finish(cb, ground)
@@ -382,6 +403,7 @@ def build_sand() -> ChipsetBuild:
     cb.add_object("post", post, solid="bottom", ground=ground)
     cb.add_object("door", ct.door_frame(pal, 2, 3, glow=pal.accent_soft), ground=ground)
     _shadows(cb, pal)
+    _landmarks(cb, pal, "sand")
     _animate(cb, pal, "sand")
     _decals(cb, pal, "sand", ground)
     return _finish(cb, ground)
@@ -411,6 +433,7 @@ def build_faces() -> ChipsetBuild:
 
     cb.add_object("door", ct.door_frame(pal, 2, 3, glow=pal.accent), ground=ground)
     _shadows(cb, pal)
+    _landmarks(cb, pal, "faces")
     _animate(cb, pal, "faces")
     _decals(cb, pal, "faces", ground)
     return _finish(cb, ground)
@@ -432,6 +455,7 @@ def build_hands() -> ChipsetBuild:
     cb.add_object("plinth", ct.number_plinth(pal, 3, 2), solid="all", ground=ground)
     cb.add_object("door", ct.door_frame(pal, 2, 3, glow=pal.accent), ground=ground)
     _shadows(cb, pal)
+    _landmarks(cb, pal, "hands")
     _animate(cb, pal, "hands")
     _decals(cb, pal, "hands", ground)
     return _finish(cb, ground)
@@ -459,6 +483,7 @@ def build_checker() -> ChipsetBuild:
     cb.add_object("fence", ct.picket_fence(pal, 3, 1), solid="all", ground=ground)
     cb.add_object("door", ct.door_frame(pal, 2, 3, glow=pal.accent), ground=ground)
     _shadows(cb, pal)
+    _landmarks(cb, pal, "checker")
     _animate(cb, pal, "checker")
     _decals(cb, pal, "checker", ground)
     return _finish(cb, ground)
@@ -484,6 +509,7 @@ def build_toys() -> ChipsetBuild:
     cb.add_object("jack", ct.jack_toy(pal, 2, 2), solid="all", ground=ground)
     cb.add_object("door", ct.door_frame(pal, 2, 3, glow=pal.accent), ground=ground)
     _shadows(cb, pal)
+    _landmarks(cb, pal, "toys")
     _animate(cb, pal, "toys")
     _decals(cb, pal, "toys", ground)
     return _finish(cb, ground)
@@ -505,6 +531,7 @@ def build_neon() -> ChipsetBuild:
         cb.add_object(f"scrawl_{kind}", ct.scrawl(pal, kind, 4, 4), solid="none", ground=ground)
     cb.add_object("door", ct.door_frame(pal, 2, 3, glow=pal.accent), ground=ground)
     _shadows(cb, pal)
+    _landmarks(cb, pal, "neon")
     _animate(cb, pal, "neon")
     _decals(cb, pal, "neon", ground)
     return _finish(cb, ground)
@@ -531,6 +558,7 @@ def build_umbrellas() -> ChipsetBuild:
                   solid="bottom", ground=ground)
     cb.add_object("door", ct.door_frame(pal, 2, 3, glow=pal.accent), ground=ground)
     _shadows(cb, pal)
+    _landmarks(cb, pal, "umbrellas")
     _animate(cb, pal, "umbrellas")
     _decals(cb, pal, "umbrellas", ground)
     return _finish(cb, ground)
@@ -565,6 +593,7 @@ def build_stars() -> ChipsetBuild:
     cb.add_object("island", ct.floating_island(pal, 4, 3), solid="none", ground=ground)
     cb.add_object("buoy", ct.buoy(pal, 1, 2), solid="all", ground=ground)
     _shadows(cb, pal)
+    _landmarks(cb, pal, "stars")
     _animate(cb, pal, "stars")
     _decals(cb, pal, "stars", ground)
     return _finish(cb, ground)
@@ -586,3 +615,40 @@ BUILDERS: dict[str, Callable[[], ChipsetBuild]] = {
     "umbrellas": build_umbrellas,
     "stars": build_stars,
 }
+
+
+# Two or three landmarks per world, each unique to it.
+LANDMARKS.update({
+    "pink": [("knot", lm.knot_of_halls, {"cols": 8, "rows": 8}),
+             ("sealed", lm.sealed_room, {"cols": 6, "rows": 5})],
+    "numbers": [("calculator", lm.calculator_terrace, {"cols": 7, "rows": 5}),
+                ("pierced", lm.pierced_terrace, {"cols": 7, "rows": 6})],
+    "blocks": [("doors", lm.door_slab, {"cols": 6, "rows": 5}),
+               ("furniture", lm.furniture_slab, {"cols": 6, "rows": 6})],
+    "stairs": [("knot", lm.stair_knot, {"cols": 7, "rows": 7}),
+               ("arena", lm.stair_arena, {"cols": 8, "rows": 6})],
+    "sand": [("ladders", lm.ladder_forest, {"cols": 6, "rows": 8}),
+             ("cathedral", lm.upside_down_cathedral, {"cols": 8, "rows": 7}),
+             ("ceramic", lm.ceramic_sea, {"cols": 5, "rows": 3})],
+    "faces": [("trunk", lm.hollow_trunk, {"cols": 7, "rows": 9}),
+              ("roots", lm.root_arch, {"cols": 8, "rows": 5})],
+    "checker": [("circle", lm.circular_room_marker, {"cols": 5, "rows": 5})],
+    # Toys is the densest sheet in the game, so its landmarks are sized to
+    # fit rather than sized to impress: the brick tower still runs taller than
+    # the screen, which is the part that matters.
+    "toys": [("tower", lm.brick_tower,
+              {"color": (232, 130, 132), "cols": 4, "rows": 9}),
+             ("plaza", lm.board_game_plaza, {"cols": 7, "rows": 7}),
+             ("junction", lm.track_junction, {"cols": 5, "rows": 5})],
+    "neon": [("billboard", lm.billboard_room, {"cols": 7, "rows": 6}),
+             ("hanging", lm.hanging_neighbourhood, {"cols": 8, "rows": 7})],
+    "umbrellas": [("tower", lm.umbrella_tower,
+                   {"color": (198, 96, 96), "cols": 3, "rows": 9}),
+                  ("tower_b", lm.umbrella_tower,
+                   {"color": (104, 132, 176), "cols": 3, "rows": 8}),
+                  ("bridge", lm.rib_bridge, {"cols": 8, "rows": 3})],
+    "stars": [("eye", lm.eye_island, {"cols": 7, "rows": 5}),
+              ("chair", lm.chair_island, {"cols": 4, "rows": 4}),
+              ("indoor", lm.indoor_island, {"cols": 6, "rows": 5})],
+    "hands": [("doorcourt", lm.door_court, {"cols": 7, "rows": 5})],
+})

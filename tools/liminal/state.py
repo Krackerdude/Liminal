@@ -1,0 +1,101 @@
+"""Switch and variable allocation.
+
+RPG Maker addresses state by bare number, which turns into an unreadable mess
+very fast.  Everything the game remembers is named here once and referred to
+by name everywhere else.
+"""
+
+from __future__ import annotations
+
+from .art.menu import EFFECTS
+
+# --- switches ----------------------------------------------------------------
+# 1..12   one per effect: you have found it
+# 20..39  systems
+# 40..79  per-world secrets and permanent world memory
+
+SW_HAS_EFFECT = {key: index for index, (key, _, _) in enumerate(EFFECTS, start=1)}
+
+SW_MENU_OPEN = 20
+SW_MENU_BUSY = 21
+SW_EYE_ACTIVE = 22          # the eye is equipped: hidden things become visible
+SW_QUIET_ACTIVE = 23        # nothing notices you
+SW_LANTERN_ACTIVE = 24      # dark worlds lift
+SW_STATIC_ACTIVE = 25
+SW_TALL_ACTIVE = 26
+SW_STONE_ACTIVE = 27
+SW_POLE_ACTIVE = 28
+SW_BELL_ACTIVE = 29
+SW_KEY_ACTIVE = 30
+SW_EARS_ACTIVE = 31
+SW_COAT_ACTIVE = 32
+SW_HAT_ACTIVE = 33
+
+SW_EFFECT_ACTIVE = {
+    "lantern": SW_LANTERN_ACTIVE, "quiet": SW_QUIET_ACTIVE, "tall": SW_TALL_ACTIVE,
+    "hat": SW_HAT_ACTIVE, "ears": SW_EARS_ACTIVE, "coat": SW_COAT_ACTIVE,
+    "pole": SW_POLE_ACTIVE, "eye": SW_EYE_ACTIVE, "bell": SW_BELL_ACTIVE,
+    "key": SW_KEY_ACTIVE, "stone": SW_STONE_ACTIVE, "static": SW_STATIC_ACTIVE,
+}
+
+SW_WOKE_ONCE = 34           # you have slept in the bed at least once
+SW_SEEN_NEXUS = 35
+SW_OVERLAY_ON = 36
+SW_FOLLOWER = 37            # something is following you between worlds
+SW_TITLE_CHANGED = 38       # the title screen is quietly different now
+SW_DEEP_UNLOCKED = 39
+
+# Per-world memory: things that stay changed once changed.
+SW_WORLD_MEMORY_BASE = 40   # 40 + world index
+SW_WORLD_SECRET_BASE = 60   # 60 + world index
+
+# --- variables ---------------------------------------------------------------
+VR_EQUIPPED = 1             # 0 none, else the effect's number
+VR_DREAM_DISTANCE = 2       # total tiles walked across every loop, ever
+VR_LOOPS = 3                # times the current world has been circled
+VR_LAST_X = 4
+VR_LAST_Y = 5
+VR_WORLD = 6                # which world you are in
+VR_SCRATCH = 7
+VR_MENU_CURSOR = 8
+VR_ROLL = 9                 # a dice roll, for rare events
+VR_STEPS = 10
+VR_EFFECTS_FOUND = 11
+VR_MENU_SLOT = 12
+VR_PREV_WORLD = 13
+VR_TEMP_X = 14
+VR_TEMP_Y = 15
+VR_VISITS_BASE = 20         # 20 + world index: times you have entered it
+
+# --- names, for the database editor lists ------------------------------------
+
+def switch_names(world_names: list[str]) -> dict[int, str]:
+    names: dict[int, str] = {}
+    for key, index in SW_HAS_EFFECT.items():
+        names[index] = f"has {key}"
+    names.update({
+        SW_MENU_OPEN: "menu open", SW_MENU_BUSY: "menu busy",
+        SW_WOKE_ONCE: "woke once", SW_SEEN_NEXUS: "seen nexus",
+        SW_OVERLAY_ON: "overlay on", SW_FOLLOWER: "followed",
+        SW_TITLE_CHANGED: "title changed", SW_DEEP_UNLOCKED: "deep unlocked",
+    })
+    for key, index in SW_EFFECT_ACTIVE.items():
+        names[index] = f"{key} active"
+    for index, world in enumerate(world_names):
+        names[SW_WORLD_MEMORY_BASE + index] = f"{world} changed"
+        names[SW_WORLD_SECRET_BASE + index] = f"{world} secret"
+    return names
+
+
+def variable_names(world_names: list[str]) -> dict[int, str]:
+    names = {
+        VR_EQUIPPED: "equipped", VR_DREAM_DISTANCE: "dream distance",
+        VR_LOOPS: "loops", VR_LAST_X: "last x", VR_LAST_Y: "last y",
+        VR_WORLD: "world", VR_SCRATCH: "scratch", VR_MENU_CURSOR: "menu cursor",
+        VR_ROLL: "roll", VR_STEPS: "steps", VR_EFFECTS_FOUND: "effects found",
+        VR_MENU_SLOT: "menu slot", VR_PREV_WORLD: "previous world",
+        VR_TEMP_X: "temp x", VR_TEMP_Y: "temp y",
+    }
+    for index, world in enumerate(world_names):
+        names[VR_VISITS_BASE + index] = f"visits {world}"
+    return names

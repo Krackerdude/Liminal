@@ -93,8 +93,6 @@ def boot() -> CommonEvent:
     # default is 4, one tile roughly every four frames; the worlds here are a
     # hundred and forty tiles across and meant to be walked rather than
     # crossed, so this is a decision and not an inherited default.
-    s.move_route(PLAYER, [MV_SPEED_UP], frequency=8)
-    s.await_movement()
     return CommonEvent(CE_BOOT, "boot", TRIGGER_CALL, None, s)
 
 
@@ -398,10 +396,8 @@ def diary_key() -> CommonEvent:
                 s.switch(SW_MENU_OPEN, True)
                 s.call_event(CE_DIARY)
     # No wait.  RPG Maker measures a wait in *tenths of a second*, so the
-    # habitual `wait 1` at the end of a parallel loop polls six frames apart —
-    # and a tap shorter than that is a keypress the game never sees.  The list
-    # is ten commands; running it every frame costs nothing and means the
-    # diary opens the instant it is asked for.
+    # habitual `wait 1` at the end of a parallel loop polls six frames apart,
+    # and a tap shorter than that is a keypress the game never sees.
     return CommonEvent(CE_DIARY_KEY, "diary key", TRIGGER_PARALLEL, None, s)
 
 

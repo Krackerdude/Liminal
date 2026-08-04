@@ -146,33 +146,45 @@ class Actor:
 # Terms.  Nothing here says "battle", "gold", or "enemy" where the player can
 # see it; the menu is meant to read like a page torn out of somebody's notes.
 TERMS: dict[str, str] = {
-    # main menu + status screen
-    "command_item": "things",
-    "command_skill": "effects",
-    "menu_equipment": "worn",
-    "menu_save": "remember",
-    "menu_quit": "wake up",
-    "status": "self",
+    # The menu says what things are.  An earlier version of this table renamed
+    # every RPG Maker field into something evocative — equipment became "worn",
+    # saving became "remember", level became "d" — and the result was a menu
+    # nobody could read: four abbreviations and a screen for equipment this
+    # game does not have.  Flavour is worth nothing if the player cannot tell
+    # what a command does.  Only two names here are not plain, and both name
+    # something this game actually has.
+    "command_item": "things",        # what you are carrying
+    "command_skill": "effects",      # what you are wearing
+    # RPG Maker 2000's menu is fixed — the command list below is a 2003 field
+    # and does nothing here — so the equipment screen cannot be removed, only
+    # named.  Leaving its term blank left a hole in the menu, which is worse.
+    "menu_equipment": "equipment",
+    "menu_save": "save",
+    "menu_quit": "quit",
+    "status": "you",
     "possessed_items": "carried",
     "equipped_items": "worn",
-    "gold": "coins",
+    "gold": "nights",                # incremented by sleeping, not by money
+    # The status panel is drawn by the engine and cannot be removed, so its
+    # numbers are named for what they are rather than dressed up as something
+    # they are not.
     "level": "depth",
     "health_points": "presence",
     "spirit_points": "clarity",
-    "normal_status": "here",
-    "exp_short": "time",
-    "lvl_short": "d",
-    "hp_short": "pr",
-    "sp_short": "cl",
+    "normal_status": "awake",
+    # The status *line* has room for about two characters before the label
+    # runs into its own number, so it uses the abbreviations every player
+    # already knows.  The words above are what the roomy status *screen*
+    # shows.  Flavour where there is space for it; legibility where there is
+    # not.
+    "exp_short": "e",
+    "lvl_short": "lv",
+    "hp_short": "hp",
+    "sp_short": "sp",
     "attack": "reach",
     "defense": "weight",
     "spirit": "signal",
     "agility": "drift",
-    "weapon": "in hand",
-    "shield": "other hand",
-    "armor": "body",
-    "helmet": "head",
-    "accessory": "pocket",
     # title / file screens
     "new_game": "begin",
     "load_game": "return",

@@ -48,6 +48,20 @@ DREAMER_SLOTS = [
     ("pole", _variant(carry="pole", feature_color=(160, 132, 96))),
 ]
 
+# A charset holds eight, and there are thirteen selves: the plain one and one
+# per effect.  The remainder live on a second sheet, and ``equip`` picks the
+# sheet from the slot.
+DREAMER_SLOTS_B = [
+    ("eye", _variant(feature="antenna", feature_color=(226, 246, 244),
+                     glow=(180, 232, 228))),
+    ("bell", _variant(carry="ring", feature_color=(238, 214, 140))),
+    ("key", _variant(carry="can", feature_color=(212, 186, 120))),
+    ("stone", _variant(feature="wide_hat", feature_color=(150, 146, 140),
+                       shirt=(120, 118, 116), trousers=(84, 82, 80))),
+    ("static", _variant(translucent=True, feature="scarf",
+                        feature_color=(226, 226, 232), faceless=True)),
+]
+
 
 CAST: dict[str, list[tuple[str, object]]] = {
     # pink / numbers / blocks / stairs
@@ -320,6 +334,7 @@ def build_sheets() -> dict[str, Canvas]:
     # graphic" and be believed.
     out["Blank"] = sheet([])
     out["Dreamer"] = sheet([figure_block(body) for _, body in DREAMER_SLOTS])
+    out["DreamerB"] = sheet([figure_block(body) for _, body in DREAMER_SLOTS_B])
     for sheet_name, entries in _sheets().items():
         blocks = []
         for _, spec in entries:

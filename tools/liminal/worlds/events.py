@@ -71,6 +71,27 @@ def _free_tile(world: World, x: int, y: int, *, radius: int = 6) -> tuple[int, i
     return x, y
 
 
+def _far_from(world: World, origin: tuple[int, int],
+              rng: random.Random) -> tuple[int, int]:
+    """A standable tile in whichever room is furthest from ``origin``.
+
+    Distance is measured the short way round both axes, because every world
+    wraps: a tile near the left edge is next to the right edge, and a naive
+    subtraction would call it the other side of the world.
+    """
+    m = world.map
+    zones = list(getattr(world.plan, "zones", []) or [])
+    if not zones:
+        return world.spot(rng, pad=4)
+
+    def far(zone) -> int:
+        dx = abs(((zone.cx - origin[0] + m.width // 2) % m.width) - m.width // 2)
+        dy = abs(((zone.cy - origin[1] + m.height // 2) % m.height) - m.height // 2)
+        return dx * dx + dy * dy
+
+    return _near(world, max(zones, key=far), rng)
+
+
 def _near(world: World, zone, rng: random.Random) -> tuple[int, int]:
     """A standable tile inside a zone, biased toward its middle.
 
@@ -363,7 +384,12 @@ def dream_events(world: World, worlds: dict[str, World],
 
     # -- the effect that lives here
     effect_key = EFFECT_HOME[key]
-    ex, ey = world.spot(rng, pad=4)
+    # As far from the door as the world allows.  An effect dropped at a random
+    # spot lands next to the arrival tile about as often as anywhere else, and
+    # a thing you trip over on the way in is not a thing you found.  On a torus
+    # the far side is a real place: the zone whose wrapped distance from the
+    # door is greatest.
+    ex, ey = _far_from(world, world.spawn, rng)
     got = Script()
     got.var(VR_SCRATCH, EFFECT_INDEX[effect_key])
     got.call_event(sys.CE_GIVE_EFFECT)

@@ -415,7 +415,13 @@ def equip() -> CommonEvent:
                         s.call_event(CE_UNEQUIP)
                         s.var(VR_EQUIPPED, slot + 1)
                         s.switch(SW_EFFECT_ACTIVE[key], True)
-                        s.set_sprite(1, "Dreamer", min(slot, 7))
+                        # thirteen selves across two sheets: the plain one
+                        # and the first seven effects on Dreamer, the rest on
+                        # DreamerB.  Wearing something has to look like it.
+                        if slot < 7:
+                            s.set_sprite(1, "Dreamer", slot + 1)
+                        else:
+                            s.set_sprite(1, "DreamerB", slot - 7)
                         s.se("Decision", volume=70)
                         s.flash(255, 250, 230, 22, 3, False)
             with s.if_switch(SW_HAS_EFFECT[key], False):

@@ -483,43 +483,94 @@ def build_sand(map_id: int) -> World:
 
 
 def build_faces(map_id: int) -> World:
-    """THE GROVE.
+    """THE GREEN.
 
-    theme      a forest planted on a grid by something that had seen a diagram
-    feeling    being watched politely
-    layout     clearings cut into a solid wall of trunks
-    rule       the trees are the boundary; the clearings are the only space
+    theme      a town the forest grew through, without anyone switching it off
+    feeling    walking home down a street that stopped being a street
+    layout     a road grid, buried in solid green mass, the junctions surviving
+    rule       the infrastructure is still running and nothing has been moved
     """
     world, cs, rng = _new("faces", map_id, 144, 132)
     m, t = world.map, cs.tiles
     fld = Field(m.width, m.height)
 
-    # Negative space: the world is a solid block of forest, and the playable
-    # part is what has been worn away.  No sightline is ever long.
-    glades = layout.carved_mass(fld, rng, walks=16, length=80, width=4,
-                                clearings=22, clearing_size=(15, 13))
+    # The street plan comes first: this was a town before it was anything else,
+    # and the roads are what the forest had to grow around.
+    avenues_x = [18, 52, 90, 124]
+    avenues_y = [16, 50, 84, 116]
+    for x in avenues_x:
+        fld.long_hall(x, 0, m.height, vertical=True, width=5)
+    for y in avenues_y:
+        fld.long_hall(0, y, m.width, vertical=False, width=5)
+
+    # Junctions open out into squares; the forest took the blocks between them.
+    junctions = []
+    for x in avenues_x:
+        for y in avenues_y:
+            junctions.append(fld.carve(Zone(f"junction_{x}_{y}", x, y,
+                                            rng.randint(15, 23),
+                                            rng.randint(13, 19),
+                                            rng.choice(("rect", "octagon")))))
+    # and a few clearings where the trees won outright
+    glades = []
+    for index in range(10):
+        cx, cy = rng.randrange(m.width), rng.randrange(m.height)
+        zone = fld.carve(Zone(f"glade{index}", cx, cy, rng.randint(13, 21),
+                              rng.randint(11, 17), "round"))
+        fld.corridor((zone.cx, zone.cy),
+                     (avenues_x[index % 4], avenues_y[(index // 2) % 4]),
+                     width=3)
+        glades.append(zone)
+
     fld.ensure_connected()
     fld.protect_chokepoints()
-    fld.build_walls(4)
+    fld.build_walls(6)          # the green is a solid mass, not a treeline
     layout.paint(m, fld, t, rng=rng)
     layout.shade_walls(m, fld, t)
 
-    # trees stand *in front of* the wall of trunks, in a ring inside each glade
-    import math as _m
-    for zone in glades:
-        for step in range(8):
-            angle = step * _m.tau / 8
-            x = int(zone.cx + _m.cos(angle) * (zone.w / 2 - 3)) - 1
-            y = int(zone.cy + _m.sin(angle) * (zone.h / 2 - 3)) - 2
-            if fld.open_space(x, y, 3, 4, 0):
-                gen.stamp(m, cs.obj("tree" if step % 3 else "tree_plain"), x, y)
-        for spot in layout.zone_spots(fld, zone, rng, 2, w=2, h=2, pad=1):
-            gen.stamp(m, cs.obj("mushroom"), *spot)
-        gen.stamp_centered(m, cs.obj("stump"), zone.cx, zone.cy)
+    # Lay the actual road surface back over the avenues, lane markings and all.
+    for x in avenues_x:
+        for y in range(m.height):
+            for o in range(-2, 3):
+                if fld.is_floor(x + o, y):
+                    m.set_lower(x + o, y, t["kerb"] if abs(o) == 2 else
+                                (t["road_line"] if o == 0 and y % 4 < 2
+                                 else t["road"]))
+    for y in avenues_y:
+        for x in range(m.width):
+            for o in range(-2, 3):
+                if fld.is_floor(x, y + o):
+                    m.set_lower(x, y + o, t["kerb"] if abs(o) == 2 else
+                                (t["road_line"] if o == 0 and x % 4 < 2
+                                 else t["road"]))
+
+    fur = Furnisher(m, fld, cs, rng)
+    # Junctions get the municipal furniture: lights on every corner, a shelter,
+    # a phone box still lit, a car nobody came back for.
+    street = ["traffic_light", "shelter", "phone_box", "car", "vending",
+              "road_sign"]
+    for index, zone in enumerate(junctions):
+        layout.carpet(m, fld, zone, t, rng, "full",
+                      patterns=["pattern_0", "pattern_1"])
+        for slot, (px, py) in enumerate(corners(zone, 4)):
+            fur.put("traffic_light", px, py, pad=0)
+        for slot, (px, py) in enumerate(ring(zone, 4, inset=6)):
+            fur.put(street[(index + slot) % len(street)], px, py, pad=1)
+        # a tree straight through the middle of the junction
+        fur.put("tree", zone.cx, zone.cy, pad=1)
+
+    # The glades are what the town looks like once the road has gone.
+    for index, zone in enumerate(glades):
+        layout.carpet(m, fld, zone, t, rng, "rings")
+        for px, py in ring(zone, 6, inset=4):
+            fur.put("tree" if (px + py) % 3 else "tree_plain", px, py, pad=1)
+        fur.put("stump", zone.cx, zone.cy, pad=1)
+        layout.glow_floor(m, fld, zone, t, "anim_0", ring(zone, 4, inset=2))
 
     world.plan = fld
-    world.landmarks = {"glades": [(z.cx, z.cy) for z in glades]}
-    world.spawn = (glades[0].cx, glades[0].cy + 4)
+    world.landmarks = {"junctions": [(z.cx, z.cy) for z in junctions],
+                       "glades": [(z.cx, z.cy) for z in glades]}
+    world.spawn = (avenues_x[0], avenues_y[0])
     world.npcs = ["gardener", "seedling"]
     return world
 

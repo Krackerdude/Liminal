@@ -39,6 +39,15 @@ WALL_MOTIF: dict[str, str] = {
 }
 
 
+# Where a world's boundary is made of something other than its prop material.
+# The forest is the case that matters: its props are brown trunks, but the wall
+# containing the player is a solid mass of canopy.
+WALL_COLORS: dict[str, dict] = {
+    "faces": {"base": (74, 118, 76), "light": (104, 152, 100),
+              "dark": (38, 66, 46), "accent": (146, 186, 132)},
+}
+
+
 def _basics(cb: ChipsetBuilder, pal: Palette, ground: Canvas,
             ground_b: Canvas | None = None, *, world: str = "") -> None:
     cb.add("ground", ground)
@@ -48,8 +57,10 @@ def _basics(cb: ChipsetBuilder, pal: Palette, ground: Canvas,
     cb.add("glow", ct.glow_pool(pal))
     cb.add("void", ct.void_tile(pal), passable=False)
     motif = WALL_MOTIF.get(world or cb.name, "brick")
-    cb.add("wall_core", ct.wall_band(pal, motif), passable=False)
-    cb.add("wall_face", ct.wall_band(pal, motif, face=True), passable=False)
+    colors = WALL_COLORS.get(world or cb.name, {})
+    cb.add("wall_core", ct.wall_band(pal, motif, **colors), passable=False)
+    cb.add("wall_face", ct.wall_band(pal, motif, face=True, **colors),
+           passable=False)
 
 
 # Three ground marks per world.  Nothing shared: the litter of one dream must
@@ -410,12 +421,34 @@ def build_sand() -> ChipsetBuild:
 
 
 def build_faces() -> ChipsetBuild:
-    """A peaceful forest.  The trunks are smiling.  None of them move."""
+    """A CITY THE FOREST GREW THROUGH.
+
+    Not a forest.  A forest is a place; this is a place that used to be a
+    different place.  The roads still have their lane markings, the traffic
+    lights are still cycling, the windows are still lit, and none of it has
+    been switched off or moved — the trees simply arrived afterwards and grew
+    through everything.
+    """
     pal = PALETTES["faces"]
     cb = ChipsetBuilder("faces", pal)
 
     ground = ct.grass_ground(pal, 0)
     _basics(cb, pal, ground, ct.grass_ground(pal, 1))
+
+    # asphalt, still marked out in lanes nobody is driving in
+    road = Canvas(TILE, TILE, (62, 62, 68))
+    road.dither((54, 54, 60), 0.3, ct.BAYER8)
+    cb.add("road", road)
+    lane = Canvas(TILE, TILE, (62, 62, 68))
+    lane.dither((54, 54, 60), 0.3, ct.BAYER8)
+    lane.rect(7, 0, 3, 10, (226, 222, 200))
+    cb.add("road_line", lane)
+    kerb = Canvas(TILE, TILE, (62, 62, 68))
+    kerb.rect(0, 0, TILE, 5, (168, 166, 162))
+    kerb.rect(0, 5, TILE, 2, (120, 118, 116))
+    cb.add("kerb", kerb)
+    paving = ct.pattern_tile(pal, "grid", (150, 148, 146), (176, 174, 170))
+    cb.add("paving", paving)
 
     cb.add_object("tree", ct.round_tree(pal, 3, 4, face=True), solid="bottom", ground=ground)
     cb.add_object("tree_plain", ct.round_tree(pal, 3, 4, face=False),
@@ -430,6 +463,22 @@ def build_faces() -> ChipsetBuild:
     bush.blob(13, 15, 6, warmer(pal.accent_soft, 0.22))
     outline_in(bush, cooler(pal.accent_soft, 0.4))
     cb.add_object("bush", bush, solid="bottom", ground=ground)
+
+    # Street furniture, scattered through the trees as though the town was
+    # never cleared — only grown over.
+    # Upper layer, no ground baked in: every one of these stands on asphalt,
+    # kerb and grass alike, and must show whichever is really underneath.
+    cb.add_object("traffic_light", lm.traffic_light(pal, 1, 4), solid="bottom",
+                  upper=True)
+    cb.add_object("shelter", lm.bus_shelter(pal, 4, 3), solid="bottom",
+                  upper=True)
+    cb.add_object("phone_box", lm.phone_box(pal, 2, 3), solid="bottom",
+                  upper=True)
+    cb.add_object("car", lm.dead_car(pal, 3, 2), solid="all", upper=True)
+    cb.add_object("vending", lm.vending_machine(pal, 2, 3), solid="bottom",
+                  upper=True)
+    cb.add_object("road_sign", lm.road_sign(pal, 2, 3), solid="bottom",
+                  upper=True)
 
     cb.add_object("door", ct.door_frame(pal, 2, 3, glow=pal.accent), ground=ground)
     _shadows(cb, pal)
@@ -630,8 +679,9 @@ LANDMARKS.update({
     "sand": [("ladders", lm.ladder_forest, {"cols": 6, "rows": 8}),
              ("cathedral", lm.upside_down_cathedral, {"cols": 8, "rows": 7}),
              ("ceramic", lm.ceramic_sea, {"cols": 5, "rows": 3})],
-    "faces": [("trunk", lm.hollow_trunk, {"cols": 7, "rows": 9}),
-              ("roots", lm.root_arch, {"cols": 8, "rows": 5})],
+    # The forest world's landmarks are all municipal.  None of them belong.
+    "faces": [("facade", lm.apartment_facade, {"cols": 5, "rows": 7}),
+              ("escalator", lm.escalator, {"cols": 3, "rows": 5})],
     "checker": [("circle", lm.circular_room_marker, {"cols": 5, "rows": 5})],
     # Toys is the densest sheet in the game, so its landmarks are sized to
     # fit rather than sized to impress: the brick tower still runs taller than

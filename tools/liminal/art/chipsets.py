@@ -179,8 +179,13 @@ class ChipsetBuilder:
         ``ground`` is composited underneath every piece.  Lower-layer tiles
         *must* be opaque — RPG Maker draws nothing behind that layer, so a
         transparent margin becomes a black hole in the middle of the floor.
-        Upper-layer objects skip this, since keeping their transparency is the
-        entire point of putting them up there.
+
+        The cost is that the ground gets **baked into the tile**, so a prop
+        composited onto grass carries a square of grass with it wherever it is
+        placed, including into the middle of a road.  Anything that can stand
+        on more than one surface therefore belongs on the upper layer, where it
+        keeps its transparency and shows whatever floor is really beneath it.
+        Reserve the lower layer for objects that only ever sit on one surface.
         """
         cols, rows = art.w // TILE, art.h // TILE
         ids = [[0] * cols for _ in range(rows)]
@@ -1292,16 +1297,19 @@ def decal(base: Canvas, motif: str, color: RGB, second: RGB | None = None,
 # looking at whenever they cannot go somewhere, which is most of the time.
 
 def wall_band(pal: Palette, motif: str, *, face: bool = False,
-              accent: RGB | None = None) -> Canvas:
+              accent: RGB | None = None, base: RGB | None = None,
+              light: RGB | None = None, dark: RGB | None = None) -> Canvas:
     """One tile of boundary.
 
     ``face`` draws the lit front edge used where a wall meets walkable floor,
     which is what turns a flat band of colour into something the player reads
     as standing in front of them.
     """
-    base = pal.form
-    light = pal.form_light
-    dark = pal.form_dark
+    # Overridable, because a world's boundary is not always made of the same
+    # material as its props — a forest wall is canopy, not trunk.
+    base = base or pal.form
+    light = light or pal.form_light
+    dark = dark or pal.form_dark
     ink = accent or pal.accent
     art = Canvas(TILE, TILE, base)
 
@@ -1331,9 +1339,17 @@ def wall_band(pal: Palette, motif: str, *, face: bool = False,
             art.hline(row, 0, TILE - 1, tone)
             art.hline(row + 1, 0, TILE - 1, blend(tone, dark, 0.3))
     elif motif == "trunks":
-        for ox in range(0, TILE, 4):
-            art.rect(ox, 0, 3, TILE, base if (ox // 4) % 2 else light)
-            art.vline(ox, 0, TILE - 1, dark)
+        # Overlapping canopy, not stacked timber: this is a solid mass of
+        # leaves seen from above, and it has to read as impenetrable rather
+        # than as a wall built out of logs.
+        art.px[:, :] = dark
+        for ox, oy, r in ((4, 4, 5.5), (12, 3, 4.8), (3, 12, 4.6),
+                          (11, 12, 5.2), (8, 8, 4.4), (15, 8, 4.0),
+                          (0, 8, 4.0), (8, 0, 4.0), (8, 15, 4.0)):
+            art.blob(ox, oy, r, base)
+            art.blob(ox - 1, oy - 1, r * 0.55, light)
+        for ox, oy in ((6, 6), (13, 5), (5, 13)):
+            art.dot(ox, oy, cooler(dark, 0.3))
     elif motif == "fingers":
         for ox in range(0, TILE, 5):
             art.round_rect(ox, 0, 4, TILE, 2, light)

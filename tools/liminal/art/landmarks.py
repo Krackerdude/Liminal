@@ -479,3 +479,185 @@ def door_court(pal: Palette, cols: int = 7, rows: int = 5) -> Canvas:
                            else pal.accent_soft)
             art.dot(x + 4, y + 5, pal.form_dark)
     return outline_in(art, cooler(pal.form_dark, 0.4))
+
+
+# --- the city the forest ate --------------------------------------------------
+# Things that have no business being here, which is the entire point.  These
+# are drawn as though the forest arrived second and simply grew through
+# everything without moving any of it, and nothing was ever switched off.
+
+def traffic_light(pal: Palette, cols: int = 1, rows: int = 4) -> Canvas:
+    """Still working. Still cycling. Nothing has driven past in a long time."""
+    art = _art(cols, rows)
+    w, h = art.w, art.h
+    art.rect(w // 2 - 2, 12, 4, h - 14, (72, 76, 74))
+    art.rect(w // 2 - 2, 12, 1, h - 14, (108, 112, 108))
+    art.round_rect(w // 2 - 6, 2, 12, 26, 3, (48, 52, 50))
+    for index, tone in enumerate(((198, 74, 68), (238, 190, 96),
+                                  (120, 196, 130))):
+        cy = 7 + index * 8
+        art.blob(w / 2, cy, 3.4, cooler(tone, 0.55))
+    # only the amber is lit, and it is the only warm thing for a long way
+    art.blob(w / 2, 15, 3.4, (238, 190, 96))
+    art.blob(w / 2 - 1, 14, 1.4, (255, 240, 190))
+    art.round_rect(w // 2 - 5, h - 3, 11, 3, 1, (40, 44, 42))
+    return outline_in(art, (26, 30, 28))
+
+
+def bus_shelter(pal: Palette, cols: int = 4, rows: int = 3) -> Canvas:
+    """A timetable nobody has read, under glass nobody has broken."""
+    art = _art(cols, rows)
+    w, h = art.w, art.h
+    art.rect(3, 2, w - 6, 4, (150, 156, 160))
+    art.rect(3, 2, w - 6, 2, (188, 194, 198))
+    art.rect(4, 6, 3, h - 10, (120, 126, 130))
+    art.rect(w - 7, 6, 3, h - 10, (120, 126, 130))
+    art.rect(8, 7, w - 16, h - 13, blend((176, 200, 200), pal.ground, 0.35))
+    art.round_rect(w - 16, 9, 9, 12, 1, (230, 226, 214))
+    for line in range(4):
+        art.rect(w - 14, 11 + line * 3, 5, 1, (140, 140, 136))
+    art.rect(6, h - 6, w - 12, 3, (110, 96, 84))
+    art.rect(6, h - 3, 2, 3, (80, 84, 86))
+    art.rect(w - 8, h - 3, 2, 3, (80, 84, 86))
+    return outline_in(art, (52, 58, 58))
+
+
+def phone_box(pal: Palette, cols: int = 2, rows: int = 3) -> Canvas:
+    """The light inside is on. The receiver is off the hook."""
+    art = _art(cols, rows)
+    w, h = art.w, art.h
+    art.round_rect(2, 2, w - 4, h - 3, 3, (166, 62, 62))
+    art.round_rect(4, 6, w - 8, h - 12, 2, (226, 232, 226))
+    art.round_rect(5, 7, w - 10, h - 14, 2, blend((226, 232, 226),
+                                                  (240, 220, 150), 0.55))
+    art.rect(2, 2, w - 4, 4, (196, 84, 80))
+    art.rect(4, 3, w - 8, 2, (250, 226, 180))
+    for y in range(9, h - 9, 5):
+        art.rect(4, y, w - 8, 1, (150, 56, 56))
+    art.rect(3, h - 3, w - 6, 3, (108, 40, 40))
+    return outline_in(art, (68, 26, 26))
+
+
+def apartment_facade(pal: Palette, cols: int = 6, rows: int = 8) -> Canvas:
+    """A block of flats with a trunk growing out through the middle of it.
+
+    Half the windows are lit. Nobody has come to a single one of them.
+    """
+    art = _art(cols, rows)
+    w, h = art.w, art.h
+    art.round_rect(0, 4, w, h - 4, 3, (128, 124, 130))
+    art.rect(2, 6, w - 4, h - 8, (150, 146, 152))
+    art.rect(0, 4, w, 3, (176, 172, 178))
+    lit = ((240, 222, 158), (226, 236, 240))
+    for row in range(6):
+        for col in range(4):
+            x, y = 6 + col * 20, 11 + row * 15
+            if y + 10 > h - 6:
+                continue
+            on = (row * 4 + col) % 3 == 0
+            art.round_rect(x, y, 13, 10, 1,
+                           lit[(row + col) % 2] if on else (66, 66, 74))
+            if on:
+                art.rect(x + 1, y + 1, 11, 3, warmer(lit[(row + col) % 2], 0.4))
+            art.rect(x, y + 4, 13, 1, (96, 94, 100))
+    # the trunk, straight through the building, undisturbed
+    trunk = pal.form
+    art.round_rect(w // 2 - 9, 0, 18, h, 7, trunk)
+    art.rect(w // 2 - 9, 0, 5, h, warmer(trunk, 0.22))
+    art.rect(w // 2 + 4, 0, 5, h, cooler(trunk, 0.25))
+    art.blob(w * 0.30, 6, 15, pal.accent_soft)
+    art.blob(w * 0.70, 4, 13, pal.accent_soft)
+    return outline_in(art, cooler(pal.form_dark, 0.4))
+
+
+def escalator(pal: Palette, cols: int = 3, rows: int = 6) -> Canvas:
+    """Going up, into the canopy, out of sight. It is still running."""
+    art = _art(cols, rows)
+    w, h = art.w, art.h
+    art.rect(4, 0, w - 8, h, (104, 108, 112))
+    for step in range(h // 5):
+        y = h - 6 - step * 5
+        art.rect(6, y, w - 12, 3, (156, 160, 164))
+        art.rect(6, y + 3, w - 12, 1, (72, 76, 80))
+    art.rect(2, 0, 3, h, (132, 136, 140))
+    art.rect(w - 5, 0, 3, h, (132, 136, 140))
+    art.rect(2, 0, 3, h, (132, 136, 140))
+    for y in range(2, h, 9):
+        art.rect(1, y, 5, 2, (88, 92, 96))
+        art.rect(w - 6, y, 5, 2, (88, 92, 96))
+    art.blob(w * 0.5, 3, 11, pal.accent_soft)
+    return outline_in(art, (46, 50, 54))
+
+
+def pylon_overgrown(pal: Palette, cols: int = 4, rows: int = 7) -> Canvas:
+    """An electricity pylon with a tree grown through the lattice."""
+    art = _art(cols, rows)
+    w, h = art.w, art.h
+    steel = (128, 132, 138)
+    for row in range(h):
+        t = row / h
+        span = int(4 + t * (w * 0.42))
+        art.dot(w // 2 - span, row, steel)
+        art.dot(w // 2 + span, row, steel)
+    for y in range(6, h - 4, 11):
+        span = int(4 + (y / h) * (w * 0.42))
+        art.rect(w // 2 - span, y, span * 2, 2, steel)
+        art.line(w // 2 - span, y, w // 2 + span, y + 9, steel)
+        art.line(w // 2 + span, y, w // 2 - span, y + 9, steel)
+    for y in (10, 24):
+        art.rect(4, y - 2, w - 8, 2, (96, 100, 106))
+    art.round_rect(w // 2 - 6, h // 3, 13, h - h // 3, 5, pal.form)
+    art.blob(w * 0.5, h * 0.30, 17, pal.accent_soft)
+    art.blob(w * 0.26, h * 0.38, 11, pal.accent_soft)
+    return outline_in(art, cooler(pal.form_dark, 0.4))
+
+
+def dead_car(pal: Palette, cols: int = 3, rows: int = 2) -> Canvas:
+    """Parked, and then left, and then grown over."""
+    art = _art(cols, rows)
+    w, h = art.w, art.h
+    body = (108, 118, 132)
+    art.round_rect(2, h - 17, w - 4, 13, 5, body)
+    art.round_rect(9, h - 23, w - 20, 9, 4, cooler(body, 0.15))
+    art.round_rect(11, h - 21, w - 24, 6, 3, (150, 172, 176))
+    art.blob(10, h - 4, 4, (44, 46, 50))
+    art.blob(w - 11, h - 4, 4, (44, 46, 50))
+    art.blob(10, h - 4, 2, (86, 88, 92))
+    art.blob(w - 11, h - 4, 2, (86, 88, 92))
+    # the forest, reclaiming it
+    art.blob(6, h - 18, 6, pal.accent_soft)
+    art.blob(w - 8, h - 20, 5, pal.accent_soft)
+    art.blob(w // 2, h - 24, 4, pal.accent_soft)
+    return outline_in(art, cooler(body, 0.5))
+
+
+def vending_machine(pal: Palette, cols: int = 2, rows: int = 3) -> Canvas:
+    """Lit from inside. Fully stocked. Miles from any road."""
+    art = _art(cols, rows)
+    w, h = art.w, art.h
+    art.round_rect(2, 3, w - 4, h - 5, 2, (70, 76, 92))
+    art.rect(4, 6, w - 12, h - 12, (236, 240, 246))
+    tones = ((226, 96, 96), (120, 176, 226), (238, 206, 126), (150, 200, 160))
+    for row in range(4):
+        for col in range(3):
+            x, y = 6 + col * 6, 9 + row * 8
+            if y + 5 > h - 8:
+                continue
+            art.rect(x, y, 4, 5, tones[(row + col) % 4])
+    art.rect(w - 8, 6, 4, h - 12, (52, 58, 72))
+    art.rect(w - 7, 9, 2, 6, (240, 226, 150))
+    art.rect(3, h - 4, w - 6, 3, (44, 50, 62))
+    return outline_in(art, (28, 32, 42))
+
+
+def road_sign(pal: Palette, cols: int = 2, rows: int = 3) -> Canvas:
+    """It still says something. It is not in any language you know."""
+    art = _art(cols, rows)
+    w, h = art.w, art.h
+    art.rect(w // 2 - 1, 12, 3, h - 14, (140, 144, 148))
+    art.round_rect(1, 2, w - 2, 13, 2, (96, 156, 118))
+    art.round_rect(2, 3, w - 4, 11, 2, (120, 180, 138))
+    for line, width in ((5, 14), (8, 20), (11, 11)):
+        art.rect(5, line, width, 2, (238, 244, 238))
+    art.round_rect(w // 2 - 4, h - 3, 9, 3, 1, (100, 104, 108))
+    return outline_in(art, (48, 72, 58))

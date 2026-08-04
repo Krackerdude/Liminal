@@ -486,10 +486,17 @@ class Script:
         Results: 1 down, 2 left, 3 right, 4 up, 5 decision, 6 cancel, 7 shift,
         0 nothing (only possible when ``wait`` is false).
 
-        The ten-parameter form is the RPG Maker 2000 v1.50+ layout, which is
-        the only one with individual direction and shift flags:
-        ``[var, wait, legacy_all_dirs, decision, cancel, shift, down, left,
-        right, up]``.
+        The ten-parameter RPG Maker **2000** v1.50+ layout, which is the only
+        one with individual direction and shift flags::
+
+            [var, wait, legacy_all_directions, decision, cancel,
+             shift, down, left, right, up]
+
+        RPG Maker 2003 uses a longer list with a different order; do not
+        confuse the two.  The engine only reads past parameter four at all if
+        it believes it is running 1.50 or later, which it decides by looking
+        for an MP3 in ``Music/`` — see ``audio/elevenlabs.py``.  On a game it
+        judges to be older, shift is not read and the diary cannot be opened.
         """
         d = 1 if directions else 0
         return self.raw(KEY_INPUT,

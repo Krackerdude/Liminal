@@ -65,6 +65,11 @@ VR_MENU_SLOT = 12
 VR_PREV_WORLD = 13
 VR_TEMP_X = 14
 VR_TEMP_Y = 15
+# The diary watcher needs a variable nothing else touches.  It shares the frame
+# with the loop watch, which rewrites VR_SCRATCH every single frame, and a key
+# read that lands in a variable somebody else is using is a keypress that never
+# happened.
+VR_KEY = 16
 VR_VISITS_BASE = 20         # 20 + world index: times you have entered it
 
 # --- names, for the database editor lists ------------------------------------
@@ -94,7 +99,7 @@ def variable_names(world_names: list[str]) -> dict[int, str]:
         VR_WORLD: "world", VR_SCRATCH: "scratch", VR_MENU_CURSOR: "menu cursor",
         VR_ROLL: "roll", VR_STEPS: "steps", VR_EFFECTS_FOUND: "effects found",
         VR_MENU_SLOT: "menu slot", VR_PREV_WORLD: "previous world",
-        VR_TEMP_X: "temp x", VR_TEMP_Y: "temp y",
+        VR_TEMP_X: "temp x", VR_TEMP_Y: "temp y", VR_KEY: "key",
     }
     for index, world in enumerate(world_names):
         names[VR_VISITS_BASE + index] = f"visits {world}"

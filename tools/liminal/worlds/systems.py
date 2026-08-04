@@ -33,7 +33,8 @@ from ..state import (SW_DEEP_UNLOCKED, SW_EFFECT_ACTIVE, SW_EYE_ACTIVE,
                      SW_WOKE_ONCE, VR_DREAM_DISTANCE, VR_EFFECTS_FOUND,
                      VR_EQUIPPED, VR_LAST_X, VR_LAST_Y, VR_LOOPS,
                      VR_MENU_CURSOR, VR_PREV_WORLD, VR_ROLL, VR_SCRATCH,
-                     VR_STEPS, VR_TEMP_X, VR_TEMP_Y, VR_VISITS_BASE, VR_WORLD)
+                     VR_KEY, VR_STEPS, VR_TEMP_X, VR_TEMP_Y, VR_VISITS_BASE,
+                     VR_WORLD)
 
 # Common event numbers.  Referenced by name everywhere else.
 CE_BOOT = 1
@@ -51,15 +52,21 @@ CE_DIARY_KEY = 12
 
 # Picture layers.  Higher numbers draw in front.
 PIC_OVERLAY = 5           # the world's own film: grain, haze, scanlines
-PIC_VEIL = 10
+# The diary, back to front.  Ids *are* the draw order, so the garnishes that
+# turn behind the page have to be numbered below it.
+PIC_VEIL = 6
+PIC_HALO = 7              # rotates one way, forever
+PIC_RINGS = 8             # rotates the other way, faster
 PIC_PANEL = 11
 PIC_FRAME = 12
 PIC_TITLE = 13
 PIC_ICON_BASE = 14        # 14..25, one per effect slot
+PIC_BLOOM = 26            # the light under whatever is selected
 PIC_GHOST = 27
 PIC_CURSOR = 28
 PIC_GLINT = 29
 PIC_DUST = 30
+PIC_MOTES = 31            # waves, forever
 PIC_FLASH = 40            # for anomalies: static, eye, white
 
 EFFECT_KEYS = [key for key, _, _ in EFFECTS]
@@ -218,19 +225,37 @@ def diary_open() -> Script:
                    use_transparent_color=False)
     s.move_picture(PIC_VEIL, 160, 120, transparency=45, tenths=2)
 
-    # 2. the page arrives small and overshoots before settling
+    # 2. the garnishes.  ``effect=1`` is the engine's continuous rotation and
+    # ``effect=2`` its wave, and both are driven by the engine's own clock
+    # rather than the interpreter's — so these keep turning through the
+    # blocking key-wait below.  Everything else in this menu is a one-shot
+    # animation; these are the parts that never stop.
+    s.show_picture(PIC_HALO, "MenuHalo", 160, 120, magnify=30,
+                   transparency=100, effect=1, power=3)
+    s.move_picture(PIC_HALO, 160, 120, magnify=104, transparency=62, tenths=4,
+                   effect=1, power=3)
+    s.show_picture(PIC_RINGS, "MenuRings", 160, 120, magnify=140,
+                   transparency=100, effect=1, power=-5)
+    s.move_picture(PIC_RINGS, 160, 120, magnify=100, transparency=72, tenths=4,
+                   effect=1, power=-5)
+
+    # 3. the page arrives small and overshoots before settling
     s.show_picture(PIC_PANEL, "MenuPanel", 160, 128, magnify=20,
                    transparency=100)
     s.move_picture(PIC_PANEL, 160, 118, magnify=108, transparency=0, tenths=2,
                    wait=True)
     s.move_picture(PIC_PANEL, 160, 120, magnify=100, tenths=1, wait=True)
 
-    # 3. the border drops in behind it
-    s.show_picture(PIC_FRAME, "MenuFrame", 160, 92, transparency=100)
-    s.move_picture(PIC_FRAME, 160, 124, transparency=0, tenths=2, wait=True)
-    s.move_picture(PIC_FRAME, 160, 120, tenths=1)
+    # 4. the border drops in behind it and lands hard — this is the one crisp
+    # edge in the menu, so it gets the one abrupt movement
+    s.show_picture(PIC_FRAME, "MenuFrame", 160, 88, magnify=112,
+                   transparency=100)
+    s.move_picture(PIC_FRAME, 160, 126, magnify=100, transparency=0, tenths=2,
+                   wait=True)
+    s.move_picture(PIC_FRAME, 160, 120, tenths=1, wait=True)
+    s.se("LowThud", volume=40)
 
-    # 4. a light travels across the border, once
+    # 5. a light travels across the border, once
     s.show_picture(PIC_GLINT, "MenuGlint", 30, 120, transparency=40)
     s.move_picture(PIC_GLINT, 292, 120, transparency=100, tenths=6)
 
@@ -254,13 +279,23 @@ def diary_open() -> Script:
         if slot % 4 == 3:
             s.se("Cursor", volume=28)
 
-    # 6. dust over everything, then the cursor last of all
+    # 7. the light under the selection, then dust, then the cursor last of all.
+    # The bloom and the motes are the other two things that never stop: the
+    # bloom breathes on the engine's rotation, the motes swim on its wave.
+    s.show_picture(PIC_BLOOM, "MenuBloom", *icon_position(0), magnify=60,
+                   transparency=100, effect=1, power=2)
+    s.move_picture(PIC_BLOOM, *icon_position(0), magnify=100, transparency=40,
+                   tenths=2, effect=1, power=2)
     s.show_picture(PIC_DUST, "MenuDust", 160, 120, transparency=72)
+    s.show_picture(PIC_MOTES, "MenuMotes", 160, 120, transparency=100,
+                   effect=2, power=6)
+    s.move_picture(PIC_MOTES, 160, 120, transparency=62, tenths=3,
+                   effect=2, power=6)
     s.show_picture(PIC_GHOST, "MenuGhost", *icon_position(0), transparency=100)
     s.show_picture(PIC_CURSOR, "MenuCursor", *icon_position(0), magnify=150,
-                   transparency=60)
+                   transparency=60, effect=1, power=1)
     s.move_picture(PIC_CURSOR, *icon_position(0), magnify=100, transparency=0,
-                   tenths=1)
+                   tenths=1, effect=1, power=1)
     s.switch(SW_MENU_BUSY, False)
     return s
 
@@ -276,12 +311,21 @@ def diary_close() -> Script:
         x, y = icon_position(slot)
         s.move_picture(_icon_pic(slot), x, y + 6, magnify=40, transparency=100,
                        tenths=1)
+    s.erase_picture(PIC_BLOOM)
     s.move_picture(PIC_TITLE, 160, 40, transparency=100, tenths=1)
-    s.move_picture(PIC_FRAME, 160, 150, transparency=100, tenths=2)
-    s.move_picture(PIC_PANEL, 160, 120, magnify=16, transparency=100, tenths=2,
-                   wait=True)
+    s.move_picture(PIC_MOTES, 160, 120, transparency=100, tenths=1,
+                   effect=2, power=14)
+    s.move_picture(PIC_FRAME, 160, 150, magnify=108, transparency=100, tenths=2)
+    s.move_picture(PIC_PANEL, 160, 120, magnify=16, transparency=100, tenths=2)
+    # the garnishes wind down rather than cutting: the halo spins away small,
+    # the rings open outward
+    s.move_picture(PIC_HALO, 160, 120, magnify=18, transparency=100, tenths=2,
+                   effect=1, power=7)
+    s.move_picture(PIC_RINGS, 160, 120, magnify=190, transparency=100, tenths=2,
+                   effect=1, power=-9, wait=True)
     s.move_picture(PIC_VEIL, 160, 120, transparency=100, tenths=1, wait=True)
-    for pic in (PIC_VEIL, PIC_PANEL, PIC_FRAME, PIC_TITLE, PIC_GLINT, PIC_DUST):
+    for pic in (PIC_VEIL, PIC_HALO, PIC_RINGS, PIC_PANEL, PIC_FRAME, PIC_TITLE,
+                PIC_GLINT, PIC_DUST, PIC_MOTES):
         s.erase_picture(pic)
     for slot in range(len(EFFECT_KEYS)):
         s.erase_picture(_icon_pic(slot))
@@ -327,9 +371,17 @@ def diary() -> CommonEvent:
             x, y = icon_position(slot)
             with s.if_var(VR_MENU_CURSOR, slot):
                 s.move_picture(PIC_GHOST, x, y, transparency=100, tenths=2)
+                # the light gets there first and the cursor catches up, which
+                # is what makes the selection feel like it is being lit rather
+                # than being pointed at
+                s.move_picture(PIC_BLOOM, x, y, magnify=118, transparency=28,
+                               tenths=1, effect=1, power=2)
                 s.move_picture(PIC_CURSOR, x, y, magnify=118, tenths=1,
-                               wait=True)
-                s.move_picture(PIC_CURSOR, x, y, magnify=100, tenths=1)
+                               effect=1, power=1, wait=True)
+                s.move_picture(PIC_CURSOR, x, y, magnify=100, tenths=1,
+                               effect=1, power=1)
+                s.move_picture(PIC_BLOOM, x, y, magnify=100, transparency=40,
+                               tenths=1, effect=1, power=2)
 
     s.extend(diary_close())
     return CommonEvent(CE_DIARY, "diary", TRIGGER_CALL, None, s)
@@ -340,12 +392,16 @@ def diary_key() -> CommonEvent:
     s = Script()
     with s.if_switch(SW_MENU_OPEN, False):
         with s.if_switch(SW_MENU_BUSY, False):
-            s.key_input(VR_SCRATCH, wait=False, decision=False, cancel=False,
+            s.key_input(VR_KEY, wait=False, decision=False, cancel=False,
                         directions=False, shift=True)
-            with s.if_var(VR_SCRATCH, 7):
+            with s.if_var(VR_KEY, 7):
                 s.switch(SW_MENU_OPEN, True)
                 s.call_event(CE_DIARY)
-    s.wait(1)
+    # No wait.  RPG Maker measures a wait in *tenths of a second*, so the
+    # habitual `wait 1` at the end of a parallel loop polls six frames apart —
+    # and a tap shorter than that is a keypress the game never sees.  The list
+    # is ten commands; running it every frame costs nothing and means the
+    # diary opens the instant it is asked for.
     return CommonEvent(CE_DIARY_KEY, "diary key", TRIGGER_PARALLEL, None, s)
 
 

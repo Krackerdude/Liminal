@@ -333,6 +333,14 @@ class Script:
     def teleport(self, map_id: int, x: int, y: int) -> "Script":
         return self.raw(TELEPORT, [map_id, x, y])
 
+    def store_terrain(self, var_id: int, x_var: int, y_var: int) -> "Script":
+        """Read the terrain id at a position held in two variables.
+
+        Mode 1 means "the coordinates are in variables"; mode 0 would take
+        them as constants, which is useless for following a moving player.
+        """
+        return self.raw(STORE_TERRAIN_ID, [1, x_var, y_var, var_id])
+
     def memorize_location(self, map_var: int, x_var: int, y_var: int) -> "Script":
         return self.raw(MEMORIZE_LOCATION, [map_var, x_var, y_var])
 

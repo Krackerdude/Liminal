@@ -24,6 +24,7 @@ a die was thrown.
 from __future__ import annotations
 
 from ..art.menu import EFFECTS, icon_position
+from . import atmosphere
 from ..cmds import (MSG_BOTTOM, MSG_MIDDLE, MSG_TOP, MV_SPEED_UP, PLAYER,
                     Script)
 from ..db import TRIGGER_CALL, TRIGGER_PARALLEL, CommonEvent
@@ -49,6 +50,7 @@ CE_OVERLAY_ON = 9
 CE_OVERLAY_OFF = 10
 CE_WAKE = 11
 CE_DIARY_KEY = 12
+CE_ATMOSPHERE = 13
 
 # Picture layers.  Higher numbers draw in front.
 PIC_OVERLAY = 5           # the world's own film: grain, haze, scanlines
@@ -115,11 +117,22 @@ def arrival(worlds) -> CommonEvent:
             r, g, b, sat = world.tint
             s.tint(r, g, b, sat, 8, False)
             s.bgm(world.music, fadein=25, volume=82)
+            air = atmosphere.of(key)
             if world.overlay:
+                # The film each world wears, moving on the engine's own clock
+                # rather than the interpreter's, so it keeps going while the
+                # player just walks.
                 s.show_picture(PIC_OVERLAY, world.overlay, 160, 120,
                                transparency=world.overlay_opacity,
-                               use_transparent_color=True)
+                               use_transparent_color=True,
+                               effect=air.film, power=air.film_power)
                 s.call_event(CE_OVERLAY_ON)
+            # Weather, camera tremor and camera drift, in that order: the
+            # first two are set and forgotten, the third has to be re-armed
+            # every time the screen is re-graded.
+            s.weather(*(air.weather or (0, 0)))
+            if air.drift:
+                s.pan(*air.drift, wait=False)
             s.var(VR_VISITS_BASE + index - 1, 1, op=1)
     # entering anywhere resets the sense of having gone in a circle
     s.var(VR_LOOPS, 0)
@@ -472,11 +485,13 @@ def wake(worlds) -> CommonEvent:
     s.fade_out(2)
     s.call_event(CE_OVERLAY_OFF)
     room = worlds["room"]
+    s.weather(0, 0)
+    s.pan_reset(speed=6, wait=False)
     s.teleport(room.map_id, *room.spawn)
     s.var(VR_WORLD, 1)
     s.call_event(CE_ARRIVE)
     s.tint(100, 100, 100, 100, 0, False)
-    s.fade_in(2)
+    s.fade_in(atmosphere.of("room").enter)
     return CommonEvent(CE_WAKE, "wake", TRIGGER_CALL, None, s)
 
 
@@ -493,6 +508,40 @@ def overlay_off() -> CommonEvent:
     return CommonEvent(CE_OVERLAY_OFF, "overlay off", TRIGGER_CALL, None, s)
 
 
+def atmosphere_watch(worlds) -> CommonEvent:
+    """Footsteps, and the tremor some worlds never stop having.
+
+    RPG Maker's shake is a one-shot, so a *continuous* tremor has to be
+    re-armed — which is fine, because this event is already running every
+    frame to watch the ground.  Footing is read from the terrain id under the
+    player rather than from which world it is: a world with one footstep sound
+    is a world with one surface, whatever its art is doing.
+    """
+    from .worlds import WORLD_ORDER
+
+    s = Script()
+    s.comment("footing and tremor")
+    s.var_from_event(VR_TEMP_X, PLAYER, 1)
+    s.var_from_event(VR_TEMP_Y, PLAYER, 2)
+    # only when the player has actually moved onto a new tile
+    s.var_from_var(VR_SCRATCH, VR_TEMP_X)
+    s.var_from_var(VR_SCRATCH, VR_LAST_X, op=2)
+    s.var_from_var(VR_KEY, VR_TEMP_Y)
+    s.var_from_var(VR_KEY, VR_LAST_Y, op=2)
+    s.store_terrain(VR_SCRATCH, VR_TEMP_X, VR_TEMP_Y)
+
+    for index, key in enumerate(WORLD_ORDER, start=1):
+        air = atmosphere.of(key)
+        with s.if_var(VR_WORLD, index):
+            for terrain, sound in enumerate(air.steps, start=1):
+                with s.if_var(VR_SCRATCH, terrain):
+                    s.se(sound, volume=air.step_volume)
+            if air.shake:
+                s.shake(air.shake[0], air.shake[1], 2, wait=False)
+    s.wait(2)
+    return CommonEvent(CE_ATMOSPHERE, "atmosphere", TRIGGER_PARALLEL, None, s)
+
+
 def build(worlds) -> list[CommonEvent]:
     return [
         boot(),
@@ -507,4 +556,5 @@ def build(worlds) -> list[CommonEvent]:
         overlay_off(),
         wake(worlds),
         diary_key(),
+        atmosphere_watch(worlds),
     ]

@@ -35,6 +35,7 @@ from ..state import (SW_DEEP_UNLOCKED, SW_EARS_ACTIVE, SW_EYE_ACTIVE,
                      SW_TALL_ACTIVE, SW_WOKE_ONCE, SW_WORLD_MEMORY_BASE,
                      SW_WORLD_SECRET_BASE, VR_DREAM_DISTANCE, VR_EQUIPPED,
                      VR_LOOPS, VR_ROLL, VR_SCRATCH, VR_VISITS_BASE, VR_WORLD)
+from . import atmosphere
 from . import systems as sys
 from .cast_lookup import charset_slot
 from ..art.cast import WORLD_CAST
@@ -164,14 +165,19 @@ def _pickup(effect_key: str) -> Page:
 
 
 def _door(target_map: int, x: int, y: int, *, sound: str = "DoorOpen",
-          transition: int = 2) -> Page:
+          leaving: str = "nexus", entering: str = "nexus") -> Page:
+    """A door, which comes apart the way one world does and assembles the way
+    the other does.  Twenty transitions exist; one fade everywhere wastes
+    nineteen of them and makes fourteen places feel like one place."""
     s = Script()
     s.se(sound, volume=70)
     s.bgm_fadeout(8)
-    s.fade_out(transition)
+    s.weather(0, 0)
+    s.pan_reset(speed=6, wait=False)
+    s.fade_out(atmosphere.of(leaving).leave)
     s.call_event(sys.CE_OVERLAY_OFF)
     s.teleport(target_map, x, y)
-    s.fade_in(transition)
+    s.fade_in(atmosphere.of(entering).enter)
     return Page(script=s, trigger=TRIGGER_ACTION)
 
 
@@ -191,12 +197,12 @@ def room_events(world: World, worlds: dict[str, World]) -> None:
             sleep.se("Breath", volume=55)
             sleep.bgm_fadeout(18)
             sleep.tint(60, 60, 80, 40, 20, True)
-            sleep.fade_out(9)          # mosaic: the room comes apart
+            sleep.fade_out(atmosphere.of("room").leave)
             sleep.wait(8)
             sleep.switch(SW_WOKE_ONCE, True)
             sleep.teleport(worlds["nexus"].map_id, *worlds["nexus"].spawn)
             sleep.tint(100, 100, 100, 100, 0, False)
-            sleep.fade_in(11)          # wave: the doors assemble
+            sleep.fade_in(atmosphere.of("nexus").enter)
         with branch(1):
             sleep.msg_options(MSG_BOTTOM)
     # the head of the bed, against the back wall: the tile you reach if you
@@ -279,7 +285,8 @@ def nexus_events(world: World, worlds: dict[str, World]) -> None:
         # on the door's own bottom tile, so you use it by facing it rather
         # than by standing on top of it
         _place(world, f"door_{key}", x + 1, y + 2,
-               [_door(target.map_id, *target.spawn)])
+               [_door(target.map_id, *target.spawn,
+                      leaving="nexus", entering=key)])
 
     # The mirror here shows the room, which is not behind you — and it is the
     # only way back to it.  Twelve doors lead out of the nexus and none of
@@ -375,10 +382,12 @@ def dream_events(world: World, worlds: dict[str, World],
     back = Script()
     back.se("DoorShut", volume=60)
     back.bgm_fadeout(10)
-    back.fade_out(6)
+    back.weather(0, 0)
+    back.pan_reset(speed=6, wait=False)
+    back.fade_out(atmosphere.of(key).leave)
     back.call_event(sys.CE_OVERLAY_OFF)
     back.teleport(nexus.map_id, nx + 1, ny + 3)
-    back.fade_in(6)
+    back.fade_in(atmosphere.of("nexus").enter)
     bx, by = world.landmarks["door_face"][0]
     _place(world, "door", bx, by, [Page(script=back, trigger=TRIGGER_ACTION)])
 

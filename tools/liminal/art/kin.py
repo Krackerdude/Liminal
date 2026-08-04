@@ -21,7 +21,8 @@ whose floor is at :data:`GROUND`.
 from __future__ import annotations
 
 from .canvas import Canvas, RGB, blend, cooler, warmer
-from .charsets import DOWN, GROUND, LEFT, RIGHT, UP, _small_legs
+from .charsets import (CELL_W as CELL_W_FULL, DOWN, GROUND, LEFT,
+                        RIGHT, UP, _small_legs)
 
 CX = 12
 
@@ -1609,4 +1610,634 @@ STARS = {
     "lantern_bearer": draw_lantern_bearer,
     "wader": draw_wader,
     "net_caster": draw_net_caster,
+}
+
+
+# --- the room: ordinary things, which is the point ---------------------------
+
+def draw_television(cell: Canvas, facing: int, frame: int) -> None:
+    """Pleased to see you.  From behind it is all vents and cable."""
+    b = _bob(frame)
+    case, dark = (176, 186, 182), (108, 118, 118)
+    glass, lit = (58, 70, 78), (198, 232, 226)
+    side = facing in (LEFT, RIGHT)
+    lead = -1 if facing == LEFT else 1
+    top = 8 + b
+    w = 9 if side else 18
+
+    cell.round_rect(CX - w // 2 + (lead * 2 if side else 0), top, w, 15, 3, case)
+    _small_legs(cell, frame, CX, GROUND - 5, dark, spread=3 if side else 6)
+
+    if facing == DOWN:
+        cell.rect(CX - 6, top + 3, 12, 9, glass)
+        cell.rect(CX - 6, top + 3, 12, 1, cooler(glass, 0.4))
+        for i in range(0, 9, 2):
+            cell.hline(top + 4 + i, CX - 5, CX + 5, cooler(lit, 0.55))
+        for ex in (CX - 3, CX + 2):
+            cell.rect(ex, top + 6, 2, 2, lit)
+        cell.rect(CX - 1, top + 9, 3, 1, lit)
+        cell.rect(CX + 7, top + 4, 2, 2, dark)
+    elif facing == UP:
+        # the back of a set: louvres, a dial, and the cable going nowhere
+        for i in range(0, 13, 2):
+            cell.hline(top + 2 + i, CX - 7, CX + 7, cooler(case, 0.28))
+        cell.ellipse(CX + 4, top + 4, 2.5, 2.5, dark)
+        cell.line(CX - 5, top + 13, CX - 9, GROUND - 4, dark)
+        cell.rect(CX - 2, top - 4, 5, 5, dark)      # the aerial socket
+    else:
+        cell.rect(CX + (w // 2 - 3) * lead + lead * 2, top + 3, 3, 9, glass)
+        for i in range(0, 13, 3):
+            cell.hline(top + 2 + i, CX - 4 * lead + lead * 2,
+                       CX + lead * 2, cooler(case, 0.28))
+        cell.line(CX - 4 * lead, top + 13, CX - 7 * lead, GROUND - 4, dark)
+
+
+def draw_mailbox(cell: Canvas, facing: int, frame: int) -> None:
+    """Nothing in it.  The flag is up anyway."""
+    b = _bob(frame)
+    body, dark = (150, 166, 178), (94, 106, 118)
+    flag, slot = (216, 96, 88), (52, 60, 70)
+    side = facing in (LEFT, RIGHT)
+    lead = -1 if facing == LEFT else 1
+    top = 9 + b
+    w = 8 if side else 14
+
+    # a barrel vault: rounded on top, flat below
+    for row in range(6):
+        span = int((1 - (1 - row / 6) ** 2) ** 0.5 * (w // 2))
+        cell.hline(top + row, CX - span + (lead if side else 0),
+                   CX + span + (lead if side else 0), body)
+    cell.rect(CX - w // 2 + (lead if side else 0), top + 5, w, 10, body)
+    _small_legs(cell, frame, CX, GROUND - 5, dark, spread=3 if side else 5)
+
+    if facing == DOWN:
+        cell.rect(CX - 5, top + 7, 11, 3, slot)
+        cell.rect(CX - 5, top + 7, 11, 1, cooler(body, 0.35))
+        for ex in (CX - 4, CX + 2):
+            cell.rect(ex, top + 2, 2, 2, slot)
+        cell.rect(CX + 6, top - 3, 2, 8, dark)
+        cell.rect(CX + 7, top - 3, 4, 3, flag)
+    elif facing == UP:
+        # closed back: a hinge strip and the post it came off
+        cell.rect(CX - w // 2, top + 4, w, 2, cooler(body, 0.3))
+        cell.vline(CX, top + 1, top + 14, cooler(body, 0.22))
+        cell.rect(CX - 2, top + 15, 5, 6, dark)
+        cell.rect(CX - 8, top - 3, 2, 8, dark)
+        cell.rect(CX - 11, top - 3, 4, 3, cooler(flag, 0.3))
+    else:
+        cell.rect(CX + (w // 2 - 2) * lead + lead, top + 6, 2, 4, slot)
+        cell.rect(CX - w // 2 * lead + lead, top + 4, 2, 11, cooler(body, 0.3))
+        cell.rect(CX + 5 * lead, top - 3, 2, 8, dark)
+        cell.rect(CX + 5 * lead, top - 3, 3 * lead, 3, flag)
+
+
+def draw_coat_stand(cell: Canvas, facing: int, frame: int) -> None:
+    """Wearing everything you own.  None of it is yours any more."""
+    b = _bob(frame)
+    wood, dark = (168, 132, 96), (110, 84, 62)
+    coat, scarf = (108, 118, 152), (196, 108, 104)
+    side = facing in (LEFT, RIGHT)
+    lead = -1 if facing == LEFT else 1
+    top = 4 + b
+
+    cell.rect(CX - 1 + (lead if side else 0), top, 3, GROUND - top - 4, wood)
+    cell.rect(CX - (3 if side else 5), GROUND - 6, (7 if side else 11), 3, dark)
+    _small_legs(cell, frame, CX, GROUND - 4, dark, spread=3 if side else 4)
+
+    if facing == DOWN:
+        cell.rect(CX - 7, top + 2, 15, 2, wood)      # the arms, spread
+        cell.rect(CX - 6, top + 4, 13, 14, coat)
+        cell.rect(CX - 6, top + 4, 13, 2, warmer(coat, 0.25))
+        cell.vline(CX, top + 6, top + 17, cooler(coat, 0.3))
+        cell.rect(CX - 4, top + 1, 9, 2, scarf)
+    elif facing == UP:
+        cell.rect(CX - 7, top + 2, 15, 2, wood)
+        cell.rect(CX - 6, top + 4, 13, 14, cooler(coat, 0.22))
+        cell.rect(CX + 3, top - 1, 3, 12, scarf)     # a scarf hanging behind
+        cell.rect(CX - 2, top - 3, 5, 4, wood)
+    else:
+        cell.rect(CX - 3 * lead + lead, top + 2, 7, 2, wood)
+        cell.rect(CX - 3 * lead + lead, top + 4, 6, 14, coat)
+        cell.rect(CX + 4 * lead, top + 1, 2, 10, scarf)
+
+
+def draw_clock(cell: Canvas, facing: int, frame: int) -> None:
+    """Right twice, and neither time is now."""
+    b = _bob(frame)
+    case, dark = (196, 162, 112), (128, 100, 64)
+    face, hand = (242, 236, 216), (60, 50, 44)
+    side = facing in (LEFT, RIGHT)
+    lead = -1 if facing == LEFT else 1
+    top = 5 + b
+    w = 7 if side else 15
+
+    cell.round_rect(CX - w // 2 + (lead if side else 0), top, w,
+                    GROUND - top - 5, 3, case)
+    _small_legs(cell, frame, CX, GROUND - 5, dark, spread=3 if side else 4)
+
+    if facing == DOWN:
+        cell.ellipse(CX, top + 6, 5.5, 5.5, face)
+        cell.vline(CX, top + 2, top + 6, hand)
+        cell.hline(top + 6, CX, CX + 4, hand)
+        for a in ((0, -4), (4, 0), (0, 4), (-4, 0)):
+            cell.dot(CX + a[0], top + 6 + a[1], dark)
+        cell.rect(CX - 2, top + 15, 5, 6, dark)      # the pendulum window
+        cell.ellipse(CX, top + 19 + (-1, 0, 1)[frame], 2, 2, face)
+    elif facing == UP:
+        # the back of a case: a door, a keyhole, and the weights on their chain
+        cell.rect(CX - w // 2 + 1, top + 1, w - 2, GROUND - top - 7,
+                  cooler(case, 0.22))
+        cell.ellipse(CX + 3, top + 8, 1.5, 1.5, dark)
+        cell.vline(CX - 3, top + 3, top + 16, dark)
+        cell.rect(CX - 4, top + 16, 3, 5, cooler(case, 0.4))
+    else:
+        cell.ellipse(CX + (w // 2 - 1) * lead + lead, top + 6, 1.5, 5, face)
+        cell.rect(CX - w // 2 * lead + lead, top + 2, 2, 16, cooler(case, 0.3))
+        cell.rect(CX - lead + lead, top + 15, 3, 6, dark)
+
+
+ROOM = {
+    "television": draw_television,
+    "mailbox": draw_mailbox,
+    "coat_stand": draw_coat_stand,
+    "clock": draw_clock,
+}
+
+
+# --- the nexus: whoever waits by the doors ------------------------------------
+
+def draw_keeper(cell: Canvas, facing: int, frame: int) -> None:
+    """Sits by the doors and has never once looked up."""
+    b = _bob(frame) // 2
+    coat, dark = (84, 76, 116), (48, 44, 72)
+    skin, pale = (228, 214, 226), (170, 158, 190)
+    side = facing in (LEFT, RIGHT)
+    lead = -1 if facing == LEFT else 1
+    top = 13 + b
+
+    # seated: wide at the base, and it never rises
+    for row in range(GROUND - 3 - top):
+        span = (4 if side else 5) + row * (3 if side else 6) // (GROUND - 3 - top)
+        cell.hline(top + row, CX - span + (lead if side else 0),
+                   CX + span + (lead if side else 0), coat)
+    cell.hline(GROUND - 3, CX - (7 if side else 11), CX + (7 if side else 11),
+               dark)
+
+    hx = CX + (lead if side else 0)
+    # the head is always tipped down, whichever way the body faces
+    cell.ellipse(hx, top - 2, 4.5 if side else 5, 4.5, skin)
+
+    if facing == DOWN:
+        cell.ellipse(CX, top - 4, 5.5, 3.5, dark)
+        cell.rect(CX - 3, top, 7, 1, pale)          # lowered lids, not eyes
+        cell.rect(CX - 6, top + 6, 13, 2, cooler(coat, 0.3))
+    elif facing == UP:
+        # From behind, the hood is up and the head has gone into it entirely —
+        # a keeper who never looks up has nothing to show you when you walk
+        # round the back.
+        cell.ellipse(hx, top - 1, 6.5, 6, coat)
+        cell.ellipse(hx, top, 5, 4.5, cooler(coat, 0.35))
+        cell.vline(CX, top + 4, GROUND - 4, cooler(coat, 0.4))
+        for ry in range(top + 6, GROUND - 4, 4):
+            cell.hline(ry, CX - 8, CX + 8, cooler(coat, 0.25))
+    else:
+        cell.ellipse(hx, top - 4, 4.5, 3, dark)
+        cell.rect(hx + (1 if lead > 0 else -2), top, 2, 1, pale)
+        cell.vline(CX - 5 * lead + lead, top + 2, GROUND - 4,
+                   cooler(coat, 0.3))
+
+
+def draw_sleeper(cell: Canvas, facing: int, frame: int) -> None:
+    """Asleep, standing up.  You decide not to."""
+    b = _bob(frame)
+    gown, dark = (196, 172, 220), (118, 108, 156)
+    skin = (238, 216, 200)
+    side = facing in (LEFT, RIGHT)
+    lead = -1 if facing == LEFT else 1
+    top = 10 + b
+    bw = 7 if side else 12
+    # the whole figure leans a little, and never quite falls
+    tilt = (-1, 0, 1)[frame]
+
+    cell.rect(CX - bw // 2 + tilt + (lead if side else 0), top, bw,
+              GROUND - top - 4, gown)
+    hx = CX + tilt + (lead if side else 0)
+    cell.ellipse(hx, top - 4, 4.5 if side else 5, 5, skin)
+
+    if facing == DOWN:
+        cell.rect(CX - 4 + tilt, top - 4, 3, 1, dark)   # closed eyes
+        cell.rect(CX + 2 + tilt, top - 4, 3, 1, dark)
+        cell.rect(CX - 5 + tilt, top + 3, 11, 2, cooler(gown, 0.25))
+    elif facing == UP:
+        cell.ellipse(hx, top - 5, 5, 4, dark)           # hair, no face
+        cell.vline(CX + tilt, top + 1, GROUND - 5, cooler(gown, 0.3))
+    else:
+        cell.rect(hx + (1 if lead > 0 else -2), top - 4, 2, 1, dark)
+        cell.ellipse(hx - 3 * lead, top - 5, 3, 3.5, dark)
+        cell.vline(CX + tilt - 3 * lead, top + 1, GROUND - 5,
+                   cooler(gown, 0.25))
+
+
+def draw_cloud_ladder(cell: Canvas, facing: int, frame: int) -> None:
+    """Carrying a ladder.  There is nothing to lean it on."""
+    b = _bob(frame)
+    cloud, shade = (238, 240, 248), (186, 192, 212)
+    wood, dark = (188, 152, 104), (128, 100, 66)
+    side = facing in (LEFT, RIGHT)
+    lead = -1 if facing == LEFT else 1
+    cy = 15 + b
+
+    if side:
+        cell.ellipse(CX + lead, cy, 6, 6, cloud)
+        cell.ellipse(CX + lead - 2, cy + 2, 4, 4, shade)
+    else:
+        cell.ellipse(CX - 4, cy + 1, 5, 4.5, cloud)
+        cell.ellipse(CX + 4, cy + 1, 5, 4.5, cloud)
+        cell.ellipse(CX, cy - 2, 6, 5.5, cloud)
+    _small_legs(cell, frame, CX + (lead if side else 0), GROUND - 4, shade,
+                spread=3 if side else 4)
+
+    if facing == DOWN:
+        for ex in (CX - 3, CX + 2):
+            cell.rect(ex, cy - 2, 2, 3, (86, 96, 120))
+        # the ladder held across, so it reads as rungs and two stiles
+        cell.rect(CX - 10, cy + 5, 21, 2, wood)
+        cell.rect(CX - 10, cy + 9, 21, 2, wood)
+        for rx in range(CX - 8, CX + 9, 5):
+            cell.vline(rx, cy + 5, cy + 10, dark)
+    elif facing == UP:
+        # from behind, the ladder is end-on: two dots and a long shadow
+        cell.ellipse(CX, cy - 1, 7, 6, shade)
+        cell.rect(CX - 3, cy + 4, 2, 2, wood)
+        cell.rect(CX + 2, cy + 4, 2, 2, wood)
+        cell.vline(CX - 2, cy + 6, GROUND - 5, cooler(wood, 0.35))
+        cell.vline(CX + 3, cy + 6, GROUND - 5, cooler(wood, 0.35))
+    else:
+        cell.rect(CX + (1 if lead > 0 else -2) + lead, cy - 2, 2, 3,
+                  (86, 96, 120))
+        # Carried fore and aft, tipped the way it walks, so the two profiles
+        # are mirror images rather than the same bar twice.
+        for i, sy in enumerate((cy + 3, cy + 7)):
+            for x in range(CELL_W_FULL):
+                cell.rect(x, sy + (x if lead > 0 else CELL_W_FULL - x) // 8,
+                          1, 2, wood)
+        for rx in range(2, CELL_W_FULL, 6):
+            off = (rx if lead > 0 else CELL_W_FULL - rx) // 8
+            cell.vline(rx, cy + 3 + off, cy + 8 + off, dark)
+
+
+def draw_doorframe(cell: Canvas, facing: int, frame: int) -> None:
+    """A door with nothing behind it, and it is looking for a wall."""
+    b = _bob(frame)
+    frame_c, dark = (150, 138, 176), (86, 78, 112)
+    inside = (30, 26, 48)
+    side = facing in (LEFT, RIGHT)
+    lead = -1 if facing == LEFT else 1
+    top = 4 + b
+    w = 6 if side else 16
+
+    cell.rect(CX - w // 2 + (lead * 2 if side else 0), top, w,
+              GROUND - top - 4, frame_c)
+    _small_legs(cell, frame, CX, GROUND - 4, dark, spread=2 if side else 6)
+
+    if facing == DOWN:
+        # open: you can see the dark that is not a room
+        cell.rect(CX - 5, top + 4, 11, GROUND - top - 10, inside)
+        cell.rect(CX - 5, top + 4, 11, 1, dark)
+        cell.ellipse(CX + 3, top + 13, 1.5, 1.5, (226, 200, 140))
+        for ex in (CX - 3, CX + 1):
+            cell.rect(ex, top + 7, 2, 3, (196, 186, 220))
+    elif facing == UP:
+        # from behind it is simply solid: a panel, and no opening at all
+        cell.rect(CX - w // 2 + 2, top + 2, w - 4, GROUND - top - 8,
+                  cooler(frame_c, 0.22))
+        cell.rect(CX - 4, top + 5, 9, 7, cooler(frame_c, 0.36))
+        cell.rect(CX - 4, top + 14, 9, 7, cooler(frame_c, 0.36))
+    else:
+        cell.rect(CX - w // 2 + (lead * 2), top + 3, 2, GROUND - top - 9,
+                  inside)
+        cell.vline(CX + (w // 2 - 1) * lead + lead * 2, top, GROUND - 5,
+                   warmer(frame_c, 0.3))
+
+
+NEXUS = {
+    "keeper": draw_keeper,
+    "sleeper": draw_sleeper,
+    "cloud_ladder": draw_cloud_ladder,
+    "doorframe": draw_doorframe,
+}
+
+
+# --- stairs: everything is going up, and nothing arrives ---------------------
+
+def draw_climber(cell: Canvas, facing: int, frame: int) -> None:
+    """"Nearly there."  They have not moved."""
+    b = _bob(frame)
+    coat, dark = (208, 206, 216), (128, 128, 150)
+    skin, rope = (232, 216, 204), (238, 208, 148)
+    side = facing in (LEFT, RIGHT)
+    lead = -1 if facing == LEFT else 1
+    top = 10 + b
+    bw = 7 if side else 12
+    # permanently mid-stride: one leg up, always the same one
+    rise = (2, 1, 2)[frame]
+
+    cell.rect(CX - bw // 2 + (lead if side else 0), top - rise, bw,
+              GROUND - top - 4, coat)
+    hx = CX + (lead if side else 0)
+    cell.ellipse(hx, top - 5 - rise, 4.5 if side else 5, 5, skin)
+
+    if facing == DOWN:
+        for ex in (CX - 3, CX + 1):
+            cell.rect(ex, top - 6 - rise, 2, 2, (64, 60, 76))
+        cell.rect(CX - 6, top + 2 - rise, 13, 2, rope)   # coiled across
+        cell.rect(CX - 6, GROUND - 8, 5, 5, dark)        # the raised knee
+        cell.rect(CX + 2, GROUND - 5, 5, 3, dark)
+    elif facing == UP:
+        cell.ellipse(hx, top - 6 - rise, 5, 4, dark)
+        # the coil hangs down the back, and both boots are flat on the step
+        cell.ellipse(CX + 4, top + 4 - rise, 3.5, 5, rope, filled=False)
+        cell.rect(CX - 6, GROUND - 5, 5, 3, dark)
+        cell.rect(CX + 2, GROUND - 5, 5, 3, dark)
+    else:
+        cell.rect(hx + (1 if lead > 0 else -2), top - 6 - rise, 2, 2,
+                  (64, 60, 76))
+        cell.ellipse(CX + 4 * lead, top + 2 - rise, 2, 4, rope, filled=False)
+        cell.rect(CX + 2 * lead, GROUND - 9, 5, 4, dark)
+        cell.rect(CX - 4 * lead, GROUND - 5, 5, 3, dark)
+
+
+def draw_long_bird(cell: Canvas, facing: int, frame: int) -> None:
+    """Turns its head all the way round to see you, then all the way back."""
+    b = _bob(frame)
+    plume, dark = (244, 244, 248), (176, 180, 196)
+    beak, leg = (238, 178, 96), (198, 152, 90)
+    side = facing in (LEFT, RIGHT)
+    lead = -1 if facing == LEFT else 1
+    body_y = 20 + b
+
+    cell.ellipse(CX + (lead if side else 0), body_y, 6 if side else 8, 5.5,
+                 plume)
+    cell.vline(CX - 2, body_y + 4, GROUND - 3, leg)
+    cell.vline(CX + 2, body_y + 4, GROUND - 3, leg)
+    cell.hline(GROUND - 3, CX - 4, CX, leg)
+    cell.hline(GROUND - 3, CX + 1, CX + 5, leg)
+
+    # the neck: absurdly long, and it goes somewhere different every facing
+    if facing == DOWN:
+        for i in range(12):
+            cell.rect(CX - 1, body_y - 5 - i, 3, 1, plume)
+        cell.ellipse(CX, body_y - 17, 3.5, 3, plume)
+        for ex in (CX - 2, CX + 1):
+            cell.dot(ex, body_y - 18, (52, 48, 60))
+        cell.rect(CX - 1, body_y - 15, 3, 3, beak)
+    elif facing == UP:
+        # gone over the shoulder and back on itself: the head faces away
+        for i in range(10):
+            cell.rect(CX - 1 + i // 3, body_y - 5 - i, 3, 1, dark)
+        cell.ellipse(CX + 3, body_y - 15, 3.5, 3, dark)
+        cell.ellipse(CX, body_y - 1, 6, 4, dark)
+        cell.rect(CX + 2, body_y - 12, 3, 4, cooler(beak, 0.3))
+    else:
+        for i in range(12):
+            cell.rect(CX - 1 + (i * lead) // 3, body_y - 5 - i, 3, 1, plume)
+        hx = CX + (4 * lead)
+        cell.ellipse(hx, body_y - 17, 3, 3, plume)
+        cell.dot(hx + lead, body_y - 18, (52, 48, 60))
+        cell.rect(hx + 2 * lead, body_y - 17, 4, 2, beak)
+
+
+def draw_handrail(cell: Canvas, facing: int, frame: int) -> None:
+    """A banister that got up.  It still wants to be held on to."""
+    b = _bob(frame)
+    wood, dark = (198, 176, 148), (132, 112, 88)
+    brass = (226, 194, 128)
+    side = facing in (LEFT, RIGHT)
+    lead = -1 if facing == LEFT else 1
+    top = 4 + b
+
+    # turned balusters, and a rail that rises the way stairs do
+    if facing == DOWN or facing == UP:
+        for i, bx in enumerate((-7, -2, 3)):
+            cell.rect(CX + bx, top + 6 - i * 2, 4, GROUND - top - 10, wood)
+            cell.ellipse(CX + bx + 2, top + 11 - i * 2, 3, 2.5,
+                         wood if facing == DOWN else dark)
+        for i in range(17):
+            cell.rect(CX - 8 + i, top + 5 - i // 3, 2, 3, brass)
+    else:
+        cell.rect(CX - 1 + lead, top + 6, 4, GROUND - top - 10, wood)
+        cell.ellipse(CX + 1 + lead, top + 11, 3, 2.5, wood)
+        for i in range(CELL_W_FULL):
+            cell.rect(i, top + 8 - (i if lead > 0 else CELL_W_FULL - i) // 3,
+                      1, 3, brass)
+    _small_legs(cell, frame, CX, GROUND - 4, dark, spread=3 if side else 6)
+
+    if facing == DOWN:
+        for ex in (CX - 6, CX + 3):
+            cell.rect(ex, top + 15, 2, 3, (70, 58, 48))
+        cell.rect(CX - 2, top + 20, 5, 1, dark)
+    elif facing == UP:
+        cell.rect(CX - 8, top + 14, 17, 2, dark)
+        cell.rect(CX - 8, top + 20, 17, 2, dark)
+    else:
+        cell.rect(CX + (1 if lead > 0 else -2) + lead, top + 15, 2, 3,
+                  (70, 58, 48))
+
+
+def draw_descender(cell: Canvas, facing: int, frame: int) -> None:
+    """Going down, in a place with no down.  Upside down about it."""
+    b = _bob(frame)
+    coat, dark = (140, 146, 178), (84, 90, 124)
+    skin = (230, 218, 208)
+    side = facing in (LEFT, RIGHT)
+    lead = -1 if facing == LEFT else 1
+    # inverted: the head is at the bottom and the feet are in the air
+    foot = 3 + b
+    bw = 7 if side else 12
+    head_y = GROUND - 7
+
+    cell.rect(CX - bw // 2 + (lead if side else 0), foot + 5, bw,
+              GROUND - foot - 16, coat)
+    hx = CX + (lead if side else 0)
+    cell.ellipse(hx, head_y, 4.5 if side else 5, 5, skin)
+    # boots, waving, at the top
+    swing = (-2, 0, 2)[frame]
+    cell.rect(CX - 5 + swing, foot, 4, 6, dark)
+    cell.rect(CX + 2 - swing, foot, 4, 6, dark)
+
+    if facing == DOWN:
+        for ex in (CX - 3, CX + 1):
+            cell.rect(ex, head_y - 1, 2, 2, (56, 52, 70))
+        cell.rect(CX - 2, head_y + 3, 5, 1, dark)
+        cell.rect(CX - 6, GROUND - 14, 13, 2, cooler(coat, 0.3))
+    elif facing == UP:
+        cell.ellipse(hx, head_y + 1, 5, 4, dark)     # hair falling downward
+        cell.vline(CX, foot + 6, GROUND - 10, cooler(coat, 0.35))
+    else:
+        cell.rect(hx + (1 if lead > 0 else -2), head_y - 1, 2, 2, (56, 52, 70))
+        cell.ellipse(hx - 3 * lead, head_y + 1, 3, 3.5, dark)
+
+
+STAIRS = {
+    "climber": draw_climber,
+    "long_bird": draw_long_bird,
+    "handrail": draw_handrail,
+    "descender": draw_descender,
+}
+
+
+# --- hands: a field of them, and the procession has gone ---------------------
+
+def draw_walking_hand(cell: Canvas, facing: int, frame: int) -> None:
+    """Walks around you, not away from you.  On its fingers."""
+    b = _bob(frame)
+    stone, dark = (206, 202, 190), (148, 144, 132)
+    deep = (104, 100, 92)
+    side = facing in (LEFT, RIGHT)
+    lead = -1 if facing == LEFT else 1
+    palm = 15 + b
+    step = (0, -2, 0)[frame]
+
+    if facing == DOWN:
+        # the back of a hand: knuckles toward you, fingers splayed down
+        cell.ellipse(CX, palm, 8, 6.5, stone)
+        for i, fx in enumerate((-7, -3, 1, 5)):
+            cell.rect(CX + fx, palm + 4, 3, 9 + (step if i % 2 else 0), stone)
+            cell.rect(CX + fx, palm + 11 + (step if i % 2 else 0), 3, 2, dark)
+            cell.hline(palm + 7, CX + fx, CX + fx + 2, dark)
+        cell.rect(CX - 10, palm - 2, 3, 6, stone)          # the thumb, aside
+        for kx in (-6, -2, 2, 6):
+            cell.rect(CX + kx, palm - 2, 2, 2, dark)
+    elif facing == UP:
+        # the palm: a bowl with lines in it, and the fingers curl away
+        cell.ellipse(CX, palm, 8, 6.5, dark)
+        cell.ellipse(CX, palm, 6, 5, stone)
+        for ly in (palm - 2, palm + 1, palm + 4):
+            cell.hline(ly, CX - 5, CX + 4, deep)
+        for fx in (-7, -3, 1, 5):
+            cell.rect(CX + fx, palm + 5, 3, 6, dark)
+            cell.rect(CX + fx, palm + 9, 3, 3, stone)
+        cell.rect(CX + 8, palm - 2, 3, 6, dark)
+    else:
+        # edge-on: two fingers visible, the rest hidden behind them
+        cell.ellipse(CX + lead, palm, 4.5, 6.5, stone)
+        for i, fx in enumerate((0, 3)):
+            x = CX + (fx * lead) + lead
+            cell.rect(x, palm + 4, 3, 9 + (step if i else 0), stone)
+            cell.rect(x, palm + 11 + (step if i else 0), 3, 2, dark)
+        cell.rect(CX - 5 * lead + lead, palm - 3, 3, 7, dark)
+        cell.vline(CX + 4 * lead + lead, palm - 5, palm + 3, dark)
+
+
+def draw_ring_keeper(cell: Canvas, facing: int, frame: int) -> None:
+    """"It is not mine."  They do not put it down."""
+    b = _bob(frame)
+    coat, dark = (206, 198, 196), (150, 140, 144)
+    skin, band = (226, 196, 156), (238, 226, 216)
+    side = facing in (LEFT, RIGHT)
+    lead = -1 if facing == LEFT else 1
+    top = 10 + b
+    bw = 7 if side else 12
+
+    cell.rect(CX - bw // 2 + (lead if side else 0), top, bw,
+              GROUND - top - 5, coat)
+    _small_legs(cell, frame, CX, GROUND - 5, dark, spread=3 if side else 4)
+    hx = CX + (lead if side else 0)
+    cell.ellipse(hx, top - 4, 4.5 if side else 5, 5, skin)
+
+    if facing == DOWN:
+        for ex in (CX - 3, CX + 1):
+            cell.rect(ex, top - 5, 2, 2, (72, 62, 54))
+        # held out flat: a full circle, bigger than the head
+        cell.ellipse(CX, top + 9, 8, 8, band, filled=False)
+        cell.ellipse(CX, top + 9, 7, 7, cooler(band, 0.35), filled=False)
+    elif facing == UP:
+        cell.ellipse(hx, top - 5, 5, 4, dark)
+        # from behind the ring is edge-on above the shoulder: a bright line
+        cell.rect(CX - 1, top - 12, 3, 10, band)
+        cell.rect(CX - 5, top + 1, 11, 2, cooler(coat, 0.3))
+    else:
+        cell.rect(hx + (1 if lead > 0 else -2), top - 5, 2, 2, (72, 62, 54))
+        cell.ellipse(CX + 5 * lead, top + 8, 2, 8, band, filled=False)
+        cell.rect(CX + 2 * lead, top + 4, 3, 2, skin)
+
+
+def draw_thumb(cell: Canvas, facing: int, frame: int) -> None:
+    """A thumb, standing.  It has an opinion and will not give it."""
+    b = _bob(frame)
+    stone, dark = (198, 194, 182), (140, 136, 126)
+    nail = (226, 222, 210)
+    side = facing in (LEFT, RIGHT)
+    lead = -1 if facing == LEFT else 1
+    top = 6 + b
+    w = 6 if side else 10
+
+    for row in range(GROUND - 4 - top):
+        t = row / max(1, GROUND - 4 - top)
+        span = int(w / 2 * (0.65 + 0.35 * (1 - (1 - t) ** 2)))
+        cell.hline(top + row, CX - span + (lead if side else 0),
+                   CX + span + (lead if side else 0), stone)
+    _small_legs(cell, frame, CX, GROUND - 4, dark, spread=2 if side else 4)
+
+    if facing == DOWN:
+        cell.ellipse(CX, top + 5, 3.5, 5, nail)      # the nail, facing you
+        cell.ellipse(CX, top + 4, 2.5, 3.5, cooler(nail, 0.12))
+        cell.hline(top + 11, CX - 3, CX + 3, dark)
+        for ex in (CX - 2, CX + 1):
+            cell.dot(ex, top + 14, dark)
+    elif facing == UP:
+        # The knuckle side: no nail at all, a deep crease across the joint, and
+        # the whole pad shaded — a thumb from behind is a different object.
+        cell.ellipse(CX, top + 6, 5, 7, cooler(stone, 0.26))
+        for ky in range(top + 8, GROUND - 6, 3):
+            cell.hline(ky, CX - 4, CX + 4, dark)
+            cell.hline(ky + 1, CX - 3, CX + 3, cooler(stone, 0.18))
+        cell.ellipse(CX, top + 3, 4, 3, cooler(stone, 0.34))
+    else:
+        cell.ellipse(CX + 2 * lead + lead, top + 5, 1.5, 5, nail)
+        cell.hline(top + 11, CX - 3 * lead + lead, CX + lead, dark)
+        cell.vline(CX - 3 * lead + lead, top + 2, GROUND - 6,
+                   cooler(stone, 0.28))
+
+
+def draw_clasp(cell: Canvas, facing: int, frame: int) -> None:
+    """Two hands holding each other.  Neither of them is anybody's."""
+    b = _bob(frame)
+    stone, other = (204, 200, 188), (182, 176, 168)
+    dark = (128, 124, 116)
+    side = facing in (LEFT, RIGHT)
+    lead = -1 if facing == LEFT else 1
+    cy = 15 + b
+
+    _small_legs(cell, frame, CX, GROUND - 4, dark, spread=3 if side else 5)
+
+    if facing == DOWN:
+        # interlaced: fingers of one over the back of the other
+        cell.ellipse(CX - 3, cy, 6, 7, stone)
+        cell.ellipse(CX + 3, cy, 6, 7, other)
+        for i in range(4):
+            cell.rect(CX - 6 + i * 4, cy - 5 + (i % 2) * 2, 3, 7,
+                      stone if i % 2 else other)
+        cell.hline(cy + 5, CX - 8, CX + 8, dark)
+    elif facing == UP:
+        # from behind it is one closed mass with a single seam
+        cell.ellipse(CX, cy, 9, 7.5, cooler(stone, 0.14))
+        cell.vline(CX, cy - 7, cy + 7, dark)
+        cell.ellipse(CX, cy - 1, 5, 4, cooler(other, 0.2))
+        for wy in (cy + 3, cy + 6):
+            cell.hline(wy, CX - 7, CX + 7, dark)
+    else:
+        cell.ellipse(CX + lead, cy, 5, 7.5, stone)
+        cell.ellipse(CX + 3 * lead, cy + 1, 3, 5, other)
+        for i in range(3):
+            cell.rect(CX + (i * 2 - 2) * lead + lead, cy - 6 + i, 3, 5,
+                      other if i % 2 else stone)
+        cell.hline(cy + 6, CX - 4 * lead + lead, CX + 4 * lead + lead, dark)
+
+
+HANDS = {
+    "walking_hand": draw_walking_hand,
+    "ring_keeper": draw_ring_keeper,
+    "thumb": draw_thumb,
+    "clasp": draw_clasp,
 }

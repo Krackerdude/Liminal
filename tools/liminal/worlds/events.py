@@ -483,6 +483,19 @@ NPC_LINES.update({
                    "it is always empty. they do it again."],
 })
 
+NPC_LINES.update({
+    "coat_stand": ["it is wearing everything you own.", "",
+                   "none of it is yours any more."],
+    "clock": ["it is right twice a day.", "", "neither time is now."],
+    "doorframe": ["a door with nothing behind it.", "",
+                  "it is looking for a wall."],
+    "handrail": ["it would like to be held on to.", "", "you keep walking."],
+    "descender": ["they are going down.", "", "there is no down here."],
+    "thumb": ["it has an opinion.", "", "it will not give it."],
+    "clasp": ["two hands, holding each other.", "",
+              "neither of them is anybody's."],
+})
+
 # Per-world conditional secrets, keyed by world.  Empty until Phase 6.
 HIDDEN: dict[str, list] = {}
 

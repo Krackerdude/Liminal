@@ -281,7 +281,11 @@ BESPOKE: dict[str, dict] = {"pink": kin.PINK, "numbers": kin.NUMBERS,
                             "sand": kin.SAND,
                             "faces": kin.FACES,
                             "umbrellas": kin.UMBRELLAS,
-                            "stars": kin.STARS}
+                            "stars": kin.STARS,
+                            "room": kin.ROOM,
+                            "nexus": kin.NEXUS,
+                            "stairs": kin.STAIRS,
+                            "hands": kin.HANDS}
 
 
 def _sheets() -> dict[str, list[tuple[str, object]]]:

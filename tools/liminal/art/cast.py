@@ -186,6 +186,12 @@ WORLD_CAST: dict[str, list[str]] = {
 def build_sheets() -> dict[str, Canvas]:
     """Render every charset file the game needs."""
     out: dict[str, Canvas] = {}
+    # An event with no charset does not draw nothing — the engine falls back to
+    # a *chipset tile*, and tile zero is the void, so every invisible trigger
+    # in the game showed up as a black square sitting next to the thing it was
+    # attached to.  An explicitly empty sheet is the only way to mean "no
+    # graphic" and be believed.
+    out["Blank"] = sheet([])
     out["Dreamer"] = sheet([figure_block(body) for _, body in DREAMER_SLOTS])
     for sheet_name, entries in CAST.items():
         blocks = []

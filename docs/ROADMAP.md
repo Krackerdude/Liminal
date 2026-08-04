@@ -12,29 +12,77 @@ Sizes are relative (S / M / L), not calendar estimates.
 
 ---
 
-## Where it stands
+## Content targets
 
-**On disk and finished**
-- 18 music tracks, 26 sound effects, crossfade-looped and encoded
+The numbers this plan is sized against. These are the contract; phases below
+are how they get built.
 
-**Written, generates correctly, never exported**
-- 14 chipsets, 5 charsets (40 characters), window skin, title, game-over,
-  17 screen overlays, diary menu art, 12 effect icons
-- 14 worlds, zero unreachable floor, reproducible from a fixed seed
-- 12 common events, a switch/variable registry, the LCF authoring layer
+| | Target |
+|---|---|
+| Worlds | 14 |
+| Doors per world | **1** — the way in is the way out. No world is a junction. |
+| Effects | **1 per world**, 14 total, each hidden inside its own world |
+| NPCs | **182**, unevenly distributed |
+| Secrets per world | **~10** |
+| Subworlds | **34** |
+| Secrets per subworld | **1–5** |
+| Subworld music | **one generated track each**, 34 additional tracks |
 
-**Half-written**
-- `worlds/events.py` — room, nexus, the twelve doors, dialogue for all 28
-  characters. References a `HIDDEN` table that does not exist and will raise
-  the first time it is called.
+**Uneven NPC density is a requirement, not an accident.** Some worlds have
+none at all and are meant to feel emptied rather than unfinished. Others are
+crowded to the point of discomfort. A world with thirty residents and a world
+with zero are both correct; fourteen worlds with thirteen each is the failure
+mode. Density is a statement about the place.
 
-**Not started**
-- The build script. NPC and pickup placement. Secrets. Subworlds. Per-world
-  camera behaviour. Per-world mechanics.
+**Subworlds carry no basic concepts.** Everything obvious was spent on the
+fourteen. A subworld earns its existence by being harder to reach and worse to
+be inside than anything above it — mechanics that break the rules the main
+worlds established, visuals that do not read as places, features that are
+genuinely frightening rather than merely strange. If a subworld could be
+described as "the X world but smaller", it is cut.
+
+**Reaching a subworld is never signposted.** No door is drawn as a door. The
+route is a behaviour, a condition, or a coincidence — not an exit.
 
 ---
 
-## Phase 0 — Assembly · **L** · blocks everything
+## Where it stands
+
+**Built, and proven inside the engine**
+- `tools/build.py` assembles the whole game in about three seconds
+- 62 images, 16 LCF files, 18 tracks, 26 sounds in `game/`
+- All 14 maps boot in EasyRPG Player with no warnings and no missing assets
+- `tools/validate.py` checks what the file format cannot: dangling asset
+  names, teleports to nowhere, undeclared switches, events stacked on one
+  tile, a world with no way out
+- `tools/smoke.py` boots every map in the real Player and screenshots it
+
+**Written, generates correctly, thin against target**
+- 5 charsets — 40 characters against a target of 182
+- 12 effect icons against a target of 14, one per world
+- 12 common events, a switch/variable registry, the LCF authoring layer
+
+**Not started**
+- Secrets. Subworlds and their music. Per-world camera behaviour. Per-world
+  mechanics. 142 more characters.
+
+**Open fault, found by the engine**
+Measured across every 20×15 window of every world, the share that contains
+nothing but bare floor:
+
+| stairs | hands | sand | numbers | umbrellas | stars | toys | rest |
+|---|---|---|---|---|---|---|---|
+| 36% | 27% | 16% | 14% | 4% | 3% | 1% | 0% |
+
+An overview render at one pixel per tile made all fourteen look furnished.
+A single screen is 300 tiles, and in the stairwell more than a third of them
+are a flat colour with the player standing in the middle of it. **Density has
+to be measured per screen, not per world** — that is the scale the player
+actually experiences, and it is the metric Phase 4 is held to.
+
+---
+
+## Phase 0 — Assembly · **L** · ✅ done
 
 Produce a folder EasyRPG Player will open.
 
@@ -46,17 +94,22 @@ Produce a folder EasyRPG Player will open.
   `RPG_RT.lmt` (map tree, start position), one `.lmu` per map
 - `RPG_RT.ini` so the engine identifies the project
 
-**Verification.** Round-trip every emitted file back through `lcf2xml` and
-diff; a file that will not re-read is a file the engine will not read either.
-The LCF layer already passes this on a synthetic game, so the risk is in the
-volume and the edge cases, not the approach.
+**Verification.** Three layers, and each one caught something the one above it
+could not:
 
-**Done when:** the Player boots to the title screen and a new game puts the
-player in the room.
+1. Round-trip every emitted file back through `lcf2xml` and compare structure
+2. `validate.py` on the in-memory game, before a byte is written
+3. `smoke.py` boots all fourteen maps in the real Player and reads its log
 
-**Risk:** highest in the project. Fourteen maps of up to 152×132 with full
-event lists is far past anything the emitter has been tested against, and
-format faults surface as a silent refusal to load rather than as an error.
+**What it found.** The choice-command indent rule, a game-over track that was
+never generated, two events standing on the same tile in the nexus, and the
+one that mattered: **an event with no charset is not invisible.** The engine
+falls back to drawing chipset tile zero, which is the void, so every silent
+trigger in the game rendered as a black square next to the thing it was
+attached to. Fixed with a real, deliberately empty `Blank` charset.
+
+**Done:** the Player boots, a new game puts the player in the room, and every
+map loads clean.
 
 ---
 
@@ -64,10 +117,11 @@ format faults surface as a silent refusal to load rather than as an error.
 
 Make all fourteen places reachable and leaveable.
 
-- Fix the `HIDDEN` landmine
 - Arrival event per map: set world id, apply grade, start music, erase itself
-- The twelve nexus doors, wired to real map ids and spawn points
-- A way back from every world
+- **One door per world** — fourteen nexus doors, wired to real map ids and
+  spawn points. A world is a dead end by design; the only way on is back
+  through the nexus.
+- A way back from every world, at the point you arrived and nowhere else
 - Bed → nexus, and waking → room
 - Player sprite, spawn, movement speed
 
@@ -77,7 +131,7 @@ inside the running engine, which is the first time any of this art will have
 been seen at play scale rather than as an overhead render.
 
 **Done when:** you can walk out of the room, through the nexus, into and out
-of all twelve dreams.
+of all fourteen dreams.
 
 ---
 
@@ -85,7 +139,8 @@ of all twelve dreams.
 
 The things the menu implies.
 
-- Place the 12 effects, one per dream, each somewhere that takes finding
+- Draw the two missing effect icons — the set is **one per world, fourteen**
+- Place the 14 effects, one per world, each somewhere that takes finding
 - Pickup ceremony (already written) wired to real events
 - Diary menu: open, navigate, equip, close — the animation is written and has
   never run
@@ -93,25 +148,39 @@ The things the menu implies.
 - Engine menu terms, stats, save and load
 - Title → room → nexus flow, including returning to a save
 
-**Done when:** you can find all twelve, wear any of them, save, quit and come
-back wearing it.
+**Done when:** you can find all fourteen, wear any of them, save, quit and
+come back wearing it.
 
 ---
 
-## Phase 3 — Inhabitants · **M**
+## Phase 3 — Inhabitants · **L**
 
-Twenty-eight characters exist and none of them are anywhere.
+**182 NPCs.** Twenty-eight are drawn and written; none of them are anywhere.
 
-- Place each world's residents; nobody appears outside their own dream
+The bulk of this phase is cast expansion — 142 more designs, sheets and voices
+— not placement. Placement is the cheap half.
+
+- **Density is authored, never averaged.** Some worlds get none. Worlds that
+  have residents do not get comparable counts. A crowd and a vacancy are both
+  deliberate, and the emptiest world should read as *emptied*.
+- Extend `art/cast.py` from 40 characters to 182, and the charsets that carry
+  them — roughly 23 sheets at 8 per sheet
+- Place each world's residents; nobody appears outside their own world
   (until much later, when exactly one does)
 - Movement routines: wandering, stationary, asleep, pacing a fixed route
-- Dialogue, already written, wired to the right characters
+- Dialogue for all 182 — most say one thing, some say nothing, a few say
+  something different the second time
 - Reactive behaviour: what changes when QUIET is worn, when the EYE is worn,
   on a second encounter, when you have already spoken to them once
 - Ambient behaviour with no interaction at all — the ones that only watch
 
-**Done when:** every world has people in it who are busy with something that
-made sense before you arrived.
+**Rule.** A hundred and eighty-two speaking parts is a hundred and eighty-two
+chances to write filler. Silence is a valid design for an NPC; a line that
+exists because the character needed a line is not.
+
+**Done when:** every world has exactly as many people in it as that world
+should have, and they are busy with something that made sense before you
+arrived.
 
 ---
 
@@ -152,8 +221,13 @@ mention it.
 
 ## Phase 6 — Secrets · **L**
 
-Three layers, per the design contract. Nothing is labelled, nothing is
-rewarded with an item, and nothing is ever acknowledged.
+**~10 per world, ~140 total.** Three layers, per the design contract. Nothing
+is labelled, nothing is rewarded with an item, and nothing is ever
+acknowledged.
+
+Ten per world is a mix, not ten of the same kind: roughly half visible, a
+third conditional, the rest deep. A world whose ten secrets are ten hidden
+alcoves has one secret repeated ten times.
 
 - **Visible** — findable by walking: things behind the obvious, things at the
   end of a corridor that looked like a dead end
@@ -172,10 +246,22 @@ rewarded with an item, and nothing is ever acknowledged.
 
 ## Phase 7 — Subworlds · **L**
 
-The graph behind the graph. Yume Nikki's chart is mostly *these*, not the
-twelve headline worlds.
+**34 of them.** The graph behind the graph. Yume Nikki's chart is mostly
+*these*, not the headline worlds.
 
-- Sub-areas reached from inside a world by means that are never signposted
+- Sub-areas reached from inside a world by means that are never signposted —
+  no drawn doors, no glowing tile. The route is a condition, a behaviour, or
+  an accident.
+- **No basic concepts.** Everything legible was spent upstairs. A subworld
+  must do something the fourteen cannot: a mechanic that contradicts the rules
+  the main worlds taught, a space that does not resolve into a place, a
+  presence that is meant to actually frighten. "The X world but smaller" is
+  cut on sight.
+- **1–5 secrets each** — a subworld can be a single held breath with one thing
+  in it, or a nest. Uniform counts are a failure here too.
+- **One generated track per subworld**, 34 additional pieces, written at
+  generation time alongside the space rather than assigned from a pool. A
+  subworld that shares a main world's music is not a subworld.
 - Recursive layers — a place inside a place inside the first place
 - One-way exits that drop you somewhere unrelated
 - Deep-layer areas carrying whatever lore this game has
@@ -183,7 +269,8 @@ twelve headline worlds.
 
 **Sequenced last on purpose.** A subworld graph is only interesting if the
 worlds it hangs off are worth returning to, and it is the single easiest thing
-to over-build before the base game is proven.
+to over-build before the base game is proven. Thirty-four of them makes that
+risk larger, not smaller.
 
 ---
 

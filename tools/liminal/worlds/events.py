@@ -45,6 +45,35 @@ EFFECT_INDEX = {key: index for index, (key, _, _) in enumerate(EFFECTS, start=1)
 EFFECT_HOME = dict(zip(DREAM_ORDER, [key for key, _, _ in EFFECTS]))
 
 
+def _free_tile(world: World, x: int, y: int, *, radius: int = 6) -> tuple[int, int]:
+    """Nudge a placement off any tile another event is already standing on.
+
+    Two events sharing a tile is legal, and the engine will happily run one of
+    them forever while the other can never be talked to.  Landmark-relative
+    placements (the keeper beside the bench, a door beside its frame) are the
+    ones that collide, because two landmarks can end up next to each other.
+    """
+    m = world.map
+    taken = {(e.x, e.y) for e in m.events}
+    x, y = x % m.width, y % m.height
+    if (x, y) not in taken:
+        return x, y
+    for step in range(1, radius + 1):
+        for dy in range(-step, step + 1):
+            for dx in range(-step, step + 1):
+                if max(abs(dx), abs(dy)) != step:
+                    continue
+                spot = ((x + dx) % m.width, (y + dy) % m.height)
+                if spot not in taken:
+                    return spot
+    return x, y
+
+
+def _place(world: World, name: str, x: int, y: int, pages) -> None:
+    """Add an event at the first tile near ``(x, y)`` that is not taken."""
+    world.map.add_event(name, *_free_tile(world, x, y), pages)
+
+
 def _arrival_event(world: World) -> Page:
     """Auto-start on entry: set the world number, grade, then erase itself."""
     index = WORLD_ORDER.index(world.key) + 1
@@ -190,20 +219,20 @@ def nexus_events(world: World, worlds: dict[str, World]) -> None:
     for index, (x, y) in enumerate(world.landmarks["doors"]):
         key = DREAM_ORDER[index]
         target = worlds[key]
-        m.add_event(f"door_{key}", x + 1, y + 3,
-                    [_door(target.map_id, *target.spawn)])
+        _place(world, f"door_{key}", x + 1, y + 3,
+               [_door(target.map_id, *target.spawn)])
 
     # The mirror here shows the room, which is not behind you.
     mirror = Script()
     mirror.se("Watch", volume=40)
     mirror.msg("the room is in it.", "", "you are not.")
     mx, my = world.landmarks["mirror"][0]
-    m.add_event("mirror", mx + 1, my + 3, [Page(script=mirror,
-                                                trigger=TRIGGER_ACTION)])
+    _place(world, "mirror", mx + 1, my + 3,
+           [Page(script=mirror, trigger=TRIGGER_ACTION)])
 
     # The keeper sits by the doors and has never looked up.
     kx, ky = world.landmarks["bench"][0]
-    m.add_event("keeper", kx + 1, ky + 2, _npc_pages(
+    _place(world, "keeper", kx + 1, ky + 2, _npc_pages(
         "keeper",
         ["they do not look up.", "", "\"you found the one that was open.\""],
         move=MOVE_STATIONARY,
@@ -215,7 +244,7 @@ def nexus_events(world: World, worlds: dict[str, World]) -> None:
     gone.se("Vanish", volume=40)
     gone.msg("there is a warm patch of floor here.")
     sheet, slot = charset_slot("sleeper")
-    m.add_event("sleeper", sx, sy, [
+    _place(world, "sleeper", sx, sy, [
         Page(script=Script().msg("asleep, standing up.", "",
                                  "you decide not to."),
              charset=sheet, charset_index=slot, move_type=MOVE_STATIONARY,
@@ -234,7 +263,7 @@ def nexus_events(world: World, worlds: dict[str, World]) -> None:
     hidden.teleport(worlds["stars"].map_id, *worlds["stars"].spawn)
     hidden.bgm("Deep", fadein=30, volume=70)
     hidden.fade_in(16)
-    m.add_event("thirteenth", m.width // 2, 3, [
+    _place(world, "thirteenth", m.width // 2, 3, [
         Page(script=hidden, trigger=TRIGGER_ACTION, switch_a=SW_EYE_ACTIVE),
     ])
 
@@ -273,7 +302,8 @@ def dream_events(world: World, worlds: dict[str, World],
     back.teleport(worlds["nexus"].map_id, *worlds["nexus"].spawn)
     back.fade_in(6)
     bx, by = world.spot(rng, pad=3)
-    m.add_event("way back", bx, by, [Page(script=back, trigger=TRIGGER_ACTION)])
+    _place(world, "way back", bx, by,
+           [Page(script=back, trigger=TRIGGER_ACTION)])
 
     # -- the effect that lives here
     effect_key = EFFECT_HOME[key]
@@ -282,7 +312,7 @@ def dream_events(world: World, worlds: dict[str, World],
     got.var(VR_SCRATCH, EFFECT_INDEX[effect_key])
     got.call_event(sys.CE_GIVE_EFFECT)
     got.switch(SW_WORLD_SECRET_BASE + index, True)
-    m.add_event(f"effect {effect_key}", ex, ey, [
+    _place(world, f"effect {effect_key}", ex, ey, [
         Page(script=got, trigger=TRIGGER_ACTION, charset="KinD",
              charset_index=3, animation_type=ANIM_CONTINUOUS,
              move_type=MOVE_STATIONARY),
@@ -294,11 +324,14 @@ def dream_events(world: World, worlds: dict[str, World],
     # -- residents
     for name in world.npcs:
         nx, ny = world.spot(rng, pad=2)
-        m.add_event(name, nx, ny, _npc_pages(name, *[NPC_LINES[name]],
-                                             quiet_line=NPC_QUIET.get(name)))
+        _place(world, name, nx, ny,
+               _npc_pages(name, NPC_LINES[name],
+                          quiet_line=NPC_QUIET.get(name)))
 
-    # -- hidden layer: things that need a condition
-    for maker in HIDDEN.get(key, []):
+    # -- hidden layer: things that need a condition.  Phase 6 fills this in;
+    # until then a world simply has no conditional secrets rather than
+    # crashing the build on a name that was never written.
+    for maker in HIDDEN.get(key, ()):
         maker(world, worlds, rng)
 
     # -- world memory: the loop changes what is here
@@ -307,7 +340,7 @@ def dream_events(world: World, worlds: dict[str, World],
     corrupt.msg("this was not here before.")
     corrupt.switch(SW_WORLD_MEMORY_BASE + index, True)
     cx, cy = world.spot(rng, pad=3)
-    m.add_event("after the fifth", cx, cy, [
+    _place(world, "after the fifth", cx, cy, [
         # invisible until the world has been circled five times
         Page(script=Script(), trigger=TRIGGER_ACTION),
         Page(script=corrupt, trigger=TRIGGER_ACTION, charset="KinD",
@@ -360,6 +393,10 @@ NPC_LINES: dict[str, list[str]] = {
     "television": ["it is pleased to see you."],
     "mailbox": ["there is nothing in it.", "", "the flag is up anyway."],
 }
+
+# Per-world conditional secrets, keyed by world.  Empty until Phase 6.
+HIDDEN: dict[str, list] = {}
+
 
 NPC_QUIET: dict[str, str] = {
     "measurer": "they measure straight through where you are standing.",

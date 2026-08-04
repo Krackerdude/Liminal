@@ -73,7 +73,11 @@ def autotile(set_index: int, shape: int = 0) -> int:
 class Page:
     """One page of an event.  Later pages win when their conditions hold."""
     script: Script = field(default_factory=Script)
-    charset: str = ""
+    # "Blank" is a real, fully transparent charset.  Leaving this empty makes
+    # the engine fall back to drawing chipset tile zero — the void — so every
+    # invisible trigger becomes a black square.  Nothing is graphic-less by
+    # accident; it is graphic-less on purpose, and says so.
+    charset: str = "Blank"
     charset_index: int = 0
     direction: int = DIR_DOWN
     pattern: int = 1

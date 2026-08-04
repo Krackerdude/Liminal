@@ -109,7 +109,10 @@ OVERLAYS: dict[str, tuple[str, int]] = {
     "stars": ("Dust", 80),
     "faces2": ("HazeGold", 80),
     "faces3": ("Grain", 72),
-    "faces4": ("StaticB", 58),
+    # A dead channel is noisy, but the noise cannot be so heavy that the town
+    # under it stops being findable — the whole point of this reception is
+    # that it is the most *legible* the street plan ever gets.
+    "faces4": ("StaticB", 76),
 }
 
 MUSIC: dict[str, str] = {
@@ -674,10 +677,23 @@ def _faces_layout(world: World, cs) -> None:
     for index, zone in enumerate(junctions):
         layout.carpet(m, fld, zone, t, rng, "full",
                       patterns=["pattern_0", "pattern_1"])
-        for slot, (px, py) in enumerate(corners(zone, 4)):
-            fur.put("traffic_light", px, py, pad=0)
+        # The lights stand at the four corners of the crossing, three tiles out
+        # on both axes, which is the first tile clear of both carriageways —
+        # the carriageway runs from -2 to +2 either side of an avenue line, and
+        # a signal head planted in the middle of the road is the one thing in
+        # this world that would read as a mistake rather than as a place.
+        # Anchored by the foot of the post, not by its middle: a signal head
+        # is four tiles tall, and centring it on a corner three tiles out from
+        # the crossing hangs its base back over the carriageway — which is how
+        # half of them ended up standing in the road.
+        post = cs.obj("traffic_light").rows
+        for dx, top in ((-3, zone.cy - 3 - post), (3, zone.cy - 3 - post),
+                        (-3, zone.cy + 3), (3, zone.cy + 3)):
+            _street_furniture(fur, m, t, "traffic_light", zone.cx + dx, top,
+                              pad=0, centred=False)
         for slot, (px, py) in enumerate(ring(zone, 4, inset=6)):
-            fur.put(street[(index + slot) % len(street)], px, py, pad=1)
+            _street_furniture(fur, m, t, street[(index + slot) % len(street)],
+                              px, py, pad=1)
         # a tree straight through the middle of the junction
         fur.put("tree", zone.cx, zone.cy, pad=1)
 
@@ -717,6 +733,27 @@ FACE_POCKETS: tuple[tuple[int, int, int], ...] = (
 FACE_POCKET_NAMES = ("exchange", "nursery", "substation", "studio", "compound")
 
 
+def _street_furniture(fur, m, t: dict, name: str, x: int, y: int, *,
+                      pad: int = 1, centred: bool = True) -> bool:
+    """Put a piece of street furniture down, but never in the road.
+
+    ``Furnisher`` already refuses anything that would block a route, which is
+    a question about the *layout*.  This is a question about the *fiction*: a
+    bus shelter is allowed to stand on grass, on a kerb or on paving, and is
+    not allowed to stand on the carriageway, and nothing about passability can
+    tell those apart because a road is as walkable as a verge.
+    """
+    grid = fur.cs.obj(name)
+    ox = x - grid.cols // 2 if centred else x
+    oy = y - grid.rows // 2 if centred else y
+    tarmac = {t[k] for k in ("road", "road_line") if k in t}
+    for row in range(grid.rows):
+        for col in range(grid.cols):
+            if m.get_lower(ox + col, oy + row) in tarmac:
+                return False
+    return fur.put(name, x, y, pad=pad, centred=centred)
+
+
 def _faces_dress(world: World, cs, channel: int) -> None:
     """What one reception does to the town, after the town has been built.
 
@@ -750,9 +787,16 @@ def _faces_dress(world: World, cs, channel: int) -> None:
     # channel, is replaced with the one tile that only this channel has — moss
     # eating the road, ash lying on the grass, or a hole where the picture has
     # stopped carrying anything at all.
-    bare = {t[k] for k in ("ground", "ground_b", "road", "road_line", "path")
-            if k in t}
-    target = {1: 0.20, 2: 0.16, 3: 0.11}[channel]
+    # Ground only.  The first version of this ate the roads too, and the
+    # result was a town whose street plan you could not find: on overgrown the
+    # asphalt went the same green as the verge, and on no signal the bars and
+    # the crosshatch cancelled each other out.  The road art already carries
+    # each channel's condition — worn markings, clean concrete, colour bars —
+    # so the surface pass stays off it.  What the growth, the ash and the
+    # holes are allowed to take is the ground between the streets, which is
+    # the part that was never anybody's responsibility.
+    bare = {t[k] for k in ("ground", "ground_b", "path") if k in t}
+    target = {1: 0.22, 2: 0.18, 3: 0.14}[channel]
     for y in range(m.height):
         for x in range(m.width):
             if m.get_lower(x, y) in bare and rng.random() < target:
@@ -768,11 +812,14 @@ def _faces_dress(world: World, cs, channel: int) -> None:
     for index, (jx, jy) in enumerate(world.landmarks.get("junctions", [])):
         for slot, (px, py) in enumerate(ring(Zone("j", jx, jy, 19, 15, "rect"),
                                              3, inset=3)):
-            fur.put(props[(index + slot) % len(props)], px, py, pad=1)
+            _street_furniture(fur, m, t, props[(index + slot) % len(props)],
+                              px, py, pad=1)
     for index, (gx, gy) in enumerate(world.landmarks.get("glades", [])):
         for slot, (px, py) in enumerate(ring(Zone("g", gx, gy, 15, 13, "round"),
                                              4, inset=3)):
-            fur.put(props[(index + slot + 1) % len(props)], px, py, pad=1)
+            _street_furniture(fur, m, t,
+                              props[(index + slot + 1) % len(props)], px, py,
+                              pad=1)
 
 
 def _faces_pockets(fld, avenues_x: list[int], avenues_y: list[int]) -> list:

@@ -578,9 +578,11 @@ def build_faces2() -> ChipsetBuild:
     _basics(cb, pal, ground, ground_b, world="faces2")
 
     # asphalt, most of the way to being soil again
-    _street(cb, surface=(58, 66, 54), grit=(46, 58, 44),
-            marking=(196, 210, 150), kerb_top=(120, 138, 106),
-            kerb_lip=(74, 92, 66), marking_wear=0.55, seed=1)
+    # Darker than the verge on purpose.  Asphalt going back to soil still has
+    # to read as asphalt, or the town is gone rather than overgrown.
+    _street(cb, surface=(44, 50, 42), grit=(32, 40, 32),
+            marking=(206, 222, 154), kerb_top=(126, 146, 108),
+            kerb_lip=(70, 88, 62), marking_wear=0.45, seed=1)
     paving = ct.pattern_tile(pal, "bloom", pal.accent_soft, (108, 122, 96))
     cb.add("paving", paving)
 

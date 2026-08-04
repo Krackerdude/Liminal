@@ -46,14 +46,43 @@ described as "the X world but smaller", it is cut.
 they are additional *states or floors of the same world*, reached by that
 world's own verb and sharing its identity, music family and cast:
 
-| world | layers | what they are |
-|---|---|---|
-| stairs | 5 | floors, each more corrupted than the last, reached by falling in a particular order |
-| umbrellas | 5 | planes, ascending, the imagery coming apart the higher you get |
-| faces | 4 | broadcast states of one map, each a different palette with its own residents and items |
-| neon | 4 | the insides of murals, entered by standing on them |
+| world | layers | what they are | built |
+|---|---|---|---|
+| stairs | 5 | floors, each more corrupted than the last, reached by falling in a particular order | ✅ |
+| umbrellas | 5 | planes, ascending, the imagery coming apart the higher you get | |
+| faces | 4 | broadcast states of one map, each a different palette with its own residents and items | ✅ |
+| neon | 4 | the insides of murals, entered by standing on them | |
 
 A subworld is secret, hostile and unrelated. A layer is the world continuing.
+
+**The grove, in detail**, because it is the one that sets the bar for the
+other three. All four channels are generated from one fixed seed at one size,
+so the street plan is bit-identical across them — tuning must never move a
+kerb, or the player reads four maps instead of one place. What differs is a
+whole chipset each (its own palette, wall motif, ground marks, floor patterns,
+murals and animation speed), its own four bespoke residents drawn per facing,
+its own props, its own easter egg and its own fragment of the lore.
+
+Five yards are cut into the green mass and sealed. Each is reachable on
+exactly one channel, because on that channel the seam of wood between it and
+the street is not rendered as wood — the seam stays *wall* in the layout, so
+every shared pass treats it as solid, and only the tiles written per channel
+differ. Four of the yards hold one carried thing each, and every one of them
+is used on a channel other than the one that had it:
+
+    the grove  →  coin  →  no signal  →  tape  →  overgrown
+                                                     ↓
+    the grove  ←  bulb  ←  off-colour  ←  seed  ←────┘
+
+which is a closed loop that cannot be short-circuited. The fifth yard is the
+compound at the foot of the transmitting mast, and it opens for the bulb.
+
+Tuning is the ring: a payphone somewhere out of sight starts ringing, panned
+in stereo left and right and with the camera drifting one tile for up and
+down. Walk that way inside a two-second window and the picture changes around
+you — a teleport to the same coordinates on the next channel, which is only
+possible because the four maps are the same map. Miss it and nothing at all
+happens.
 
 **Reaching a subworld is never signposted.** No door is drawn as a door. The
 route is a behaviour, a condition, or a coincidence — not an exit.

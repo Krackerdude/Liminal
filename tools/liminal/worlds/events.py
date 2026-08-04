@@ -456,35 +456,82 @@ def dream_events(world: World, worlds: dict[str, World],
                 speed=2 + (resident % 3 == 0),
                 quiet_line=NPC_QUIET.get(name)))
 
-    # -- this world's own verb, everywhere in it.
+    # -- this world's own verb, everywhere in it, and load-bearing.
+    #
+    # Most of these answer you and nothing more.  Roughly one in four is
+    # *live*: it reveals a resident who was not on the map, or opens a way
+    # into somewhere the layout seals off.  A world where every brick hides a
+    # room has no bricks in it, only doors — the ratio is the mechanic.
     system = interact.of(key)
     if system is not None:
         zones = list(getattr(world.plan, "zones", []) or [])
         base = SW_INTERACT_BASE + _interact_next[0]
+        designs = WORLD_CAST.get(key, [])
         for n in range(system.count):
-            # spread across *all* the zones, not the occupied third: the
-            # mechanic has to be in the empty rooms too or the empty rooms
-            # have nothing in them to find.
+            # across *all* zones, not the occupied third: the verb has to be
+            # in the empty rooms too, or the empty rooms hold nothing
             if zones:
                 ix, iy = _near(world, zones[n % len(zones)], rng)
             else:
                 ix, iy = world.spot(rng, pad=2)
             switch = base + n
-            untouched = Script()
-            untouched.se(system.sound, volume=40)
-            untouched.msg(*system.before)
-            untouched.se(system.done, volume=55)
-            untouched.switch(switch, True)
-            used = Script()
-            used.se(system.sound, volume=28)
-            used.msg(*system.after)
+            live = system.live and n % system.live == 0
+
+            touch = Script()
+            touch.se(system.sound, volume=40)
+            touch.msg(*(system.payoff if live else system.before))
+            touch.se(system.done, volume=55 if live else 40)
+            if live:
+                touch.flash(255, 250, 236, 18, 3, False)
+            touch.switch(switch, True)
+
+            after = Script()
+            after.se(system.sound, volume=28)
+            after.msg(*system.after)
+
             _place(world, f"{system.thing} {n}", ix, iy, [
-                Page(script=untouched, trigger=TRIGGER_ACTION,
+                Page(script=touch, trigger=TRIGGER_ACTION,
                      charset=_ICON_SHEET, charset_index=_ICON_SLOT),
-                Page(script=used, trigger=TRIGGER_ACTION, switch_a=switch,
+                Page(script=after, trigger=TRIGGER_ACTION, switch_a=switch,
                      charset=_ICON_SHEET, charset_index=_ICON_SLOT,
                      translucent=True),
             ])
+
+            if not live:
+                continue
+
+            # What a live one leaves behind, alternating so a world gets both
+            # kinds: somebody who was not there, and a way that was not there.
+            if designs and (n // max(1, system.live)) % 2 == 0:
+                hidden = designs[(n // max(1, system.live)) % len(designs)]
+                sheet, slot = charset_slot(hidden)
+                hx, hy = _near(world, zones[(n + 3) % len(zones)], rng) \
+                    if zones else world.spot(rng, pad=2)
+                said = Script()
+                said.move_route(0, [MV_FACE_HERO], frequency=8)
+                said.msg(*NPC_LINES[hidden])
+                # no first page at all: until the switch is on, nothing here
+                _place(world, f"{hidden} behind {n}", hx, hy, [
+                    Page(script=Script(), trigger=TRIGGER_ACTION),
+                    Page(script=said, trigger=TRIGGER_ACTION, switch_a=switch,
+                         charset=sheet, charset_index=slot,
+                         move_type=MOVE_STATIONARY,
+                         animation_type=ANIM_CONTINUOUS),
+                ])
+            else:
+                # a way through, at the far end of the world from the door
+                wx, wy = _far_from(world, (ix, iy), rng)
+                through = Script()
+                through.se("DoorOpen", volume=55)
+                through.msg("there is a way through here now.")
+                through.fade_out(atmosphere.of(key).leave)
+                through.teleport(world.map_id, *world.spawn)
+                through.fade_in(atmosphere.of(key).enter)
+                _place(world, f"way through {n}", wx, wy, [
+                    Page(script=Script(), trigger=TRIGGER_ACTION),
+                    Page(script=through, trigger=TRIGGER_ACTION,
+                         switch_a=switch),
+                ])
         _interact_next[0] += system.count
 
     # -- hidden layer: things that need a condition.  Phase 6 fills this in;

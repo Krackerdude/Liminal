@@ -1,23 +1,26 @@
-"""One core interactive system per world, and it is everywhere in that world.
+"""One core interactive system per world, and it is how you explore that world.
 
-The rule this implements is in ``docs/GOLDEN_RULE.md``: a world gets a single
-verb that belongs to it and to nothing else, and that verb works on the world's
-own furniture wherever the player finds it.  Not one puzzle room — the whole
-place.
+The rule is in ``docs/GOLDEN_RULE.md``.  A world gets a single verb that
+belongs to it and to nothing else, that verb works on the world's own furniture
+wherever it is found, and — the part that matters — **the verb is the intended
+route through the world.**
 
-The test it has to pass: **if you removed the mechanic and the world still
-played identically apart from a few locked doors, it was a puzzle, not a
-system.**
+An earlier version of this file had twelve verbs that all did the same thing:
+print a different line the second time you touched something.  That is "press
+button, world does thing", and it is not a system.  What makes a mechanic worth
+having is that the world is *shaped around it*: places you cannot reach without
+it, residents who are not there until you use it, and the world's own effect
+sitting behind it.
 
-Each verb is diegetic.  Nobody hands you a "brick tool"; there are simply loose
-bricks in a world made of brick, and pulling one is the obvious thing to try.
-Nothing is explained anywhere, and the first thing a player should do on
-arriving somewhere new is discover a way of touching it that works nowhere
-else.
+So every system below declares what it opens:
 
-State is permanent.  Every interactable owns a switch for the whole
-playthrough, so a brick pulled out stays out, a wound toy stays wound, and a
-tide raised on your first visit is still high on your fourth.
+``reveals``   a resident who is not on the map until this is used
+``opens``     a way into somewhere the layout otherwise seals off
+``holds``     the world's effect, behind the mechanic rather than beside it
+
+and the ratio matters.  Most uses do nothing but answer you — a world where
+every brick hides a room is a world with no bricks in it, only doors.  Roughly
+one in five carries something.
 """
 
 from __future__ import annotations
@@ -27,109 +30,144 @@ from dataclasses import dataclass
 
 @dataclass(frozen=True)
 class System:
-    """A world's verb, and what its furniture does when you use it."""
-    verb: str                # what the player is doing, for our own reading
-    thing: str               # what they are doing it to
-    before: tuple[str, ...]  # what the object says untouched
-    after: tuple[str, ...]   # what it says once used
+    """A world's verb, what it is done to, and what it is *for*."""
+    verb: str
+    thing: str
+    before: tuple[str, ...]
+    after: tuple[str, ...]
+    # what a live one does, told in the world's own terms
+    payoff: tuple[str, ...]
     sound: str = "Rustle"
-    done: str = "Appear"     # heard once, when it changes
-    # how many of them are scattered through the world
-    count: int = 14
+    done: str = "Appear"
+    count: int = 16
+    live: int = 5              # every Nth one carries something
 
 
 SYSTEMS: dict[str, System] = {
-    # A world made of brick, so the brick is the mechanic.  Pull one and the
-    # wall has a gap in it; the gap stays.
+    # ---- kept, because pulling a wall apart is already exploration --------
     "pink": System(
-        verb="pull a brick", thing="loose brick", count=18,
+        verb="pull a brick", thing="loose brick", count=20, live=4,
         before=("one brick is not flush with the others.",),
         after=("the gap is still there.", "", "it is your gap."),
+        payoff=("the wall gives more than a brick.", "",
+                "there is a room behind it that has no door."),
         sound="StepStone", done="LowThud"),
 
-    # Counting: every numeral can be advanced, and the world is watching what
-    # they add up to.
-    "numbers": System(
-        verb="advance it", thing="counter", count=16,
-        before=("it is showing a number.", "", "the number can be changed."),
-        after=("it is showing a different number now.",),
-        sound="Cursor", done="ChimeFar"),
-
-    # A nursery: the blocks are for stacking, and stacked blocks are stairs.
+    # ---- kept ------------------------------------------------------------
     "blocks": System(
-        verb="stack it", thing="loose block", count=16,
+        verb="stack it", thing="loose block", count=18, live=4,
         before=("it is the right size to be put on another one.",),
         after=("it is on top of the other one.", "", "you can stand on it."),
+        payoff=("it is high enough now.", "",
+                "you can see over the wall, and then you are over it."),
         sound="LowThud", done="LowThud"),
 
-    # Stairs that can be turned to face somewhere else, which is the only way
-    # a stairwell that only goes up can ever take you anywhere new.
-    "stairs": System(
-        verb="turn the flight", thing="flight of stairs", count=12,
-        before=("it goes up, and it goes that way.",),
-        after=("it goes up, and it goes a different way now.",),
-        sound="StepStone", done="GlassRing"),
-
-    # Sand covers things.  Digging uncovers them, and they stay uncovered.
+    # ---- kept ------------------------------------------------------------
     "sand": System(
-        verb="dig", thing="shallow place", count=16,
+        verb="dig", thing="shallow place", count=18, live=4,
         before=("the sand is thinner here.",),
         after=("there is something under it after all.",),
+        payoff=("it is a door, lying flat.", "", "it opens downward."),
         sound="StepSoft", done="Rustle"),
 
-    # A grove full of municipal fittings that do not belong in it, all of
-    # which still work.
-    "faces": System(
-        verb="operate it", thing="fitting", count=16,
-        before=("it still has power.",),
-        after=("it is doing what it was for.", "", "nothing needed it to."),
-        sound="Cursor", done="Appear"),
-
-    # A field of stone hands.  You can take one, and a held hand points.
-    "hands": System(
-        verb="take its hand", thing="open hand", count=14,
-        before=("it is open, and at about your height.",),
-        after=("it closes around yours.", "", "then it points."),
-        sound="StepStone", done="Watch"),
-
-    # Squares flip.  A flipped square is a different square, and the world is
-    # made of nothing but squares.
-    "checker": System(
-        verb="flip it", thing="loose square", count=18,
-        before=("this one is not fixed down.",),
-        after=("it is the other colour now.",),
-        sound="LowThud", done="GlassRing"),
-
-    # Everything in a toy world winds up.  This is the one Yume Nikki would
-    # have done, and it is right.
-    "toys": System(
-        verb="wind it", thing="key", count=20,
-        before=("there is a key in its back.",),
-        after=("it is going.", "", "it will not stop now."),
-        sound="Cursor", done="Appear"),
-
-    # Light you can draw with, on a world made of drawn light.  A drawn line
-    # is a line you can stand on.
-    "neon": System(
-        verb="draw", thing="unlit run", count=18,
-        before=("the tube is here but nothing is in it.",),
-        after=("it is lit.", "", "it goes somewhere."),
-        sound="StaticBurst", done="Appear"),
-
-    # Every umbrella opens or shuts.  Open, it shelters; shut, it is a pole.
-    "umbrellas": System(
-        verb="open it", thing="closed umbrella", count=16,
-        before=("it is furled.", "", "it has never once been needed."),
-        after=("it is open.", "", "still nothing falls on it."),
-        sound="Rustle", done="Appear"),
-
-    # A shallow ocean whose depth you can change, which changes what is
-    # island and what is not.
+    # ---- kept ------------------------------------------------------------
     "stars": System(
-        verb="raise the tide", thing="marker", count=14,
+        verb="move the tide", thing="marker", count=16, live=4,
         before=("the water is at a line on it.",),
         after=("the water is at a different line on it.",),
+        payoff=("the water goes out a long way.", "",
+                "what it leaves behind was always there."),
         sound="WaterDrop", done="WaterStep"),
+
+    # ---- redrawn: the verb erases the world ------------------------------
+    # A world built out of numerals, and you can count them down. A numeral
+    # at zero is gone, and things stand behind numerals.
+    "numbers": System(
+        verb="count it down", thing="numeral", count=20, live=4,
+        before=("it is showing a number.", "", "the number can go down."),
+        after=("it is showing one less than it was.",),
+        payoff=("it reaches zero and stops being there.", "",
+                "somebody was standing behind it."),
+        sound="Cursor", done="ChimeFar"),
+
+    # ---- redrawn: falling is the only way down ---------------------------
+    # The stairwell only permits ascent, so the verb is the exception to its
+    # own rule: you can step off a landing on purpose. It is the only route
+    # to anything below you, and there is a great deal below you.
+    "stairs": System(
+        verb="step off", thing="edge", count=14, live=3,
+        before=("there is nothing under this side.",),
+        after=("you have already looked over it once.",),
+        payoff=("you go down for much longer than you went up.",),
+        sound="StepStone", done="GlassRing"),
+
+    # ---- redrawn: sound is the map ---------------------------------------
+    # The grove is full of municipal fittings that should not be there and
+    # still work. Lift a receiver and something rings, somewhere else, for a
+    # while. Getting to it before it stops is the whole world.
+    "faces": System(
+        verb="lift the receiver", thing="telephone", count=16, live=4,
+        before=("there is a dial tone.", "", "it should not have one."),
+        after=("the tone is the same as it was.",),
+        payoff=("something starts ringing.", "",
+                "it is a long way off, and it will not ring forever."),
+        sound="Cursor", done="ChimeFar"),
+
+    # ---- redrawn: you are led, not told ----------------------------------
+    # Take a stone hand and it closes and points. Follow the point and there
+    # is another hand, pointing further. The chain goes somewhere.
+    "hands": System(
+        verb="take its hand", thing="open hand", count=16, live=4,
+        before=("it is open, and at about your height.",),
+        after=("it is still pointing the way it pointed.",),
+        payoff=("it closes around yours, and then it points.", "",
+                "there is another one where it is pointing."),
+        sound="StepStone", done="Watch"),
+
+    # ---- redrawn: flipping moves you -------------------------------------
+    # Every square has an opposite somewhere in the world. Flipping one
+    # swaps it with its opposite, and you are standing on it when it goes.
+    "checker": System(
+        verb="flip it", thing="loose square", count=20, live=4,
+        before=("this one is not fixed down.",),
+        after=("it is the other colour now.",),
+        payoff=("it turns over, and so does everything on it.", "",
+                "this is a different part of the board."),
+        sound="LowThud", done="GlassRing"),
+
+    # ---- redrawn: wound things go somewhere ------------------------------
+    # A wound toy walks off in a straight line and does not stop. Some of
+    # them walk into places you cannot, and what they do when they get there
+    # is the reason to wind them.
+    "toys": System(
+        verb="wind it", thing="key", count=22, live=4,
+        before=("there is a key in its back.",),
+        after=("it is going, and it is not coming back.",),
+        payoff=("it walks off, and it walks through the wall.", "",
+                "something on the other side falls over."),
+        sound="Cursor", done="Appear"),
+
+    # ---- redrawn: you draw the floor -------------------------------------
+    # The chambers are separated by void. Empty tubes run across the void,
+    # and light put into a tube is something you can stand on.
+    "neon": System(
+        verb="fill the tube", thing="unlit run", count=20, live=4,
+        before=("the tube is here but nothing is in it.",),
+        after=("it is lit, and it holds.",),
+        payoff=("the light runs all the way out over the dark.", "",
+                "it reaches the other side."),
+        sound="StaticBurst", done="Appear"),
+
+    # ---- redrawn: umbrellas carry you ------------------------------------
+    # In a world where nothing has ever fallen, an opened umbrella has
+    # nothing to do but lift. Opening one under yourself is transport.
+    "umbrellas": System(
+        verb="open it over you", thing="furled umbrella", count=18, live=4,
+        before=("it is furled.", "", "it has never once been needed."),
+        after=("it is open.", "", "still nothing falls on it."),
+        payoff=("it opens, and it pulls.", "",
+                "you come down a long way from where you went up."),
+        sound="Rustle", done="Appear"),
 }
 
 

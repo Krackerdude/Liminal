@@ -52,9 +52,10 @@ SW_WORLD_SECRET_BASE = 60   # 60 + world index
 # Every interactive object in the game owns one switch, so its state persists
 # for the whole playthrough: a brick pulled out of a wall stays out, a wound
 # toy stays wound, a raised tide stays raised.  Two hundred is generous now
-# and will not be later.
+# and was not: the redesign that made these load-bearing pushed the count
+# past two hundred on its first build.
 SW_INTERACT_BASE = 100
-SW_INTERACT_COUNT = 200
+SW_INTERACT_COUNT = 320
 
 # --- variables ---------------------------------------------------------------
 VR_EQUIPPED = 1             # 0 none, else the effect's number

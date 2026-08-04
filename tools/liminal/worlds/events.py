@@ -38,6 +38,7 @@ from ..state import (SW_DEEP_UNLOCKED, SW_EARS_ACTIVE, SW_EYE_ACTIVE,
 from . import systems as sys
 from .cast_lookup import charset_slot
 from ..art.cast import WORLD_CAST
+from .layout import solid_ids
 from .worlds import DREAM_ORDER, POPULATION, WORLD_ORDER, World
 
 EFFECT_INDEX = {key: index for index, (key, _, _) in enumerate(EFFECTS, start=1)}
@@ -68,6 +69,22 @@ def _free_tile(world: World, x: int, y: int, *, radius: int = 6) -> tuple[int, i
                 if spot not in taken:
                     return spot
     return x, y
+
+
+def _near(world: World, zone, rng: random.Random) -> tuple[int, int]:
+    """A standable tile inside a zone, biased toward its middle.
+
+    Falls back to the world's own scatter if the room turns out to be full or
+    solid, so a crowded zone never silently drops the rest of its residents.
+    """
+    m = world.map
+    solid = solid_ids(world.chipset)
+    for _ in range(24):
+        x = zone.cx + rng.randint(-zone.w // 3, zone.w // 3)
+        y = zone.cy + rng.randint(-zone.h // 3, zone.h // 3)
+        if (m.get_lower(x, y) not in solid and m.get_upper(x, y) not in solid):
+            return x % m.width, y % m.height
+    return world.spot(rng, pad=2)
 
 
 def _place(world: World, name: str, x: int, y: int, pages) -> None:
@@ -370,9 +387,23 @@ def dream_events(world: World, worlds: dict[str, World],
         # `resident`, not `index` — this loop used to shadow the world index
         # computed above, so every world's memory switch was silently set to
         # 40 + its own population instead of 40 + its own number.
+        # Residents belong to *rooms*, not to the map.  Scattering them
+        # uniformly over a hundred-and-fifty-tile world puts one every
+        # thousand tiles — a screen holds three hundred, so you can walk for
+        # minutes and meet nobody, and the ones you do meet are standing in
+        # corridors and dead space.  Clustering into a third of the zones
+        # means some rooms are busy, most are empty, and the emptiness reads
+        # as deliberate because the crowd next door proves it is.
+        zones = list(getattr(world.plan, "zones", []) or [])
+        rng.shuffle(zones)
+        occupied = zones[:max(1, len(zones) // 3)] if zones else []
         for resident in range(POPULATION.get(key, 0)):
             name = designs[resident % len(designs)]
-            nx, ny = world.spot(rng, pad=2)
+            if occupied:
+                zone = occupied[resident % len(occupied)]
+                nx, ny = _near(world, zone, rng)
+            else:
+                nx, ny = world.spot(rng, pad=2)
             # roughly one in five stands still; the rest wander at their own
             # pace, which reads as a place people live rather than a patrol
             still = resident % 5 == 0

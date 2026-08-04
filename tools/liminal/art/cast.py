@@ -273,7 +273,10 @@ WORLD_CAST: dict[str, list[str]] = {
 
 
 # Worlds whose whole cast has been redrawn as bespoke per-facing functions.
-BESPOKE: dict[str, dict] = {"pink": kin.PINK}
+BESPOKE: dict[str, dict] = {"pink": kin.PINK, "numbers": kin.NUMBERS,
+                            "blocks": kin.BLOCKS,
+                            "toys": kin.TOYS,
+                            "neon": kin.NEON}
 
 
 def _sheets() -> dict[str, list[tuple[str, object]]]:

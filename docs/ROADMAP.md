@@ -161,6 +161,21 @@ come back wearing it.
 
 ## Phase 3 — Inhabitants · **L**
 
+**The cast contract, non-negotiable:** four *bespoke* designs per populated
+world, each fitting that world's idea, each genuinely drawn from all four
+sides. Not four palettes of one body, and not one view reused with an eye
+shifted two pixels.
+
+`tools/facings.py` measures the second half of that: the share of pixels that
+change between front and back, and between left and right. A design passes at
+12% on both. **24 of the current 49 fail**, and the creatures fail hardest —
+the cone changes 1% when it turns around, the pawn 1%, the walking hand 1%.
+The humanoids turn acceptably in profile (22–47%) but their back view is only
+"hair instead of a face" (6–12%).
+
+Passing this is what will make the worlds feel inhabited rather than
+decorated, and it is the measure to hold the work to.
+
 **182 NPCs.** Twenty-eight are drawn and written; none of them are anywhere.
 
 The bulk of this phase is cast expansion — 142 more designs, sheets and voices

@@ -119,6 +119,17 @@ TITLES: dict[str, str] = {
     "stars": "the shallows",
 }
 
+# How many residents each world has.  182 in total, and deliberately uneven:
+# density is a statement about a place, not a budget to be spread evenly.
+# Two dreams have nobody at all — the stairwell and the field of hands are
+# meant to read as *emptied*, not as unfinished — and the room is yours.
+POPULATION: dict[str, int] = {
+    "room": 0, "nexus": 3,
+    "pink": 20, "numbers": 20, "blocks": 16, "stairs": 0, "sand": 15,
+    "faces": 19, "hands": 0, "checker": 17, "toys": 20, "neon": 20,
+    "umbrellas": 16, "stars": 16,
+}
+
 # Which door in the nexus leads where, in the order they stand.
 DREAM_ORDER = ["pink", "numbers", "blocks", "stairs", "sand", "faces", "hands",
                "checker", "toys", "neon", "umbrellas", "stars"]

@@ -37,7 +37,8 @@ from ..state import (SW_DEEP_UNLOCKED, SW_EARS_ACTIVE, SW_EYE_ACTIVE,
                      VR_LOOPS, VR_ROLL, VR_SCRATCH, VR_VISITS_BASE, VR_WORLD)
 from . import systems as sys
 from .cast_lookup import charset_slot
-from .worlds import DREAM_ORDER, WORLD_ORDER, World
+from ..art.cast import WORLD_CAST
+from .worlds import DREAM_ORDER, POPULATION, WORLD_ORDER, World
 
 EFFECT_INDEX = {key: index for index, (key, _, _) in enumerate(EFFECTS, start=1)}
 
@@ -359,12 +360,27 @@ def dream_events(world: World, worlds: dict[str, World],
              switch_a=SW_HAS_EFFECT[effect_key]),
     ])
 
-    # -- residents
-    for name in world.npcs:
-        nx, ny = world.spot(rng, pad=2)
-        _place(world, name, nx, ny,
-               _npc_pages(name, NPC_LINES[name],
-                          quiet_line=NPC_QUIET.get(name)))
+    # -- residents.  A world's four designs, instanced as many times as its
+    # population says, scattered rather than grouped.  Cycling the designs
+    # keeps every one of them present in roughly equal numbers; varying the
+    # gait per instance is what stops a crowd from reading as one sprite
+    # copied twenty times.
+    designs = WORLD_CAST.get(key, [])
+    if designs:
+        # `resident`, not `index` — this loop used to shadow the world index
+        # computed above, so every world's memory switch was silently set to
+        # 40 + its own population instead of 40 + its own number.
+        for resident in range(POPULATION.get(key, 0)):
+            name = designs[resident % len(designs)]
+            nx, ny = world.spot(rng, pad=2)
+            # roughly one in five stands still; the rest wander at their own
+            # pace, which reads as a place people live rather than a patrol
+            still = resident % 5 == 0
+            _place(world, f"{name} {resident}", nx, ny, _npc_pages(
+                name, NPC_LINES[name],
+                move=MOVE_STATIONARY if still else MOVE_RANDOM,
+                speed=2 + (resident % 3 == 0),
+                quiet_line=NPC_QUIET.get(name)))
 
     # -- hidden layer: things that need a condition.  Phase 6 fills this in;
     # until then a world simply has no conditional secrets rather than
@@ -431,6 +447,41 @@ NPC_LINES: dict[str, list[str]] = {
     "television": ["it is pleased to see you."],
     "mailbox": ["there is nothing in it.", "", "the flag is up anyway."],
 }
+
+NPC_LINES.update({
+    "wall_ear": ["they have their ear against the wall.", "",
+                 "they hold up a hand so you will be quiet."],
+    "brick_carrier": ["\"i am putting it back.\"", "",
+                      "they have been going the other way."],
+    "divider": ["\"it goes in twice.\"", "", "\"and then once more.\""],
+    "remainder": ["\"there is always a bit left over.\""],
+    "toppler": ["they are holding it very carefully.", "",
+                "it was never going to stay up."],
+    "corner_piece": ["\"i only fit in one place.\"", "",
+                     "they are not in it."],
+    "surveyor": ["they are measuring something a long way off.", "",
+                 "there is nothing a long way off."],
+    "half_buried": ["only the hat is above the sand.", "", "it turns to follow you."],
+    "commuter": ["they are waiting at a stop.", "",
+                 "nothing has come past for a long time."],
+    "leaf_head": ["something is growing out of the top of their head.", "",
+                  "they seem pleased about it."],
+    "black_square": ["\"i can only go diagonally.\"", "",
+                     "they demonstrate. it is not diagonal."],
+    "white_square": ["they stand on white and will not step off it."],
+    "tin_soldier": ["they salute something behind you.", "",
+                    "there is nothing behind you."],
+    "spinning_top": ["they have been turning for a while.", "",
+                     "they do not seem dizzy."],
+    "flicker": ["they are only there some of the time."],
+    "sign_holder": ["they hold up a ring and look through it at you."],
+    "rain_listener": ["\"listen.\"", "", "it is not raining. it has never rained."],
+    "spoke_keeper": ["they are carrying the handle without the umbrella."],
+    "wader": ["they are standing in it up to the knee.", "",
+              "there is nothing to stand in."],
+    "net_caster": ["they cast the ring out over the water and pull it back.", "",
+                   "it is always empty. they do it again."],
+})
 
 # Per-world conditional secrets, keyed by world.  Empty until Phase 6.
 HIDDEN: dict[str, list] = {}

@@ -365,11 +365,11 @@ def summary(worlds: dict[str, W.World], images: int,
         world = worlds[key]
         m = world.map
         print(f"  {key:<12}{world.map_id:>4}{f'{m.width}x{m.height}':>10}"
-              f"{len(m.events):>8}{len(world.npcs):>6}  {world.music}")
+              f"{len(m.events):>8}{W.POPULATION.get(key, 0):>6}  {world.music}")
     total_events = sum(len(worlds[k].map.events) for k in W.WORLD_ORDER)
     print("  " + "-" * 58)
     print(f"  {'':<12}{'':>4}{'':>10}{total_events:>8}"
-          f"{sum(len(worlds[k].npcs) for k in W.WORLD_ORDER):>6}")
+          f"{sum(W.POPULATION.values()):>6}")
     print()
     print(f"  {images} images, {len(files)} data files, "
           f"{len(list((GAME / 'Music').glob('*.ogg')))} tracks, "

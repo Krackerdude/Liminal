@@ -141,7 +141,7 @@ so it lands in the same place whatever the pace is set to.
 
 ---
 
-## Phase 2 — Systems · **M**
+## Phase 2 — Systems · **M** · ✅ done
 
 The things the menu implies.
 
@@ -154,8 +154,20 @@ The things the menu implies.
 - Engine menu terms, stats, save and load
 - Title → room → nexus flow, including returning to a save
 
-**Done when:** you can find all fourteen, wear any of them, save, quit and
-come back wearing it.
+**Verification.** `tools/saveload.py` plays the real menu — opens it, walks
+down to save, picks a night — then relaunches the Player with
+`--load-game-id` and reads back which map it reports.
+
+**What it found.** Two things that both looked like something else. Anything
+past the eighth effect silently reused the eighth sprite, because a charset
+holds eight and there are thirteen selves; half the collection changed nothing
+about you. And RPG Maker's menus repeat-fire while a direction is held, so a
+thirty-frame press moves the cursor twice and lands on "quit" instead of
+"save" — which is indistinguishable from saving being broken.
+
+**Done:** the diary opens and animates, twelve effects sit on the far side of
+their worlds, wearing one changes who you are, and a save round-trips through
+the engine.
 
 ---
 

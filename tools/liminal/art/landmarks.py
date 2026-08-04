@@ -850,3 +850,140 @@ def inverted_island(pal: Palette, cols: int = 6, rows: int = 6) -> Canvas:
     art.blob(w / 2, h * 0.88, w * 0.16, pal.accent_soft)
     art.blob(w / 2 - w * 0.11, h * 0.82, w * 0.10, pal.accent_soft)
     return outline_in(art, cooler(pal.form_dark, 0.4))
+
+
+# --- the grove's other three channels ----------------------------------------
+# One landmark that only exists on each channel, plus the mast, which exists on
+# every channel and is the only object in the world drawn the same way on all
+# four.  That is the point of it: it is the thing doing the transmitting, so it
+# is not subject to the transmission.
+
+def broadcast_mast(pal: Palette, cols: int = 5, rows: int = 10) -> Canvas:
+    """A transmitting mast, guyed, with its light still working.
+
+    It is taller than anything else in the world and it is visible from the
+    junctions on every channel, which is how the place tells you — without
+    saying it — that there is something the four views have in common.
+    """
+    art = _art(cols, rows)
+    w, h = art.w, art.h
+    steel = (150, 152, 158)
+    dark = (86, 88, 96)
+    # the lattice: two legs converging, cross-braced the whole way up
+    for row in range(h):
+        t = row / h
+        span = int(2 + t * (w * 0.20))
+        art.dot(w // 2 - span, row, steel)
+        art.dot(w // 2 - span + 1, row, dark)
+        art.dot(w // 2 + span, row, steel)
+    for y in range(4, h - 2, 8):
+        span = int(2 + (y / h) * (w * 0.20))
+        art.line(w // 2 - span, y, w // 2 + span, y + 7, dark)
+        art.line(w // 2 + span, y, w // 2 - span, y + 7, dark)
+        art.rect(w // 2 - span, y, span * 2, 1, steel)
+    # guy wires out to the ground on both sides
+    art.line(w // 2, int(h * 0.30), 1, h - 2, dark)
+    art.line(w // 2, int(h * 0.30), w - 2, h - 2, dark)
+    art.line(w // 2, int(h * 0.58), 4, h - 2, dark)
+    art.line(w // 2, int(h * 0.58), w - 5, h - 2, dark)
+    # the dipoles, and the lamp at the top that has never gone out
+    for y in (int(h * 0.16), int(h * 0.26), int(h * 0.36)):
+        art.rect(w // 2 - 7, y, 15, 2, steel)
+        art.rect(w // 2 - 7, y, 2, 5, dark)
+        art.rect(w // 2 + 6, y, 2, 5, dark)
+    art.blob(w / 2, 3, 3.2, (240, 96, 88))
+    art.blob(w / 2, 3, 1.8, (252, 208, 196))
+    return outline_in(art, (40, 42, 48))
+
+
+def swallowed_house(pal: Palette, cols: int = 6, rows: int = 6) -> Canvas:
+    """A house entirely inside a tree.  OVERGROWN only.
+
+    Not a ruin with a sapling in it — a full-grown trunk that has closed over
+    a whole building, with the roof line and one lit window still showing
+    through the bark where the wood has not met up yet.
+    """
+    art = _art(cols, rows)
+    w, h = art.w, art.h
+    # the house first, so the wood can be drawn closing over it
+    art.rect(w // 4, int(h * 0.42), w // 2, int(h * 0.52), (142, 130, 118))
+    for row in range(int(h * 0.24)):
+        span = int((row / (h * 0.24)) * (w * 0.30))
+        art.hline(int(h * 0.42) - int(h * 0.24) + row,
+                  w // 2 - span, w // 2 + span, (118, 96, 88))
+    art.round_rect(int(w * 0.30), int(h * 0.56), 12, 10, 1, (244, 226, 160))
+    art.rect(int(w * 0.30), int(h * 0.60), 12, 1, (110, 100, 92))
+    # the trunk, grown around it: two great lobes meeting at the front
+    trunk = pal.form
+    art.ellipse(w * 0.24, h * 0.62, w * 0.26, h * 0.44, trunk)
+    art.ellipse(w * 0.76, h * 0.62, w * 0.26, h * 0.44, trunk)
+    art.ellipse(w * 0.24, h * 0.62, w * 0.18, h * 0.36, warmer(trunk, 0.18))
+    art.ellipse(w * 0.76, h * 0.62, w * 0.18, h * 0.36, cooler(trunk, 0.18))
+    art.rect(int(w * 0.44), int(h * 0.34), int(w * 0.12), h, trunk)
+    # canopy over the whole thing
+    for cx, cy, r in ((0.50, 0.20, 0.36), (0.24, 0.26, 0.24),
+                      (0.76, 0.26, 0.24), (0.38, 0.12, 0.18),
+                      (0.64, 0.13, 0.18)):
+        art.blob(w * cx, h * cy, w * r, pal.accent_soft)
+    art.blob(w * 0.40, h * 0.14, w * 0.14, warmer(pal.accent_soft, 0.22))
+    return outline_in(art, cooler(pal.form_dark, 0.4))
+
+
+def dish_array(pal: Palette, cols: int = 6, rows: int = 5) -> Canvas:
+    """Nine receiving dishes on a frame, all aimed the same way.  OFF-COLOUR.
+
+    They are only visible on the failing channel because on every other one
+    they are behind leaves.  Nobody put a road to them.
+    """
+    art = _art(cols, rows)
+    w, h = art.w, art.h
+    steel = (150, 152, 156)
+    dark = (88, 90, 94)
+    art.rect(2, h - 8, w - 4, 4, dark)
+    for col in range(3):
+        art.rect(6 + col * (w // 3), int(h * 0.30), 3, h - int(h * 0.30) - 6,
+                 steel)
+    for row in range(3):
+        for col in range(3):
+            cx = 8 + col * (w // 3)
+            cy = int(h * 0.20) + row * int(h * 0.22)
+            if cy > h - 12:
+                continue
+            art.ellipse(cx, cy, 9, 8, steel)
+            art.ellipse(cx + 1, cy, 7, 6.4, (196, 198, 200))
+            art.ellipse(cx + 2, cy, 4, 3.6, dark)
+            art.line(cx + 9, cy, cx + 1, cy, dark)
+            art.dot(cx + 9, cy, pal.accent)
+    return outline_in(art, (52, 54, 58))
+
+
+def test_card(pal: Palette, cols: int = 7, rows: int = 6) -> Canvas:
+    """The card itself, standing in the road.  NO SIGNAL only.
+
+    Bars, a circle, a grid and a black square where the picture should be.  It
+    is the size of a building because on this channel it *is* the building.
+    """
+    art = _art(cols, rows)
+    w, h = art.w, art.h
+    bars = ((240, 236, 226), (226, 214, 96), (96, 200, 208), (96, 196, 108),
+            (208, 92, 178), (206, 58, 54), (74, 84, 176), (24, 22, 26))
+    band = h * 6 // 10
+    for index, tone in enumerate(bars):
+        x0 = index * w // len(bars)
+        art.rect(x0, 0, w // len(bars) + 1, band, tone)
+    # the grey step wedge along the bottom
+    for index in range(8):
+        value = 28 + index * 28
+        art.rect(index * w // 8, band, w // 8 + 1, h - band,
+                 (value, value, value))
+    # circle and crosshair over the middle, the way a real card is registered
+    art.ellipse(w / 2, band / 2, w * 0.22, band * 0.38, (24, 22, 26),
+                filled=False)
+    art.ellipse(w / 2, band / 2, w * 0.20, band * 0.34, (240, 236, 226),
+                filled=False)
+    art.vline(w // 2, 2, band - 2, (24, 22, 26))
+    art.hline(band // 2, 4, w - 5, (24, 22, 26))
+    art.rect(w // 2 - 8, band // 2 - 6, 17, 13, (24, 22, 26))
+    art.rect(w // 2 - 6, band // 2 - 4, 13, 9, (240, 236, 226))
+    art.outline(0, 0, w, h, (24, 22, 26))
+    return art

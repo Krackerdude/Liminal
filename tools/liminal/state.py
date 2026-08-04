@@ -99,6 +99,30 @@ VR_VISITS_BASE = 20         # 20 + world index: times you have entered it
 VR_FALL = 18
 VR_FALLS = 19
 
+# The grove is one town received on four channels, and the receiver is chased
+# rather than switched: VR_CHASE counts how many junctions of the drift you
+# have followed correctly, and resets to nothing the moment you pick a wrong
+# one.  VR_CHANNEL is only what the town currently is; it is never set
+# directly by anything the player can reach.
+VR_CHASE = 50
+VR_CHANNEL = 51
+VR_CHASE_FROM = 52          # which junction the current step was started at
+
+# The four things the grove has that can be carried, one found on each
+# channel and every one of them used on a different channel from the one that
+# had it.  They are switches rather than inventory because none of them are
+# items in the menu sense — the game has no menu they would appear in.
+SW_FACE_BASE = SW_INTERACT_BASE + SW_INTERACT_COUNT      # past the pool
+SW_FACE_COIN = SW_FACE_BASE + 0
+SW_FACE_TAPE = SW_FACE_BASE + 1
+SW_FACE_SEED = SW_FACE_BASE + 2
+SW_FACE_BULB = SW_FACE_BASE + 3
+SW_FACE_MAST = SW_FACE_BASE + 4         # the compound gate is open
+SW_FACE_ENDED = SW_FACE_BASE + 5        # you have stood under the mast
+SW_FACE_HEARD = SW_FACE_BASE + 6        # the receiver is in your hands
+SW_FACE_ITEM = {"coin": SW_FACE_COIN, "tape": SW_FACE_TAPE,
+                "seed": SW_FACE_SEED, "bulb": SW_FACE_BULB}
+
 VR_REG_BASE = 40
 REG_US, REG_FAR, REG_LIGHT, REG_WAYS, REG_AGO, REG_YOU = range(6)
 REG_NAMES = ("how many of us", "how far", "how bright",
@@ -126,6 +150,10 @@ def switch_names(world_names: list[str]) -> dict[int, str]:
     for index, world in enumerate(world_names):
         names[SW_WORLD_MEMORY_BASE + index] = f"{world} changed"
         names[SW_WORLD_SECRET_BASE + index] = f"{world} secret"
+    names.update({SW_FACE_COIN: "the coin", SW_FACE_TAPE: "the tape",
+                  SW_FACE_SEED: "the seed", SW_FACE_BULB: "the bulb",
+                  SW_FACE_MAST: "the compound", SW_FACE_ENDED: "under the mast",
+                  SW_FACE_HEARD: "the receiver"})
     return names
 
 
@@ -144,4 +172,6 @@ def variable_names(world_names: list[str]) -> dict[int, str]:
         names[VR_VISITS_BASE + index] = f"visits {world}"
     for index, label in enumerate(REG_NAMES):
         names[VR_REG_BASE + index] = label
+    names.update({VR_CHASE: "the chase", VR_CHANNEL: "the channel",
+                  VR_CHASE_FROM: "chased from"})
     return names

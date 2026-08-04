@@ -1097,6 +1097,111 @@ def mushroom(pal: Palette, color: RGB, cols: int = 2, rows: int = 2) -> Canvas:
     return outline_in(art, cooler(color, 0.4))
 
 
+# --- props that only exist on one channel of the grove -----------------------
+# The grove is broadcast four ways.  These are the things that are only there
+# on one of them — not decoration, but the evidence that a channel is a
+# different reception of the same street rather than a different street.
+
+def bramble(pal: Palette, cols: int = 2, rows: int = 2) -> Canvas:
+    """A tangle across the ground, thick enough to stop a person.
+
+    Drawn as one continuous run of stems rather than a bush, because the point
+    is that it is *growing across* something — a road, a doorway, a gap in a
+    wall that used to be a route.
+    """
+    art = _canvas(cols, rows)
+    w, h = cols * TILE, rows * TILE
+    stem = pal.form_dark
+    for index in range(7):
+        x0 = int(w * index / 7)
+        art.line(x0, h - 2, x0 + w // 3, int(h * 0.18), stem)
+        art.line(x0 + 1, h - 2, x0 + w // 3 + 1, int(h * 0.18), pal.form)
+        art.line(x0 + w // 3, int(h * 0.18), x0 - w // 6, int(h * 0.42), stem)
+    for index in range(9):
+        art.blob(3 + (index * 7) % (w - 6), 6 + (index * 11) % (h - 8), 2.6,
+                 pal.accent_soft)
+    for index in range(5):
+        art.dot(5 + (index * 13) % (w - 6), 9 + (index * 7) % (h - 6),
+                pal.accent)
+    return outline_in(art, cooler(pal.form_dark, 0.35))
+
+
+def hive(pal: Palette, cols: int = 2, rows: int = 3) -> Canvas:
+    """Something built in the fork of a tree, by something that is not a bird."""
+    art = _canvas(cols, rows)
+    w, h = cols * TILE, rows * TILE
+    art.rect(w // 2 - 2, int(h * 0.60), 5, h - int(h * 0.60), pal.form_dark)
+    for index, radius in enumerate((0.34, 0.40, 0.34, 0.24)):
+        art.ellipse(w / 2, h * (0.16 + index * 0.13), w * radius, h * 0.09,
+                    pal.form_light if index % 2 else pal.form)
+    art.ellipse(w / 2, h * 0.52, 3.2, 2.2, cooler(pal.form_dark, 0.4))
+    return outline_in(art, cooler(pal.form_dark, 0.3))
+
+
+def tree_glyph(pal: Palette, cols: int = 3, rows: int = 4) -> Canvas:
+    """The symbol for a tree, at the size of a tree.
+
+    On the dead channel nothing is rendered any more, only indicated: a stroke
+    for the trunk and a triangle for everything above it.  It occupies the
+    exact footprint of the real tree it has replaced.
+    """
+    art = _canvas(cols, rows)
+    w, h = cols * TILE, rows * TILE
+    ink = pal.accent
+    art.rect(w // 2 - 2, int(h * 0.55), 5, int(h * 0.42), ink)
+    for row in range(int(h * 0.55)):
+        span = int((row / (h * 0.55)) * (w * 0.46))
+        art.dot(w // 2 - span, row, ink)
+        art.dot(w // 2 + span, row, ink)
+    art.hline(int(h * 0.55) - 1, int(w * 0.04), int(w * 0.96), ink)
+    art.rect(w // 2 - 4, int(h * 0.30), 9, 2, pal.form)
+    return art
+
+
+def aerial(pal: Palette, cols: int = 2, rows: int = 4) -> Canvas:
+    """A rooftop aerial on a pole, in a wood, pointing at nothing nearby."""
+    art = _canvas(cols, rows)
+    w, h = cols * TILE, rows * TILE
+    art.rect(w // 2 - 1, int(h * 0.22), 3, h - int(h * 0.22) - 1, pal.form)
+    art.rect(w // 2 - 1, int(h * 0.22), 1, h - int(h * 0.22) - 1, pal.form_light)
+    art.line(w // 2, int(h * 0.30), w - 3, int(h * 0.12), pal.form_dark)
+    for index in range(6):
+        y = int(h * 0.13) + index * 3
+        x0 = w // 2 + index
+        art.hline(y, x0, min(w - 2, x0 + 9 - index), pal.form_light)
+    art.blob(w // 2, int(h * 0.22), 2.0, pal.accent)
+    return outline_in(art, cooler(pal.form_dark, 0.3))
+
+
+def meter_box(pal: Palette, cols: int = 1, rows: int = 2) -> Canvas:
+    """A supply meter on a post.  Its dial is still turning."""
+    art = _canvas(cols, rows)
+    w, h = cols * TILE, rows * TILE
+    art.rect(w // 2 - 1, h // 2, 3, h // 2, pal.form_dark)
+    art.round_rect(1, 2, w - 2, h // 2, 2, pal.form)
+    art.rect(2, 3, w - 4, h // 2 - 3, pal.form_light)
+    art.rect(3, 5, w - 6, 4, cooler(pal.form_dark, 0.2))
+    art.dot(w // 2, 7, pal.accent)
+    return outline_in(art, cooler(pal.form_dark, 0.3))
+
+
+def tone_pillar(pal: Palette, cols: int = 1, rows: int = 4) -> Canvas:
+    """A column of the test tone, stood upright and made solid.
+
+    It is the sound drawn as an object, which is only possible on the channel
+    where the picture has already stopped pretending to be a place.
+    """
+    art = _canvas(cols, rows)
+    w, h = cols * TILE, rows * TILE
+    for row in range(h):
+        phase = (row * 3) % 12
+        width = 2 + abs(6 - phase) // 2
+        tone = pal.accent if phase < 6 else pal.form
+        art.rect(w // 2 - width, row, width * 2, 1, tone)
+    art.rect(w // 2 - 1, 0, 3, h, pal.accent)
+    return art
+
+
 def checker_pillar(pal: Palette, cols: int = 1, rows: int = 4) -> Canvas:
     art = _canvas(cols, rows)
     w, h = cols * TILE, rows * TILE
@@ -1332,6 +1437,53 @@ def decal(base: Canvas, motif: str, color: RGB, second: RGB | None = None,
     elif motif == "fallen_star":
         art.blob(cx, cy, 2.6, color)
         art.line(cx - 4, cy + 4, cx, cy, other)
+
+    # --- the grove's other three channels ------------------------------------
+    elif motif == "creeper":
+        # a runner crossing the tile with leaves paired off it, so that a floor
+        # scattered with these reads as one plant rather than many marks
+        art.line(0, 11, 15, 4, other)
+        for x, y in ((3, 9), (7, 7), (11, 5)):
+            art.blob(x, y - 2, 1.8, color)
+            art.blob(x + 1, y + 2, 1.8, color)
+    elif motif == "seedhead":
+        art.vline(cx, cy - 1, TILE - 2, other)
+        for angle in range(0, 360, 45):
+            x = cx + int(3.4 * math.cos(math.radians(angle)))
+            y = cy - 2 + int(3.4 * math.sin(math.radians(angle)))
+            art.dot(x, y, color)
+        art.blob(cx, cy - 2, 1.4, warmer(color, 0.4))
+    elif motif == "windfall":
+        art.ellipse(cx - 3, cy + 2, 2.4, 2.0, color)
+        art.ellipse(cx + 2, cy + 3, 2.0, 1.6, other)
+        art.dot(cx - 3, cy, other)
+    elif motif == "ashfall":
+        for x, y in ((3, 4), (9, 3), (6, 9), (12, 8), (4, 12), (11, 13)):
+            art.dot(x, y, color)
+            art.dot(x + 1, y + 1, other)
+    elif motif == "chalkline":
+        # a surveyor's mark: something was measured here and never dug
+        art.line(2, 13, 13, 2, other)
+        art.line(2, 13, 6, 12, other)
+        art.line(13, 2, 9, 3, other)
+        art.dot(cx, cy, color)
+    elif motif == "tapeloop":
+        art.ellipse(cx - 2, cy, 3.2, 3.2, other, filled=False)
+        art.ellipse(cx + 3, cy + 1, 2.2, 2.2, other, filled=False)
+        art.line(cx - 2, cy - 3, cx + 3, cy - 2, color)
+    elif motif == "colourbar":
+        for index, x in enumerate(range(3, 14, 2)):
+            art.rect(x, 5, 2, 7, color if index % 2 else other)
+    elif motif == "cornerpip":
+        # the registration mark in the corner of a test card
+        art.line(3, 3, 7, 3, color)
+        art.line(3, 3, 3, 7, color)
+        art.line(12, 12, 8, 12, color)
+        art.line(12, 12, 12, 8, color)
+    elif motif == "tone":
+        art.ellipse(cx, cy, 5, 5, other, filled=False)
+        art.ellipse(cx, cy, 2.6, 2.6, color, filled=False)
+        art.dot(cx, cy, color)
     return art
 
 
@@ -1434,6 +1586,46 @@ def wall_band(pal: Palette, motif: str, *, face: bool = False,
         art.round_rect(3, 2, 10, 13, 4, base)
         art.round_rect(5, 4, 6, 11, 3, light)
         art.dot(11, 9, ink)
+    elif motif == "thicket":
+        # The grove's canopy, but grown shut.  Same overlapping mass as
+        # "trunks" and then filled in again at a second, finer scale, so that
+        # the gaps the eye reads as depth in the grove are not there any more.
+        art.px[:, :] = dark
+        for ox, oy, r in ((4, 4, 6.2), (12, 3, 5.6), (3, 12, 5.4),
+                          (11, 12, 6.0), (8, 8, 5.4), (15, 8, 4.8),
+                          (0, 8, 4.8), (8, 0, 4.8), (8, 15, 4.8)):
+            art.blob(ox, oy, r, base)
+            art.blob(ox - 1, oy - 1, r * 0.5, light)
+        for ox, oy in ((2, 6), (7, 2), (13, 9), (6, 13), (11, 6)):
+            art.blob(ox, oy, 2.2, warmer(light, 0.25))
+            art.dot(ox, oy, ink)
+        # runners crossing the whole tile, which is what makes it read as
+        # tangled rather than merely leafy
+        art.line(0, 13, 15, 2, blend(dark, base, 0.4))
+        art.line(1, 1, 14, 15, blend(dark, base, 0.4))
+    elif motif == "bare":
+        # The same canopy with the leaves gone: nothing but the branch
+        # structure that was holding them up, and daylight behind it.
+        art.px[:, :] = light
+        for x0, y0, x1, y1 in ((8, 16, 8, 7), (8, 10, 2, 3), (8, 10, 14, 4),
+                               (8, 7, 5, 0), (8, 7, 12, 1), (4, 6, 0, 2),
+                               (12, 5, 16, 1)):
+            art.line(x0, y0, x1, y1, dark)
+        for x0, y0, x1, y1 in ((6, 12, 3, 9), (10, 11, 13, 8), (9, 5, 11, 2)):
+            art.line(x0, y0, x1, y1, blend(dark, light, 0.35))
+        art.rect(7, 10, 3, 6, base)
+    elif motif == "bars":
+        # Colour bars, stood on end.  A boundary that is not made of anything:
+        # it is simply where the picture stops carrying the town.
+        widths = (3, 2, 3, 2, 3, 3)
+        tones = (ink, blend(ink, base, 0.5), base, dark,
+                 blend(base, dark, 0.5), light)
+        x = 0
+        for width, tone in zip(widths, tones):
+            art.rect(x, 0, width, TILE, tone)
+            x += width
+        art.rect(0, 12, TILE, 4, blend(dark, pal.void, 0.5))
+        art.rect(0, 12, TILE, 1, ink)
     else:
         art.dither(light, 0.4, BAYER8)
 

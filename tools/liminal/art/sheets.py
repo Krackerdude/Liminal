@@ -36,6 +36,9 @@ WALL_MOTIF: dict[str, str] = {
     "blocks": "blocks", "stairs": "steps", "sand": "strata", "faces": "trunks",
     "hands": "fingers", "checker": "checker", "toys": "toybox", "neon": "neon",
     "umbrellas": "scallops", "stars": "starfield",
+    # The grove's boundary is the same canopy on all four channels, received
+    # differently: grown shut, stripped bare, or gone altogether.
+    "faces2": "thicket", "faces3": "bare", "faces4": "bars",
 }
 
 
@@ -45,6 +48,15 @@ WALL_MOTIF: dict[str, str] = {
 WALL_COLORS: dict[str, dict] = {
     "faces": {"base": (74, 118, 76), "light": (104, 152, 100),
               "dark": (38, 66, 46), "accent": (146, 186, 132)},
+    # deeper, wetter, and with the light no longer reaching the ground
+    "faces2": {"base": (52, 104, 58), "light": (82, 140, 76),
+               "dark": (20, 46, 30), "accent": (172, 206, 122)},
+    # no leaves left: branch structure in front of an overcast sky
+    "faces3": {"base": (120, 122, 118), "light": (188, 192, 192),
+               "dark": (68, 70, 72), "accent": (216, 220, 222)},
+    # not made of anything — where the picture stops carrying the town
+    "faces4": {"base": (188, 52, 50), "light": (240, 236, 226),
+               "dark": (28, 18, 22), "accent": (240, 236, 226)},
 }
 
 
@@ -89,6 +101,14 @@ DECALS: dict[str, list[tuple[str, str]]] = {
                   ("waterring", "accent")],
     "stars":     [("constellation", "accent"), ("ripple", "accent_soft"),
                   ("fallen_star", "accent")],
+    # What is lying on the ground is the fastest way to tell one channel from
+    # another before the player has consciously noticed the colour changed.
+    "faces2":    [("creeper", "accent_soft"), ("seedhead", "accent"),
+                  ("windfall", "form_light")],
+    "faces3":    [("ashfall", "accent"), ("chalkline", "form_dark"),
+                  ("tapeloop", "form")],
+    "faces4":    [("colourbar", "accent"), ("cornerpip", "form_light"),
+                  ("tone", "accent_soft")],
 }
 
 
@@ -111,6 +131,9 @@ PATTERNS: dict[str, list[str]] = {
                   "grid"],
     "umbrellas": ["chevron", "concentric", "weave"],
     "stars":     ["dots", "diamond", "concentric"],
+    "faces2":    ["bloom", "weave", "dots"],
+    "faces3":    ["grid", "tick", "stripes"],
+    "faces4":    ["stripes", "grid", "cross", "square_frame"],
 }
 
 MURALS: dict[str, list[str]] = {
@@ -121,6 +144,8 @@ MURALS: dict[str, list[str]] = {
     "hands": ["hand", "rings"], "checker": ["grid", "star"],
     "toys": ["sun", "star"], "neon": ["eye", "spiral", "star"],
     "umbrellas": ["waves", "rings"], "stars": ["star", "waves"],
+    "faces2": ["sun", "rings"], "faces3": ["grid", "rings"],
+    "faces4": ["eye", "star", "grid"],
 }
 
 
@@ -143,6 +168,11 @@ ANIMATION: dict[str, tuple[tuple[str, str, str], tuple[str, int]]] = {
     "neon":      (("pulse", "crawl", "scan"), ("crawl", 5)),
     "umbrellas": (("crawl", "pulse", "scan"), ("crawl", 11)),
     "stars":     (("pulse", "crawl", "pulse"), ("pulse", 9)),
+    # A channel's animation is its reception.  Growth crawls; a failing signal
+    # scans slowly and unevenly; a dead one scans as fast as the hardware can.
+    "faces2":    (("crawl", "pulse", "crawl"), ("crawl", 15)),
+    "faces3":    (("scan", "pulse", "scan"), ("scan", 10)),
+    "faces4":    (("scan", "checkerflip", "scan"), ("scan", 4)),
 }
 
 
@@ -172,7 +202,8 @@ def _decals(cb: ChipsetBuilder, pal: Palette, world: str, ground: Canvas) -> Non
            "steps": "brick", "strata": "brick", "trunks": "strata",
            "fingers": "strata", "checker": "brick", "toybox": "checker",
            "neon": "checker", "scallops": "strata", "starfield": "checker",
-           "paper": "strata", "doors": "brick"}.get(motif, "brick")
+           "paper": "strata", "doors": "brick", "thicket": "trunks",
+           "bare": "strata", "bars": "checker"}.get(motif, "brick")
     cb.add("wall_alt", ct.wall_band(pal, alt, accent=pal.accent_soft),
            passable=False)
     cb.add("wall_alt_face", ct.wall_band(pal, alt, face=True,
@@ -492,6 +523,264 @@ def build_faces() -> ChipsetBuild:
     return _finish(cb, ground)
 
 
+def _street(cb: ChipsetBuilder, *, surface: RGB, grit: RGB, marking: RGB,
+            kerb_top: RGB, kerb_lip: RGB, marking_wear: float = 0.0,
+            seed: int = 0) -> None:
+    """The road surface, which every channel of the grove has to provide.
+
+    The street plan is identical on all four channels — it has to be, or they
+    are four maps and not four receptions of one — so the *tiles* carry the
+    difference.  ``marking_wear`` eats into the lane markings, which is the
+    single detail that tells the player how far from the original signal they
+    have tuned before they have consciously read anything else.
+    """
+    road = Canvas(TILE, TILE, surface)
+    road.dither(grit, 0.3, ct.BAYER8)
+    cb.add("road", road)
+
+    lane = road.copy()
+    if marking_wear <= 0:
+        lane.rect(7, 0, 3, 10, marking)
+    else:
+        # the same line, with bites taken out of it
+        for y in range(10):
+            if ((y * 7 + seed * 5) % 10) / 10.0 >= marking_wear:
+                lane.rect(7, y, 3, 1, marking)
+            elif ((y * 3 + seed) % 4) == 0:
+                lane.rect(8, y, 1, 1, blend(marking, surface, 0.5))
+    cb.add("road_line", lane)
+
+    kerb = Canvas(TILE, TILE, surface)
+    kerb.dither(grit, 0.2, ct.BAYER8)
+    kerb.rect(0, 0, TILE, 5, kerb_top)
+    kerb.rect(0, 5, TILE, 2, kerb_lip)
+    cb.add("kerb", kerb)
+
+
+def build_faces2() -> ChipsetBuild:
+    """OVERGROWN.  The grove, received on the channel where it never stopped.
+
+    Everything in the grove is here, and everything in the grove has had
+    another forty years put on it.  The road is under moss rather than beside
+    it, the traffic lights are inside the hedges rather than in front of them,
+    and the boundary is not a treeline any more but a wall of thicket.  Nothing
+    has been removed.  That is the horror of this one: the town is still all
+    present, it is simply no longer reachable.
+    """
+    pal = PALETTES["faces2"]
+    cb = ChipsetBuilder("faces2", pal)
+
+    # ground: grass with growth laid over it, denser and wetter than the grove
+    ground = ct.grass_ground(pal, 4)
+    ground.dither(cooler(pal.ground, 0.25), 0.35, ct.BAYER8)
+    ground_b = ct.grass_ground(pal, 5)
+    ground_b.dither(pal.accent_soft, 0.22, ct.BAYER4)
+    _basics(cb, pal, ground, ground_b, world="faces2")
+
+    # asphalt, most of the way to being soil again
+    _street(cb, surface=(58, 66, 54), grit=(46, 58, 44),
+            marking=(196, 210, 150), kerb_top=(120, 138, 106),
+            kerb_lip=(74, 92, 66), marking_wear=0.55, seed=1)
+    paving = ct.pattern_tile(pal, "bloom", pal.accent_soft, (108, 122, 96))
+    cb.add("paving", paving)
+
+    # a moss surface with nothing under it that can be identified any more
+    moss = Canvas(TILE, TILE, (72, 118, 68))
+    moss.dither((96, 148, 84), 0.45, ct.BAYER8)
+    moss.noise([(58, 100, 60), (118, 164, 96)], 0.14, seed=7)
+    cb.add("moss", moss)
+
+    cb.add_object("tree", ct.round_tree(pal, 3, 5, face=True), solid="bottom")
+    cb.add_object("tree_plain", ct.round_tree(pal, 3, 5, face=False),
+                  solid="bottom")
+    cb.add_object("stump", ct.stump_face(pal, 2, 2), solid="all")
+    cb.add_object("mushroom", ct.mushroom(pal, (236, 208, 120), 2, 3),
+                  solid="bottom")
+    bush = ct._canvas(3, 3)
+    for cx, cy, r in ((24, 30, 18), (12, 34, 12), (36, 33, 12),
+                      (20, 20, 10), (32, 22, 9)):
+        bush.blob(cx, cy, r, pal.accent_soft)
+    bush.blob(18, 20, 7, warmer(pal.accent_soft, 0.26))
+    outline_in(bush, cooler(pal.accent_soft, 0.4))
+    cb.add_object("bush", bush, solid="all")
+    # the two things that only exist here, and both of them are in the way
+    cb.add_object("bramble", ct.bramble(pal, 2, 2), solid="all", upper=True)
+    cb.add_object("hive", ct.hive(pal, 2, 3), solid="bottom", upper=True)
+
+    # The municipal furniture is still here.  It is simply inside the wood now.
+    cb.add_object("traffic_light", lm.traffic_light(pal, 1, 4), solid="bottom",
+                  upper=True)
+    cb.add_object("shelter", lm.bus_shelter(pal, 4, 3), solid="bottom",
+                  upper=True)
+    cb.add_object("phone_box", lm.phone_box(pal, 2, 3), solid="bottom",
+                  upper=True)
+    cb.add_object("car", lm.dead_car(pal, 3, 2), solid="all", upper=True)
+    cb.add_object("vending", lm.vending_machine(pal, 2, 3), solid="bottom",
+                  upper=True)
+    cb.add_object("road_sign", lm.road_sign(pal, 2, 3), solid="bottom",
+                  upper=True)
+
+    cb.add_object("door", ct.door_frame(pal, 2, 3, glow=pal.accent))
+    _shadows(cb, pal)
+    _landmarks(cb, pal, "faces2")
+    _animate(cb, pal, "faces2")
+    _decals(cb, pal, "faces2", ground)
+    return _finish(cb, ground)
+
+
+def build_faces3() -> ChipsetBuild:
+    """OFF-COLOUR.  The grove with the colour going out of it.
+
+    The greens fail first, because they were carrying the most, and what is
+    left is the part of the town that was always grey: kerbs, concrete, steel.
+    The trees are still standing in exactly the same places and are still the
+    same size — they have simply stopped being rendered as anything but their
+    branches, which is why this is the channel where you can see through the
+    wood, and therefore the channel where things that were hidden by leaves
+    are not hidden any more.
+    """
+    pal = PALETTES["faces3"]
+    cb = ChipsetBuilder("faces3", pal)
+
+    ground = Canvas(TILE, TILE, pal.ground)
+    ground.dither(pal.ground_b, 0.4, ct.BAYER8)
+    ground.noise([(158, 162, 156), (124, 130, 126)], 0.10, seed=3)
+    ground_b = ct.soft_ground(pal.ground_b, pal.ground, 0.3)
+    _basics(cb, pal, ground, ground_b, world="faces3")
+
+    # asphalt, cleaner than the grove's: nothing has grown on it here
+    _street(cb, surface=(84, 86, 88), grit=(72, 74, 78),
+            marking=(238, 240, 238), kerb_top=(184, 186, 184),
+            kerb_lip=(126, 128, 128), marking_wear=0.0)
+    cb.add("paving", ct.pattern_tile(pal, "grid", (170, 172, 170),
+                                     (196, 198, 196)))
+    # a thin ash lying over everything, which is what "failing" looks like here
+    ash = Canvas(TILE, TILE, (168, 170, 168))
+    ash.dither((186, 188, 188), 0.5, ct.BAYER8)
+    ash.noise([(202, 204, 204), (146, 148, 150)], 0.16, seed=11)
+    cb.add("ash", ash)
+
+    # every tree, bare, in exactly the footprint the grove's trees occupy
+    cb.add_object("tree", ct.dead_tree(pal, 3, 4), solid="bottom")
+    cb.add_object("tree_plain", ct.dead_tree(pal, 3, 5), solid="bottom")
+    cb.add_object("stump", ct.stump_face(pal, 2, 2), solid="all")
+    cb.add_object("mushroom", ct.mushroom(pal, (196, 200, 198), 2, 2),
+                  solid="bottom")
+    bush = ct._canvas(2, 2)
+    for index in range(9):
+        bush.line(4 + index * 3, 30, 10 + index * 2, 8 + (index % 3) * 4,
+                  pal.form_dark)
+    bush.dither(pal.form, 0.2)
+    outline_in(bush, cooler(pal.form_dark, 0.3))
+    cb.add_object("bush", bush, solid="none")
+    # what the leaves were covering, now that there are no leaves
+    cb.add_object("aerial", ct.aerial(pal, 2, 4), solid="bottom", upper=True)
+    cb.add_object("meter", ct.meter_box(pal, 1, 2), solid="bottom", upper=True)
+
+    cb.add_object("traffic_light", lm.traffic_light(pal, 1, 4), solid="bottom",
+                  upper=True)
+    cb.add_object("shelter", lm.bus_shelter(pal, 4, 3), solid="bottom",
+                  upper=True)
+    cb.add_object("phone_box", lm.phone_box(pal, 2, 3), solid="bottom",
+                  upper=True)
+    cb.add_object("car", lm.dead_car(pal, 3, 2), solid="all", upper=True)
+    cb.add_object("vending", lm.vending_machine(pal, 2, 3), solid="bottom",
+                  upper=True)
+    cb.add_object("road_sign", lm.road_sign(pal, 2, 3), solid="bottom",
+                  upper=True)
+
+    cb.add_object("door", ct.door_frame(pal, 2, 3, glow=pal.accent))
+    _shadows(cb, pal)
+    _landmarks(cb, pal, "faces3")
+    _animate(cb, pal, "faces3")
+    _decals(cb, pal, "faces3", ground)
+    return _finish(cb, ground)
+
+
+def build_faces4() -> ChipsetBuild:
+    """NO SIGNAL.  The pattern a transmitter sends when it has nothing to send.
+
+    Everything is still exactly where it was, and nothing is drawn as itself.
+    A tree is the symbol for a tree.  Grass is crosshatch.  The road is a run
+    of colour bars laid in the direction of travel.  It is the most legible the
+    town ever gets — you can read the whole street plan at a glance, because
+    the picture has given up on depth entirely — and it is the least like a
+    place, which is exactly the trade the channel is making.
+    """
+    pal = PALETTES["faces4"]
+    cb = ChipsetBuilder("faces4", pal)
+
+    # crosshatch where the grass should be: the mark that means "vegetation"
+    ground = Canvas(TILE, TILE, pal.ground)
+    for offset in range(-TILE, TILE * 2, 5):
+        ground.line(offset, 0, offset + TILE, TILE - 1, pal.ground_b)
+        ground.line(offset + TILE, 0, offset, TILE - 1,
+                    blend(pal.ground_b, pal.void, 0.4))
+    ground_b = Canvas(TILE, TILE, pal.ground_b)
+    ground_b.checker(pal.ground, pal.ground_b, 4)
+    _basics(cb, pal, ground, ground_b, world="faces4")
+
+    # the road, as bars running along it
+    bars = Canvas(TILE, TILE, (24, 22, 26))
+    for index, tone in enumerate(((240, 236, 226), (226, 214, 96),
+                                  (96, 200, 208), (96, 196, 108),
+                                  (208, 92, 178), (206, 58, 54),
+                                  (74, 84, 176), (24, 22, 26))):
+        bars.rect(0, index * 2, TILE, 2, tone)
+    cb.add("road", bars)
+    line = bars.copy()
+    line.rect(6, 0, 4, TILE, (240, 236, 226))
+    cb.add("road_line", line)
+    kerb = Canvas(TILE, TILE, (24, 22, 26))
+    kerb.rect(0, 0, TILE, 5, (240, 236, 226))
+    kerb.rect(0, 5, TILE, 2, (206, 58, 54))
+    cb.add("kerb", kerb)
+    cb.add("paving", ct.pattern_tile(pal, "grid", (240, 236, 226),
+                                     (36, 24, 28)))
+    # the black square: where the picture is not carrying anything at all
+    black = Canvas(TILE, TILE, (18, 14, 18))
+    black.outline(0, 0, TILE, TILE, (36, 28, 34))
+    cb.add("dead", black)
+
+    cb.add_object("tree", ct.tree_glyph(pal, 3, 4), solid="bottom")
+    cb.add_object("tree_plain", ct.tree_glyph(pal, 3, 5), solid="bottom")
+    cb.add_object("stump", ct.stump_face(pal, 2, 2), solid="all")
+    cb.add_object("mushroom", ct.mushroom(pal, (240, 236, 226), 2, 2),
+                  solid="bottom")
+    marker = ct._canvas(2, 2)
+    marker.outline(2, 2, 28, 28, pal.accent)
+    marker.line(2, 2, 30, 30, pal.form)
+    marker.line(30, 2, 2, 30, pal.form)
+    cb.add_object("bush", marker, solid="none", upper=True)
+    # the two things that only exist once the picture has stopped
+    cb.add_object("tone_pillar", ct.tone_pillar(pal, 1, 4), solid="bottom",
+                  upper=True)
+    caption = ct._canvas(4, 1)
+    caption.rect(0, 3, 64, 10, (18, 14, 18))
+    for index in range(11):
+        caption.rect(3 + index * 5, 6, 3, 4, (240, 236, 226))
+    cb.add_object("caption", caption, solid="none", upper=True)
+
+    cb.add_object("traffic_light", lm.traffic_light(pal, 1, 4), solid="bottom",
+                  upper=True)
+    cb.add_object("shelter", lm.bus_shelter(pal, 4, 3), solid="bottom",
+                  upper=True)
+    cb.add_object("phone_box", lm.phone_box(pal, 2, 3), solid="bottom",
+                  upper=True)
+    cb.add_object("car", lm.dead_car(pal, 3, 2), solid="all", upper=True)
+    cb.add_object("vending", lm.vending_machine(pal, 2, 3), solid="bottom",
+                  upper=True)
+    cb.add_object("road_sign", lm.road_sign(pal, 2, 3), solid="bottom",
+                  upper=True)
+
+    cb.add_object("door", ct.door_frame(pal, 2, 3, glow=pal.accent))
+    _shadows(cb, pal)
+    _landmarks(cb, pal, "faces4")
+    _animate(cb, pal, "faces4")
+    _decals(cb, pal, "faces4", ground)
+    return _finish(cb, ground)
+
+
 def build_hands() -> ChipsetBuild:
     """A grassy plain with enormous stone hands coming out of it."""
     pal = PALETTES["hands"]
@@ -666,6 +955,9 @@ BUILDERS: dict[str, Callable[[], ChipsetBuild]] = {
     "neon": build_neon,
     "umbrellas": build_umbrellas,
     "stars": build_stars,
+    "faces2": build_faces2,
+    "faces3": build_faces3,
+    "faces4": build_faces4,
 }
 
 
@@ -687,8 +979,18 @@ LANDMARKS.update({
              ("cathedral", lm.upside_down_cathedral, {"cols": 8, "rows": 7}),
              ("ceramic", lm.ceramic_sea, {"cols": 5, "rows": 3})],
     # The forest world's landmarks are all municipal.  None of them belong.
+    # The mast is on every channel and is the only thing in the world drawn
+    # identically on all four — it is doing the transmitting, so it is not
+    # subject to it.
     "faces": [("facade", lm.apartment_facade, {"cols": 5, "rows": 7}),
-              ("escalator", lm.escalator, {"cols": 3, "rows": 5})],
+              ("escalator", lm.escalator, {"cols": 3, "rows": 5}),
+              ("mast", lm.broadcast_mast, {"cols": 3, "rows": 7})],
+    "faces2": [("house", lm.swallowed_house, {"cols": 5, "rows": 5}),
+               ("mast", lm.broadcast_mast, {"cols": 3, "rows": 7})],
+    "faces3": [("dishes", lm.dish_array, {"cols": 5, "rows": 4}),
+               ("mast", lm.broadcast_mast, {"cols": 3, "rows": 7})],
+    "faces4": [("card", lm.test_card, {"cols": 6, "rows": 5}),
+               ("mast", lm.broadcast_mast, {"cols": 3, "rows": 7})],
     "checker": [("circle", lm.circular_room_marker, {"cols": 5, "rows": 5})],
     # Toys is the densest sheet in the game, so its landmarks are sized to
     # fit rather than sized to impress: the brick tower still runs taller than

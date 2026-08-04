@@ -29,7 +29,7 @@ from ..maps import (ANIM_CONTINUOUS, ANIM_FIXED_GRAPHIC, DIR_DOWN, DIR_LEFT,
                     MOVE_RANDOM, MOVE_STATIONARY, TRIGGER_ACTION,
                     TRIGGER_AUTO, TRIGGER_PARALLEL, TRIGGER_TOUCH, Page)
 from ..state import (SW_INTERACT_BASE, SW_WORLD_STATE_BASE, VR_SET_NUMBER,
-                     VR_REG_BASE, REG_NAMES, REG_MAX, REG_US, REG_FAR,
+                     VR_FALL, VR_FALLS, VR_REG_BASE, REG_NAMES, REG_MAX, REG_US, REG_FAR,
                      REG_LIGHT, REG_WAYS, REG_AGO, REG_YOU,
                      SW_DEEP_UNLOCKED, SW_EARS_ACTIVE, SW_EYE_ACTIVE,
                      SW_FOLLOWER, SW_HAS_EFFECT, SW_KEY_ACTIVE,
@@ -526,8 +526,11 @@ def dream_events(world: World, worlds: dict[str, World],
     # room has no bricks in it, only doors — the ratio is the mechanic.
     if key == "numbers":
         _numbers_system(world, worlds, rng, index)
+    if key.startswith("stairs"):
+        _stairs_system(world, worlds, rng, index)
     system = interact.of(key)
-    if system is not None and key != "numbers":
+    if system is not None and key != "numbers" \
+            and not key.startswith("stairs"):
         zones = list(getattr(world.plan, "zones", []) or [])
         base = SW_INTERACT_BASE + _interact_next[0]
         designs = WORLD_CAST.get(key, [])
@@ -813,6 +816,108 @@ def _numbers_system(world: World, worlds: dict[str, World],
         Page(script=Script().msg("it is open."), trigger=TRIGGER_ACTION,
              switch_a=altered),
     ])
+
+
+
+
+def floor_events(world: World, worlds: dict[str, World],
+                 rng: random.Random) -> None:
+    """A deeper floor of a world: arrival, its edges, and one way home.
+
+    A floor is not a dream — it has no door in the nexus and no effect of its
+    own, because it is not somewhere you choose to go.  It gets the world's
+    own verb and a single way out, which on the stairwell is the only thing
+    down here that goes up.
+    """
+    from .worlds import WORLD_ORDER
+
+    index = WORLD_ORDER.index(world.key)
+    world.map.add_event("arrive", 0, 0, [_arrival_event(world)])
+    if world.key.startswith("stairs"):
+        _stairs_system(world, worlds, rng, index)
+
+    nexus = worlds["nexus"]
+    nx, ny = nexus.landmarks["doors"][DREAM_ORDER.index("stairs")]
+    back = Script()
+    back.se("DoorShut", volume=60)
+    back.bgm_fadeout(10)
+    back.weather(0, 0)
+    back.pan_reset(speed=6, wait=False)
+    back.fade_out(atmosphere.of("stairs").leave)
+    back.call_event(sys.CE_OVERLAY_OFF)
+    back.teleport(nexus.map_id, nx + 1, ny + 3)
+    back.fade_in(atmosphere.of("nexus").enter)
+    _place(world, "door", *_far_from(world, world.spawn, rng),
+           [Page(script=back, trigger=TRIGGER_ACTION)])
+
+
+# --- the stairwell -----------------------------------------------------------
+
+def _stairs_system(world: World, worlds: dict[str, World],
+                   rng: random.Random, index: int) -> None:
+    """Edges you can step off, and the order you take them is the answer.
+
+    A fall does not simply drop you one floor.  Each edge has a number, and
+    stepping off folds that number into a running total — so four falls taken
+    in a different sequence produce a different total, and the total decides
+    which floor you land on.  The same edges, in a different order, are a
+    different route.
+
+    This is the quicksand-pit structure: every entrance looks like every other
+    entrance, nothing is labelled, and the deepest floors can only be reached
+    by an order nobody stumbles into.  The world never mentions that order is
+    what matters.
+    """
+    from .worlds import DEPTH, STAIR_FLOORS
+
+    system = interact.of("stairs")
+    depth = DEPTH.get(world.key, 0)
+    floors = ["stairs", *STAIR_FLOORS]
+    zones = list(getattr(world.plan, "zones", []) or [])
+
+    for n in range(system.count):
+        at = (_at_edge(world, zones[n % len(zones)], rng) if zones
+              else world.spot(rng, pad=2))
+        # each edge is worth a different amount, and the amounts are chosen so
+        # that order changes the sum: multiply by three, then add
+        weight = 1 + (n * 5 + depth * 3) % 7
+
+        fall = Script()
+        fall.se(system.sound, volume=45)
+        fall.msg(*system.before)
+        fall.wait(6)
+        fall.se("Wrong", volume=30)
+        fall.msg("you step off it.")
+        # fold this edge into the running order
+        fall.var(VR_FALL, 3, op=3)               # multiply the history by three
+        fall.var(VR_FALL, weight, op=1)          # then add this edge
+        fall.var(VR_FALL, 97, op=5)              # keep it inside one number
+        fall.var(VR_FALLS, 1, op=1)
+        fall.bgm_fadeout(4)
+        fall.shake(4, 5, 6, wait=False)
+        fall.fade_out(atmosphere.of("stairs").leave)
+        fall.wait(10)
+        fall.call_event(sys.CE_OVERLAY_OFF)
+
+        # where the total lands you.  Every branch is a real floor; none of
+        # them is "back where you started" unless the order says so.
+        for slot, target in enumerate(floors):
+            other = worlds.get(target)
+            if other is None:
+                continue
+            with fall.if_var(VR_FALL, slot * 19, 0):
+                fall.teleport(other.map_id, *other.spawn)
+        # anything the branches did not catch falls to the floor below, or
+        # back to the top if there is nothing below
+        below = floors[min(depth + 1, len(floors) - 1)]
+        with fall.if_var(VR_FALL, 0, 3):        # always true; the default
+            pass
+        fall.teleport(worlds[below].map_id, *worlds[below].spawn)
+        fall.fade_in(atmosphere.of("stairs").enter)
+
+        _place(world, f"edge {n}", *at,
+               [Page(script=fall, trigger=TRIGGER_ACTION,
+                     charset=_ICON_SHEET, charset_index=_ICON_SLOT)])
 
 
 # --- what the residents say --------------------------------------------------

@@ -93,6 +93,12 @@ VR_VISITS_BASE = 20         # 20 + world index: times you have entered it
 # The number world's registers.  Six independent numbers, each set separately
 # on its own plinths, each editing a different property of the map.  The state
 # of that world is the whole tuple, not any one of them.
+# The stairwell remembers the order you fell through it.  Not how many falls
+# — the *sequence*, folded into one number, so the same four edges taken in a
+# different order are a different answer.
+VR_FALL = 18
+VR_FALLS = 19
+
 VR_REG_BASE = 40
 REG_US, REG_FAR, REG_LIGHT, REG_WAYS, REG_AGO, REG_YOU = range(6)
 REG_NAMES = ("how many of us", "how far", "how bright",
@@ -132,6 +138,7 @@ def variable_names(world_names: list[str]) -> dict[int, str]:
         VR_MENU_SLOT: "menu slot", VR_PREV_WORLD: "previous world",
         VR_TEMP_X: "temp x", VR_TEMP_Y: "temp y", VR_KEY: "key",
         VR_SET_NUMBER: "the number", VR_STILL: "still",
+        VR_FALL: "the way down", VR_FALLS: "falls",
     }
     for index, world in enumerate(world_names):
         names[VR_VISITS_BASE + index] = f"visits {world}"

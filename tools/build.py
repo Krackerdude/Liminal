@@ -187,6 +187,10 @@ def author_events(worlds: dict[str, W.World]) -> int:
     for key in W.DREAM_ORDER:
         rng = random.Random(zlib.crc32(f"events:{key}".encode()))
         events.dream_events(worlds[key], worlds, rng)
+    # Deeper floors are not dreams: no nexus door, no effect of their own.
+    for key in W.STAIR_FLOORS:
+        rng = random.Random(zlib.crc32(f"events:{key}".encode()))
+        events.floor_events(worlds[key], worlds, rng)
     return sum(len(worlds[k].map.events) for k in W.WORLD_ORDER)
 
 

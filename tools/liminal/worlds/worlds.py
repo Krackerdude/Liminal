@@ -134,7 +134,16 @@ POPULATION: dict[str, int] = {
 DREAM_ORDER = ["pink", "numbers", "blocks", "stairs", "sand", "faces", "hands",
                "checker", "toys", "neon", "umbrellas", "stars"]
 
-WORLD_ORDER = ["room", "nexus", *DREAM_ORDER]
+# The stairwell is five floors deep.  These are *layers*, not subworlds: the
+# same world continuing downward, sharing its chipset, cast and music family,
+# and reached only by falling in the right order.  Each is worse than the one
+# above it.
+STAIR_FLOORS = ["stairs2", "stairs3", "stairs4", "stairs5"]
+
+WORLD_ORDER = ["room", "nexus", *DREAM_ORDER, *STAIR_FLOORS]
+
+# How far down each floor is, which drives everything that gets worse.
+DEPTH = {"stairs": 0, "stairs2": 1, "stairs3": 2, "stairs4": 3, "stairs5": 4}
 
 
 def _new(key: str, map_id: int, width: int, height: int, *,
@@ -417,12 +426,27 @@ def build_stairs(map_id: int) -> World:
     rule       everything not stone is a drop, and the drop has no bottom
     """
     world, cs, rng = _new("stairs", map_id, 148, 134)
+    _stairs_layout(world, cs, rng)
+    return world
+
+
+def _stairs_layout(world: World, cs, rng: random.Random) -> None:
+    """The stairwell's geometry, shared by all five of its floors.
+
+    Each floor re-runs this against its own size and seed, so the floors are
+    genuinely different rooms rather than one room recoloured — but they are
+    unmistakably the same *kind* of room, which is what makes going down feel
+    like going further rather than going elsewhere.
+    """
     m, t = world.map, cs.tiles
     fld = Field(m.width, m.height)
 
-    landings = layout.ring_world(fld, rng, rooms=11, radius=52, size=(15, 12),
+    span = min(m.width, m.height)
+    landings = layout.ring_world(fld, rng, rooms=11,
+                                 radius=span * 52 // 134, size=(15, 12),
                                  shape="diamond", corridor_width=3)
-    landings += layout.ring_world(fld, rng, rooms=7, radius=27, size=(13, 10),
+    landings += layout.ring_world(fld, rng, rooms=7,
+                                  radius=span * 27 // 134, size=(13, 10),
                                   shape="diamond", corridor_width=3)
     middle = fld.carve(Zone("middle", m.width // 2, m.height // 2, 17, 13,
                             "round"))
@@ -446,7 +470,6 @@ def build_stairs(map_id: int) -> World:
                        "middle": [(middle.cx, middle.cy)]}
     world.spawn = (landings[0].cx, landings[0].cy)
     world.npcs = ["climber", "long_bird"]
-    return world
 
 
 def build_sand(map_id: int) -> World:
@@ -1002,12 +1025,41 @@ def build_stars(map_id: int) -> World:
     return world
 
 
+def _stair_floor(depth: int):
+    """A deeper floor of the stairwell.
+
+    The geometry is regenerated from its own seed, so the floors are not the
+    same room repainted — they are different rooms that share a chipset.  What
+    they share deliberately is everything that makes them recognisable: the
+    same tiles, the same residents, the same music family.  What changes is
+    the condition of all three.
+    """
+    def build(map_id: int) -> World:
+        world, cs, rng = _new("stairs", map_id, 148 - depth * 4,
+                              134 - depth * 4)
+        world.key = f"stairs{depth + 1}"
+        world.title = ("up", "further up", "further", "up and up",
+                       "the top")[depth]
+        # the light fails by degrees, and the film thickens with it
+        r, g, b, sat = TINTS["stairs"]
+        world.tint = (max(30, r - depth * 14), max(30, g - depth * 16),
+                      max(40, b - depth * 8), max(18, sat - depth * 17))
+        world.overlay = ("VignetteSoft", "Vignette", "Grain",
+                         "StaticB", "Static")[depth]
+        world.overlay_opacity = max(38, 70 - depth * 8)
+        world.music = ("Stairs", "Stairs", "Deep", "Deep", "Wrong")[depth]
+        _stairs_layout(world, cs, rng)
+        return world
+    return build
+
+
 BUILD = {
     "room": build_room, "nexus": build_nexus, "pink": build_pink,
     "numbers": build_numbers, "blocks": build_blocks, "stairs": build_stairs,
     "sand": build_sand, "faces": build_faces, "hands": build_hands,
     "checker": build_checker, "toys": build_toys, "neon": build_neon,
     "umbrellas": build_umbrellas, "stars": build_stars,
+    **{key: _stair_floor(DEPTH[key]) for key in STAIR_FLOORS},
 }
 
 

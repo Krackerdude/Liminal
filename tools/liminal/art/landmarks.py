@@ -661,3 +661,192 @@ def road_sign(pal: Palette, cols: int = 2, rows: int = 3) -> Canvas:
         art.rect(5, line, width, 2, (238, 244, 238))
     art.round_rect(w // 2 - 4, h - 3, 9, 3, 1, (100, 104, 108))
     return outline_in(art, (48, 72, 58))
+
+
+# --- hands: the procession ----------------------------------------------------
+
+def colossal_hand(pal: Palette, cols: int = 9, rows: int = 12) -> Canvas:
+    """A hand taller than the screen. You cannot see all of it at once."""
+    art = _art(cols, rows)
+    w, h = art.w, art.h
+    stone, light, dark = pal.form, pal.form_light, pal.form_dark
+    palm_top = int(h * 0.52)
+    art.round_rect(int(w * 0.16), palm_top, int(w * 0.68), h - palm_top, 14,
+                   stone)
+    finger_w = int(w * 0.13)
+    for index, frac in enumerate((0.40, 0.50, 0.46, 0.34)):
+        fx = int(w * 0.19) + index * (finger_w + 4)
+        top = int(palm_top - h * frac)
+        art.round_rect(fx, top, finger_w, palm_top - top + 14, finger_w // 2,
+                       stone)
+        art.rect(fx, top, 4, palm_top - top + 14, light)
+        art.rect(fx + finger_w - 4, top, 4, palm_top - top + 14, dark)
+        # a joint line, so it reads as a finger and not a column
+        art.rect(fx, top + int(h * 0.10), finger_w, 2, cooler(dark, 0.2))
+    art.round_rect(int(w * 0.74), palm_top + 8, finger_w, int(h * 0.26),
+                   finger_w // 2, stone)
+    art.rect(int(w * 0.16), palm_top, 5, h - palm_top, light)
+    art.rect(int(w * 0.80), palm_top, 5, h - palm_top, dark)
+    # an eye set into the palm, open
+    art.ellipse(w / 2, palm_top + h * 0.22, w * 0.19, h * 0.075, light)
+    art.ellipse(w / 2, palm_top + h * 0.22, w * 0.16, h * 0.055, (238, 240, 234))
+    art.blob(w / 2, palm_top + h * 0.22, h * 0.042, (48, 62, 74))
+    art.blob(w / 2, palm_top + h * 0.22, h * 0.018, (12, 14, 20))
+    return outline_in(art, cooler(dark, 0.35))
+
+
+def hand_ring(pal: Palette, cols: int = 10, rows: int = 8) -> Canvas:
+    """Nine hands in a circle, all of them pointing inward at nothing."""
+    art = _art(cols, rows)
+    w, h = art.w, art.h
+    for index in range(9):
+        angle = index * math.tau / 9
+        cx = w / 2 + math.cos(angle) * w * 0.36
+        cy = h / 2 + math.sin(angle) * h * 0.36
+        lean = -math.cos(angle) * 4
+        art.round_rect(int(cx - 7), int(cy - 4), 15, 18, 6, pal.form)
+        for finger in range(3):
+            fx = int(cx - 5 + finger * 5 + lean)
+            art.round_rect(fx, int(cy - 14 + abs(finger - 1) * 3), 4,
+                           16 - abs(finger - 1) * 3, 2, pal.form)
+        art.rect(int(cx - 7), int(cy - 4), 4, 18, pal.form_light)
+    art.ellipse(w / 2, h / 2, w * 0.13, h * 0.13, pal.void)
+    art.ellipse(w / 2, h / 2, w * 0.10, h * 0.10, pal.accent)
+    return outline_in(art, cooler(pal.form_dark, 0.35))
+
+
+def hand_holding_door(pal: Palette, cols: int = 6, rows: int = 9) -> Canvas:
+    """A hand coming out of the ground with a door held upright in it."""
+    art = _art(cols, rows)
+    w, h = art.w, art.h
+    art.round_rect(int(w * 0.14), int(h * 0.56), int(w * 0.72),
+                   int(h * 0.44), 12, pal.form)
+    for index in range(4):
+        fx = int(w * 0.16) + index * 13
+        art.round_rect(fx, int(h * 0.40), 10, int(h * 0.26), 5, pal.form)
+        art.rect(fx, int(h * 0.40), 3, int(h * 0.26), pal.form_light)
+    # the door, standing in the palm, ajar and lit
+    dx, dy, dw, dh = w // 2 - 16, int(h * 0.10), 32, int(h * 0.48)
+    art.round_rect(dx, dy, dw, dh, 14, pal.form_dark)
+    art.round_rect(dx + 3, dy + 3, dw - 6, dh - 3, 12, pal.accent_soft)
+    art.rect(dx + dw - 13, dy + 6, 9, dh - 8, warmer(pal.accent, 0.5))
+    art.blob(dx + dw - 8, dy + dh // 2, 2.2, pal.accent)
+    return outline_in(art, cooler(pal.form_dark, 0.35))
+
+
+# --- blocks: scale that will not hold still -----------------------------------
+
+def monolith_block(pal: Palette, color: RGB, cols: int = 10,
+                   rows: int = 10) -> Canvas:
+    """One block, the size of a district. It has a stud you can stand on."""
+    art = _art(cols, rows)
+    w, h = art.w, art.h
+    art.round_rect(0, 0, w, h, 10, color)
+    art.round_rect(0, 0, w, 10, 10, warmer(color, 0.30))
+    art.rect(0, h - 10, w, 10, cooler(color, 0.32))
+    art.rect(w - 10, 10, 10, h - 20, cooler(color, 0.18))
+    for row in range(3):
+        for col in range(3):
+            art.blob(w * (0.22 + col * 0.28), h * (0.24 + row * 0.26),
+                     w * 0.075, warmer(color, 0.50))
+            art.blob(w * (0.22 + col * 0.28) - 2, h * (0.24 + row * 0.26) - 2,
+                     w * 0.030, warmer(color, 0.75))
+    return outline_in(art, cooler(color, 0.5))
+
+
+def fractal_block(pal: Palette, color: RGB, cols: int = 7,
+                  rows: int = 7) -> Canvas:
+    """A block made of blocks made of blocks."""
+    art = _art(cols, rows)
+    w, h = art.w, art.h
+
+    def square(x, y, size, depth):
+        tone = warmer(color, 0.12 * depth) if depth % 2 else cooler(color,
+                                                                    0.10 * depth)
+        art.round_rect(int(x), int(y), int(size), int(size), max(1, int(size / 8)),
+                       tone)
+        art.round_rect(int(x), int(y), int(size), max(2, int(size / 6)),
+                       max(1, int(size / 8)), warmer(tone, 0.28))
+        if depth >= 3 or size < 16:
+            return
+        half = size / 2
+        for ox, oy in ((0, 0), (half, 0), (0, half), (half, half)):
+            if (ox or oy) and depth < 2:
+                square(x + ox + size / 16, y + oy + size / 16, half - size / 8,
+                       depth + 1)
+
+    square(0, 0, min(w, h), 0)
+    return outline_in(art, cooler(color, 0.5))
+
+
+# --- umbrellas: canopies as terrain -------------------------------------------
+
+def upturned_pool(pal: Palette, color: RGB, cols: int = 5,
+                  rows: int = 4) -> Canvas:
+    """An umbrella lying on its back, full of water it never caught."""
+    art = _art(cols, rows)
+    w, h = art.w, art.h
+    art.ellipse(w / 2, h * 0.58, w * 0.46, h * 0.36, color)
+    art.ellipse(w / 2, h * 0.56, w * 0.40, h * 0.30, cooler(color, 0.25))
+    art.ellipse(w / 2, h * 0.56, w * 0.34, h * 0.25, pal.accent_soft)
+    art.ellipse(w / 2 - w * 0.08, h * 0.50, w * 0.13, h * 0.07,
+                warmer(pal.accent_soft, 0.40))
+    for index in range(6):
+        angle = index * math.tau / 6
+        art.line(int(w / 2), int(h * 0.56),
+                 int(w / 2 + math.cos(angle) * w * 0.44),
+                 int(h * 0.58 + math.sin(angle) * h * 0.34),
+                 cooler(color, 0.35))
+    art.rect(w // 2 - 1, int(h * 0.10), 3, int(h * 0.40), pal.form_dark)
+    return outline_in(art, cooler(color, 0.45))
+
+
+def handle_grove(pal: Palette, cols: int = 6, rows: int = 5) -> Canvas:
+    """Handles, with no canopies on any of them."""
+    art = _art(cols, rows)
+    w, h = art.w, art.h
+    for index in range(7):
+        x = 5 + index * 13
+        top = 4 + (index % 3) * 9
+        art.rect(x, top, 4, h - top - 6, pal.form_dark)
+        art.rect(x, top, 2, h - top - 6, warmer(pal.form_dark, 0.3))
+        # the hook, curling the wrong way
+        art.rect(x - 5, top, 6, 3, pal.form_dark)
+        art.rect(x - 5, top, 3, 7, pal.form_dark)
+        art.blob(x + 2, h - 5, 3.4, cooler(pal.form_dark, 0.25))
+    return outline_in(art, cooler(pal.form_dark, 0.45))
+
+
+# --- stars: islands that are other places -------------------------------------
+
+def spiral_island(pal: Palette, cols: int = 8, rows: int = 7) -> Canvas:
+    """An island that is a single path coiled into itself."""
+    art = _art(cols, rows)
+    w, h = art.w, art.h
+    for step in range(240):
+        angle = step * 0.13
+        radius = 3 + step * (min(w, h) * 0.0017)
+        x = w / 2 + math.cos(angle) * radius
+        y = h / 2 + math.sin(angle) * radius * 0.82
+        art.blob(x, y, 4.6, pal.form)
+        art.blob(x, y - 1, 3.0, pal.accent_soft)
+    art.blob(w / 2, h / 2, 5, pal.accent)
+    return outline_in(art, cooler(pal.form_dark, 0.4))
+
+
+def inverted_island(pal: Palette, cols: int = 6, rows: int = 6) -> Canvas:
+    """The same island, upside down, with its sky underneath it."""
+    art = _art(cols, rows)
+    w, h = art.w, art.h
+    for row in range(int(h * 0.55)):
+        t = row / (h * 0.55)
+        span = int(w * 0.44 * (1 - (1 - t) ** 2))
+        if span > 0:
+            art.hline(row, w // 2 - span, w // 2 + span, pal.form_dark)
+    art.ellipse(w / 2, h * 0.58, w * 0.44, h * 0.15, pal.form)
+    art.ellipse(w / 2, h * 0.62, w * 0.42, h * 0.13, pal.accent_soft)
+    # a tree, hanging down
+    art.rect(w // 2 - 2, int(h * 0.66), 5, int(h * 0.16), pal.form_dark)
+    art.blob(w / 2, h * 0.88, w * 0.16, pal.accent_soft)
+    art.blob(w / 2 - w * 0.11, h * 0.82, w * 0.10, pal.accent_soft)
+    return outline_in(art, cooler(pal.form_dark, 0.4))

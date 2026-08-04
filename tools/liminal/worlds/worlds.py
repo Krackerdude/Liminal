@@ -346,16 +346,23 @@ def build_blocks(map_id: int) -> World:
     layout.shade_walls(m, fld, t)
 
     blocks = [cs.obj(f"block_{i}") for i in range(4)]
+    # Scale refuses to settle: some yards are furnished as toy rooms, some as
+    # a single enormous object, some are left almost bare.
     for index, zone in enumerate(yards):
+        layout.carpet(m, fld, zone, t, rng,
+                      ("full", "checker", "rings", "lattice",
+                       "border")[index % 5])
         # a tower in the middle of the yard, and small blocks around the edge
         stack = rng.randint(1, 3)
         for level in range(stack):
             gen.stamp(m, blocks[rng.randrange(4)], zone.cx - 1,
                       zone.cy - 1 + level * 3)
-        for spot in layout.zone_spots(fld, zone, rng, 3, w=1, h=1, pad=2):
+        for spot in layout.zone_spots(fld, zone, rng, 5, w=1, h=1, pad=1):
             gen.stamp(m, cs.obj("block_tiny"), *spot)
-        for spot in layout.zone_spots(fld, zone, rng, 1, w=2, h=2, pad=2):
+        for spot in layout.zone_spots(fld, zone, rng, 2, w=2, h=2, pad=1):
             gen.stamp(m, cs.obj("ball"), *spot)
+        layout.glow_floor(m, fld, zone, t, f"anim_{index % 3}",
+                          ring(zone, 5, inset=3))
 
     big = yards[len(yards) // 2]
     gen.stamp(m, cs.obj("block_huge"), big.cx - 2, big.cy - 2)
@@ -578,44 +585,115 @@ def build_faces(map_id: int) -> World:
 def build_hands(map_id: int) -> World:
     """THE FIELD.
 
-    theme      a monument nobody comes to, repeated until it is a landscape
-    feeling    standing in a graveyard for something that was never alive
-    layout     one long avenue with chambers off it, hands lining every wall
-    rule       the hands are planted in rows, and the rows are the architecture
+    theme      a procession nobody is walking, to somewhere nobody named
+    feeling    trespassing on a rite that has been going on without you
+    layout     one enormous avenue; ten courts opening off it, all different
+    rule       the courts interrupt the procession, and no two interrupt it
+               in the same way — one is empty, one is drowned, one is another
+               avenue, one is nothing but doors
     """
     world, cs, rng = _new("hands", map_id, 150, 128)
     m, t = world.map, cs.tiles
     fld = Field(m.width, m.height)
 
-    avenue = fld.carve(Zone("avenue", m.width // 2, m.height // 2, 138, 15,
-                            "rect"))
+    avenue_zone = fld.carve(Zone("avenue", m.width // 2, m.height // 2, 138, 17,
+                                 "rect"))
+    # Ten courts, each with its own shape, size and reason to exist.  The
+    # variety *is* the world; ten identical diamonds was the old failure.
+    court_plan = [
+        ("circle", "round", 25, 23), ("sunken", "rect", 19, 17),
+        ("raised", "octagon", 23, 19), ("inner_avenue", "rect", 33, 11),
+        ("benches", "diamond", 19, 17), ("water", "round", 27, 21),
+        ("doors", "rect", 21, 15), ("empty", "octagon", 29, 25),
+        ("dense", "round", 21, 19), ("narrow", "rect", 13, 27),
+    ]
     courts = []
-    for index in range(10):
-        cx = 12 + index * 14
-        cy = m.height // 2 + (22 if index % 2 else -22)
-        zone = fld.carve(Zone(f"court{index}", cx, cy, 20, 17, "diamond"))
+    for index, (name, shape, cw, ch) in enumerate(court_plan):
+        cx = 14 + index * 14
+        cy = m.height // 2 + (26 if index % 2 else -26)
+        zone = fld.carve(Zone(name, cx, cy, cw, ch, shape))
         fld.corridor((cx, m.height // 2), (cx, cy), width=3, bend="vh")
-        courts.append(zone)
+        courts.append((name, zone))
     fld.ensure_connected()
     fld.protect_chokepoints()
-    fld.build_walls(3)
+    fld.build_walls(4)
     layout.paint(m, fld, t, rng=rng)
     layout.shade_walls(m, fld, t)
 
-    # hands in two rows down the avenue, facing each other
-    for x in range(8, m.width - 8, 8):
-        for y in (avenue.cy - 5, avenue.cy + 2):
+    fur = Furnisher(m, fld, cs, rng)
+    # The avenue itself: two rows of hands facing each other the whole way,
+    # so walking it always feels like passing between something.
+    layout.carpet(m, fld, avenue_zone, t, rng, "stripe")
+    for x in range(8, m.width - 8, 9):
+        for y, pose in ((avenue_zone.cy - 6, "hand_up"),
+                        (avenue_zone.cy + 3, "hand_reach")):
             if fld.open_space(x, y, 3, 4, 0):
-                gen.stamp(m, cs.obj("hand_up" if y < avenue.cy else
-                                    "hand_reach"), x, y)
-    for zone in courts:
-        gen.stamp_centered(m, cs.obj("plinth"), zone.cx, zone.cy)
-        gen.stamp(m, cs.obj("hand_broken"), zone.cx - 1, zone.cy - 5)
+                gen.stamp(m, cs.obj(pose), x, y)
+    layout.glow_floor(m, fld, avenue_zone, t, "anim_0",
+                      [(x, avenue_zone.cy) for x in range(6, m.width, 13)])
+
+    marks = [k for k in cs.objects if k.startswith("mark_")]
+    for index, (name, zone) in enumerate(courts):
+        if name == "circle":
+            layout.carpet(m, fld, zone, t, rng, "rings")
+            if marks:
+                grid = cs.obj(marks[1 % len(marks)])       # the ring of hands
+                gen.stamp(m, grid, zone.cx - grid.cols // 2,
+                          zone.cy - grid.rows // 2)
+        elif name == "sunken":
+            # a darker floor, so it reads as being below the avenue
+            for dy in range(-zone.h // 2, zone.h // 2 + 1):
+                for dx in range(-zone.w // 2, zone.w // 2 + 1):
+                    if fld.is_floor(zone.cx + dx, zone.cy + dy):
+                        m.set_lower(zone.cx + dx, zone.cy + dy, t["ground_b"])
+            layout.carpet(m, fld, zone, t, rng, "checker")
+            fur.put("hand_broken", zone.cx, zone.cy, pad=1)
+        elif name == "raised":
+            layout.carpet(m, fld, zone, t, rng, "full")
+            fur.put("plinth", zone.cx, zone.cy, pad=1)
+            for px, py in ring(zone, 6, inset=4):
+                fur.put("hand_up", px, py, pad=1)
+        elif name == "inner_avenue":
+            # a court containing another avenue, at a quarter of the scale
+            layout.carpet(m, fld, zone, t, rng, "stripe")
+            for x in range(zone.cx - 13, zone.cx + 14, 5):
+                fur.put("hand_up", x, zone.cy - 3, pad=0)
+                fur.put("hand_reach", x, zone.cy + 3, pad=0)
+        elif name == "benches":
+            layout.carpet(m, fld, zone, t, rng, "lattice")
+            for px, py in avenue(zone, 3, spacing=5):
+                fur.put("plinth", px, py, pad=1)
+        elif name == "water":
+            for dy in range(-zone.h // 2, zone.h // 2 + 1):
+                for dx in range(-zone.w // 2, zone.w // 2 + 1):
+                    if fld.is_floor(zone.cx + dx, zone.cy + dy):
+                        m.set_lower(zone.cx + dx, zone.cy + dy, t["anim_1"])
+            fur.put("hand_reach", zone.cx, zone.cy, pad=1)
+        elif name == "doors":
+            layout.carpet(m, fld, zone, t, rng, "full")
+            if len(marks) > 2:
+                grid = cs.obj(marks[2])                    # the hand and door
+                gen.stamp(m, grid, zone.cx - grid.cols // 2,
+                          zone.cy - grid.rows // 2)
+        elif name == "empty":
+            # deliberately almost nothing, and the largest court of the ten
+            layout.carpet(m, fld, zone, t, rng, "border")
+        elif name == "dense":
+            layout.carpet(m, fld, zone, t, rng, "full")
+            for px, py in ring(zone, 8, inset=3) + corners(zone, 4):
+                fur.put("hand_up" if (px + py) % 2 else "hand_broken", px, py,
+                        pad=0)
+        else:   # narrow: a slot too tight for the procession to turn round in
+            layout.carpet(m, fld, zone, t, rng, "cross")
+            for px, py in avenue(zone, 2, spacing=6):
+                fur.put("hand_reach", px, py, pad=0)
+        layout.glow_floor(m, fld, zone, t, f"anim_{index % 3}",
+                          ring(zone, 4, inset=3))
 
     world.plan = fld
-    world.landmarks = {"avenue": [(avenue.cx, avenue.cy)],
-                       "courts": [(z.cx, z.cy) for z in courts]}
-    world.spawn = (avenue.cx, avenue.cy)
+    world.landmarks = {"avenue": [(avenue_zone.cx, avenue_zone.cy)],
+                       "courts": [(z.cx, z.cy) for _, z in courts]}
+    world.spawn = (avenue_zone.cx, avenue_zone.cy)
     world.npcs = ["walking_hand", "ring_keeper"]
     return world
 
@@ -823,11 +901,17 @@ def build_umbrellas(map_id: int) -> World:
     layout.shade_walls(m, fld, t)
 
     canopies = [cs.obj(f"umbrella_{i}") for i in range(3)]
+    fur = Furnisher(m, fld, cs, rng)
     for index, zone in enumerate(groves):
-        for spot in layout.zone_spots(fld, zone, rng, 5, w=3, h=4, pad=1):
+        layout.carpet(m, fld, zone, t, rng,
+                      ("rings", "full", "lattice", "checker")[index % 4])
+        for spot in layout.zone_spots(fld, zone, rng, 7, w=3, h=4, pad=1):
             gen.stamp(m, canopies[rng.randrange(3)], *spot)
-        for spot in layout.zone_spots(fld, zone, rng, 2, w=1, h=3, pad=1):
+        for spot in layout.zone_spots(fld, zone, rng, 3, w=1, h=3, pad=1):
             gen.stamp(m, cs.obj("umbrella_shut"), *spot)
+        # water standing in the canopies that fell over, and never evaporating
+        layout.glow_floor(m, fld, zone, t, "flow", ring(zone, 6, inset=4))
+        fur.put("mushroom", zone.cx, zone.cy, pad=1)
 
     world.plan = fld
     world.landmarks = {"groves": [(z.cx, z.cy) for z in groves]}
@@ -865,6 +949,9 @@ def build_stars(map_id: int) -> World:
     layout.shade_walls(m, fld, t)
 
     for index, zone in enumerate(islands):
+        layout.carpet(m, fld, zone, t, rng,
+                      ("rings", "full", "lattice", "corners")[index % 4])
+        layout.glow_floor(m, fld, zone, t, "flow", ring(zone, 5, inset=3))
         gen.stamp(m, cs.obj("pier"), zone.cx - 2, zone.cy + 3)
         if index % 2 == 0:
             gen.stamp(m, cs.obj("lamp"), zone.cx + 5, zone.cy - 3)

@@ -634,12 +634,17 @@ def _faces_layout(world: World, cs) -> None:
     # seam is solid; on one it is not.  Nothing about them differs between the
     # channels — the pocket, the seam and the sign at its mouth are cut here,
     # once, and every channel receives exactly the same five of them.
-    pockets, seams = _faces_pockets(fld, avenues_x, avenues_y)
+    pockets = _faces_pockets(fld, avenues_x, avenues_y)
 
     fld.ensure_connected()
     fld.protect_chokepoints()
     fld.build_walls(6)          # the green is a solid mass, not a treeline
     layout.seal_off(fld, pockets, thickness=3)
+    # Seams are cut *after* the walls, not before: the sealing pass and the
+    # boundary pass both add wood, and a seam measured against the field as it
+    # was mid-carve stops several tiles short of daylight — which reads, from
+    # inside the game, as a channel that simply does not open its yard.
+    seams = _faces_seams(fld, pockets, avenues_y)
     layout.paint(m, fld, t, rng=rng)
     layout.shade_walls(m, fld, t)
     for zone in pockets:
@@ -770,19 +775,9 @@ def _faces_dress(world: World, cs, channel: int) -> None:
             fur.put(props[(index + slot + 1) % len(props)], px, py, pad=1)
 
 
-def _faces_pockets(fld, avenues_x: list[int], avenues_y: list[int]
-                   ) -> tuple[list, list[list[tuple[int, int]]]]:
-    """Cut the five sealed yards and the seams that might reach them.
-
-    A seam is a one-tile run of *wall* from the yard out to the nearest
-    avenue.  It stays wall in the field, so every shared pass in the build —
-    connectivity repair, density fill, carpeting — treats it as solid and
-    leaves it alone; only the tiles written into the map differ per channel,
-    which is the whole trick.  The player is never walking through a door that
-    appeared.  They are walking through the part of the wood that this
-    reception does not render as wood.
-    """
-    pockets, seams = [], []
+def _faces_pockets(fld, avenues_x: list[int], avenues_y: list[int]) -> list:
+    """Cut the five yards into the middle of five blocks of the green."""
+    pockets = []
     for index, (bx, by, _channel) in enumerate(FACE_POCKETS):
         # the middle of the block bounded by two avenues, wrapped
         x0, x1 = avenues_x[bx], avenues_x[(bx + 1) % len(avenues_x)]
@@ -793,23 +788,42 @@ def _faces_pockets(fld, avenues_x: list[int], avenues_y: list[int]
         for dy in range(-zone.h // 2, zone.h // 2 + 1):
             for dx in range(-zone.w // 2, zone.w // 2 + 1):
                 fld.set(cx + dx, cy + dy, FLOOR_ALT)
+        zone.shape = "rect"
+        zone.name = f"{FACE_POCKET_NAMES[index]}|{y0}|{y1}"
         pockets.append(zone)
+    return pockets
 
-        # the seam: straight up or down to whichever avenue is nearer, so it
-        # arrives at a street rather than at another block's interior
-        up = (cy - y0) % fld.h
-        down = (y1 - cy) % fld.h
+
+def _faces_seams(fld, pockets: list, avenues_y: list[int]
+                 ) -> list[list[tuple[int, int]]]:
+    """The one-tile runs of wall that might, on one channel, be a way in.
+
+    A seam stays wall in the field, so every shared pass in the build —
+    connectivity repair, density fill, carpeting — treats it as solid and
+    leaves it alone; only the tiles written into the map differ per channel,
+    which is the whole trick.  The player is never walking through a door that
+    appeared.  They are walking through the part of the wood that this
+    reception does not render as wood.
+
+    Each one runs straight out of its yard toward whichever avenue is nearer
+    and stops on the first cell of real street, so the last tile in the list
+    is where a person walking down that street is standing when they look at
+    it — which is exactly where the sign goes.
+    """
+    seams = []
+    for zone in pockets:
+        _name, y0, y1 = zone.name.split("|")
+        up = (zone.cy - int(y0)) % fld.h
+        down = (int(y1) - zone.cy) % fld.h
         step = -1 if up <= down else 1
-        run = []
-        for offset in range(zone.h // 2, min(up, down) + 6):
-            cell = (cx % fld.w, (cy + step * offset) % fld.h)
+        run: list[tuple[int, int]] = []
+        for offset in range(zone.h // 2 + 1, min(up, down) + 8):
+            cell = (zone.cx % fld.w, (zone.cy + step * offset) % fld.h)
             run.append(cell)
-            # stop the moment the seam has reached real street: the last cell
-            # is the one the player is standing on when they look at it
-            if fld.is_floor(*cell) and len(run) > 2:
+            if fld.is_floor(*cell):
                 break
         seams.append(run)
-    return pockets, seams
+    return seams
 
 
 def build_hands(map_id: int) -> World:

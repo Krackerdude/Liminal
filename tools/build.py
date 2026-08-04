@@ -37,7 +37,7 @@ from liminal import db, state, validate                          # noqa: E402
 from liminal.art import cast, menu, ui                           # noqa: E402
 from liminal.art.canvas import save_indexed                      # noqa: E402
 from liminal.maps import MapInfo, build_treemap                  # noqa: E402
-from liminal.worlds import events, systems, worlds as W          # noqa: E402
+from liminal.worlds import events, grove, systems, worlds as W    # noqa: E402
 
 GAME = ROOT / "game"
 
@@ -191,6 +191,15 @@ def author_events(worlds: dict[str, W.World]) -> int:
     for key in W.STAIR_FLOORS:
         rng = random.Random(zlib.crc32(f"events:{key}".encode()))
         events.floor_events(worlds[key], worlds, rng)
+    # The grove's other three channels are layers too, but of a different kind
+    # — not further in, only differently received — so they get arrival and
+    # the same door out, and then all four go through the grove's own system.
+    for key in W.FACE_CHANNELS[1:]:
+        rng = random.Random(zlib.crc32(f"events:{key}".encode()))
+        grove.channel_layer_events(worlds[key], worlds, rng)
+    for key in W.FACE_CHANNELS:
+        rng = random.Random(zlib.crc32(f"grove:{key}".encode()))
+        grove.grove_events(worlds[key], worlds, rng)
     return sum(len(worlds[k].map.events) for k in W.WORLD_ORDER)
 
 

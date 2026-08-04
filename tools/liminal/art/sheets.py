@@ -711,13 +711,15 @@ def build_faces4() -> ChipsetBuild:
     cb = ChipsetBuilder("faces4", pal)
 
     # crosshatch where the grass should be: the mark that means "vegetation"
+    # Kept dark and low-contrast on purpose: the roads on this channel are
+    # full-brightness colour bars, and if the ground is loud too the street
+    # plan stops being readable at exactly the moment the picture claims to
+    # have become nothing but a diagram.
     ground = Canvas(TILE, TILE, pal.ground)
-    for offset in range(-TILE, TILE * 2, 5):
+    for offset in range(-TILE, TILE * 2, 7):
         ground.line(offset, 0, offset + TILE, TILE - 1, pal.ground_b)
-        ground.line(offset + TILE, 0, offset, TILE - 1,
-                    blend(pal.ground_b, pal.void, 0.4))
     ground_b = Canvas(TILE, TILE, pal.ground_b)
-    ground_b.checker(pal.ground, pal.ground_b, 4)
+    ground_b.checker(pal.ground, pal.ground_b, 8)
     _basics(cb, pal, ground, ground_b, world="faces4")
 
     # the road, as bars running along it

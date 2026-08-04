@@ -151,7 +151,7 @@ PALETTES: dict[str, Palette] = {
     "faces2": Palette(
         ground=(96, 158, 92), ground_b=(78, 138, 78),
         form=(112, 104, 62), form_light=(150, 152, 78), form_dark=(52, 66, 40),
-        accent=(236, 244, 176), accent_soft=(56, 122, 74),
+        accent=(176, 214, 118), accent_soft=(56, 122, 74),
         void=(20, 46, 28),
     ),
     # OFF-COLOUR.  The colour is draining out of the signal from the greens
@@ -167,7 +167,7 @@ PALETTES: dict[str, Palette] = {
     # it has nothing to send, with the town still faintly legible underneath.
     # Test-card red, test-card white, and the black between the bars.
     "faces4": Palette(
-        ground=(66, 34, 38), ground_b=(52, 26, 32),
+        ground=(42, 20, 24), ground_b=(30, 15, 19),
         form=(206, 58, 54), form_light=(242, 128, 106), form_dark=(96, 22, 28),
         accent=(240, 236, 226), accent_soft=(74, 128, 148),
         void=(18, 10, 14),

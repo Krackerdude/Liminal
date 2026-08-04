@@ -107,6 +107,10 @@ VR_FALLS = 19
 VR_CHASE = 50
 VR_CHANNEL = 51
 VR_CHASE_FROM = 52          # which junction the current step was started at
+VR_RING_DIR = 53            # which way the ring came from: 0 up 1 right 2 down 3 left
+VR_RING_X = 54              # where you were standing when it started
+VR_RING_Y = 55
+VR_RING_WAIT = 56           # seconds left before the next ring
 
 # The four things the grove has that can be carried, one found on each
 # channel and every one of them used on a different channel from the one that
@@ -131,6 +135,22 @@ REG_MAX = (20, 9, 9, 9, 9, 4)
 
 # --- names, for the database editor lists ------------------------------------
 
+def _dense(names: dict[int, str]) -> dict[int, str]:
+    """Fill every gap between 1 and the highest id in use.
+
+    The allocation above is deliberately spaced out — leaving room beside each
+    group is what stops a new switch from being wedged into somebody else's
+    range — but the database is a list, not a map, and a list with holes in it
+    is a list whose length is not its highest index.  Anything allocated past
+    that length is then addressing storage the engine has no reason to have
+    made.  Nothing is saved by shipping the holes, so they are filled.
+    """
+    if not names:
+        return names
+    return {index: names.get(index, "-") for index in range(1, max(names) + 1)}
+
+
+
 def switch_names(world_names: list[str]) -> dict[int, str]:
     names: dict[int, str] = {}
     for key, index in SW_HAS_EFFECT.items():
@@ -154,7 +174,7 @@ def switch_names(world_names: list[str]) -> dict[int, str]:
                   SW_FACE_SEED: "the seed", SW_FACE_BULB: "the bulb",
                   SW_FACE_MAST: "the compound", SW_FACE_ENDED: "under the mast",
                   SW_FACE_HEARD: "the receiver"})
-    return names
+    return _dense(names)
 
 
 def variable_names(world_names: list[str]) -> dict[int, str]:
@@ -173,5 +193,7 @@ def variable_names(world_names: list[str]) -> dict[int, str]:
     for index, label in enumerate(REG_NAMES):
         names[VR_REG_BASE + index] = label
     names.update({VR_CHASE: "the chase", VR_CHANNEL: "the channel",
-                  VR_CHASE_FROM: "chased from"})
-    return names
+                  VR_CHASE_FROM: "chased from", VR_RING_DIR: "the ring",
+                  VR_RING_X: "ring x", VR_RING_Y: "ring y",
+                  VR_RING_WAIT: "until the ring"})
+    return _dense(names)

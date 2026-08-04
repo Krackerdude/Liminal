@@ -1615,17 +1615,21 @@ def wall_band(pal: Palette, motif: str, *, face: bool = False,
             art.line(x0, y0, x1, y1, blend(dark, light, 0.35))
         art.rect(7, 10, 3, 6, base)
     elif motif == "bars":
-        # Colour bars, stood on end.  A boundary that is not made of anything:
-        # it is simply where the picture stops carrying the town.
+        # Where the picture stops carrying the town.  Almost entirely black —
+        # the roads on this channel are full-brightness colour bars, and a
+        # boundary that shouts louder than the streets turns the whole map
+        # into noise.  What is left of the bars is a narrow strip along the
+        # bottom edge, the way a test card runs out at the frame.
+        art.px[:, :] = pal.void
+        art.dither(blend(pal.void, dark, 0.5), 0.35, BAYER8)
         widths = (3, 2, 3, 2, 3, 3)
         tones = (ink, blend(ink, base, 0.5), base, dark,
                  blend(base, dark, 0.5), light)
         x = 0
         for width, tone in zip(widths, tones):
-            art.rect(x, 0, width, TILE, tone)
+            art.rect(x, TILE - 4, width, 3, blend(tone, pal.void, 0.45))
             x += width
-        art.rect(0, 12, TILE, 4, blend(dark, pal.void, 0.5))
-        art.rect(0, 12, TILE, 1, ink)
+        art.hline(TILE - 5, 0, TILE - 1, blend(base, pal.void, 0.5))
     else:
         art.dither(light, 0.4, BAYER8)
 

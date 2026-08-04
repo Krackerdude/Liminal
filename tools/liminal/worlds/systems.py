@@ -31,10 +31,11 @@ from ..db import TRIGGER_CALL, TRIGGER_PARALLEL, CommonEvent
 from ..state import (SW_DEEP_UNLOCKED, SW_EFFECT_ACTIVE, SW_EYE_ACTIVE,
                      SW_FOLLOWER, SW_HAS_EFFECT, SW_MENU_BUSY, SW_MENU_OPEN,
                      SW_OVERLAY_ON, SW_QUIET_ACTIVE, SW_TITLE_CHANGED,
-                     SW_WOKE_ONCE, VR_DREAM_DISTANCE, VR_EFFECTS_FOUND,
+                     SW_WOKE_ONCE, SW_WORLD_STATE_BASE, VR_DREAM_DISTANCE, VR_EFFECTS_FOUND,
                      VR_EQUIPPED, VR_LAST_X, VR_LAST_Y, VR_LOOPS,
                      VR_MENU_CURSOR, VR_PREV_WORLD, VR_ROLL, VR_SCRATCH,
-                     VR_KEY, VR_STEPS, VR_STILL, VR_TEMP_X, VR_TEMP_Y,
+                     VR_KEY, VR_REG_BASE, REG_MAX, VR_STEPS, VR_STILL,
+                     VR_TEMP_X, VR_TEMP_Y,
                      VR_VISITS_BASE, VR_WORLD)
 
 # Common event numbers.  Referenced by name everywhere else.
@@ -90,6 +91,11 @@ def boot() -> CommonEvent:
     s.var(VR_EFFECTS_FOUND, 0)
     s.var(VR_WORLD, 1)
     s.switch(SW_WOKE_ONCE, False)
+    # The number world starts with everything present and nothing turned
+    # down; every register is at its own maximum, which is the state a world
+    # is in before anybody has counted it.
+    for reg, top in enumerate(REG_MAX):
+        s.var(VR_REG_BASE + reg, top)
     s.tint(100, 100, 100, 100, 0, False)
     # The pace of the whole game, set once and deliberately.  RPG Maker's
     # default is 4, one tile roughly every four frames; the worlds here are a
@@ -133,6 +139,16 @@ def arrival(worlds) -> CommonEvent:
             s.weather(*(air.weather or (0, 0)))
             if air.drift:
                 s.pan(*air.drift, wait=False)
+            # A world its own mechanic has permanently changed is graded,
+            # scored and filmed differently from then on, on every visit for
+            # the rest of the save.  Nothing announces it; it is simply how
+            # the place is now.
+            with s.if_switch(SW_WORLD_STATE_BASE + index - 1):
+                s.tint(58, 62, 60, 24, 10, False)
+                s.bgm("Wrong", fadein=20, volume=80)
+                s.show_picture(PIC_OVERLAY, "StaticB", 160, 120,
+                               transparency=58, use_transparent_color=True,
+                               effect=2, power=9)
             s.var(VR_VISITS_BASE + index - 1, 1, op=1)
     # entering anywhere resets the sense of having gone in a circle
     s.var(VR_LOOPS, 0)

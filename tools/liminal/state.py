@@ -54,6 +54,11 @@ SW_WORLD_SECRET_BASE = 60   # 60 + world index
 # toy stays wound, a raised tide stays raised.  Two hundred is generous now
 # and was not: the redesign that made these load-bearing pushed the count
 # past two hundred on its first build.
+# A world that has been permanently changed by its own mechanic.  Separate
+# from "world memory", which records that something happened; this records
+# that the place is *different now* and stays different.
+SW_WORLD_STATE_BASE = 80    # 80 + world index
+
 SW_INTERACT_BASE = 100
 SW_INTERACT_COUNT = 320
 
@@ -78,10 +83,21 @@ VR_TEMP_Y = 15
 # read that lands in a variable somebody else is using is a keypress that never
 # happened.
 VR_KEY = 16
+# The number the counters in the number world are currently set to.
+VR_SET_NUMBER = 17
 # Frames since the player last changed tile.  Standing still is the only
 # input this game has that is not walking, so several worlds read it.
 VR_STILL = 17
 VR_VISITS_BASE = 20         # 20 + world index: times you have entered it
+
+# The number world's registers.  Six independent numbers, each set separately
+# on its own plinths, each editing a different property of the map.  The state
+# of that world is the whole tuple, not any one of them.
+VR_REG_BASE = 40
+REG_US, REG_FAR, REG_LIGHT, REG_WAYS, REG_AGO, REG_YOU = range(6)
+REG_NAMES = ("how many of us", "how far", "how bright",
+             "how many ways", "how long ago", "how many of you")
+REG_MAX = (20, 9, 9, 9, 9, 4)
 
 # --- names, for the database editor lists ------------------------------------
 
@@ -100,6 +116,8 @@ def switch_names(world_names: list[str]) -> dict[int, str]:
     for index in range(SW_INTERACT_COUNT):
         names[SW_INTERACT_BASE + index] = f"used {index:03d}"
     for index, world in enumerate(world_names):
+        names[SW_WORLD_STATE_BASE + index] = f"{world} altered"
+    for index, world in enumerate(world_names):
         names[SW_WORLD_MEMORY_BASE + index] = f"{world} changed"
         names[SW_WORLD_SECRET_BASE + index] = f"{world} secret"
     return names
@@ -112,8 +130,11 @@ def variable_names(world_names: list[str]) -> dict[int, str]:
         VR_WORLD: "world", VR_SCRATCH: "scratch", VR_MENU_CURSOR: "menu cursor",
         VR_ROLL: "roll", VR_STEPS: "steps", VR_EFFECTS_FOUND: "effects found",
         VR_MENU_SLOT: "menu slot", VR_PREV_WORLD: "previous world",
-        VR_TEMP_X: "temp x", VR_TEMP_Y: "temp y", VR_KEY: "key", VR_STILL: "still",
+        VR_TEMP_X: "temp x", VR_TEMP_Y: "temp y", VR_KEY: "key",
+        VR_SET_NUMBER: "the number", VR_STILL: "still",
     }
     for index, world in enumerate(world_names):
         names[VR_VISITS_BASE + index] = f"visits {world}"
+    for index, label in enumerate(REG_NAMES):
+        names[VR_REG_BASE + index] = label
     return names

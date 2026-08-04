@@ -193,6 +193,15 @@ class Script:
                 self.raw(SHOW_MESSAGE_2, [], extra)
         return self
 
+    def msg_value(self, label: str, var_id: int) -> "Script":
+        r"""A message line that prints a variable's current value.
+
+        RPG Maker substitutes ``\v[n]`` at display time, so the number shown
+        is whatever it is when the player reads it rather than whatever it was
+        when the event was written.
+        """
+        return self.msg(f"{label} \\v[{var_id}]")
+
     def msg_options(self, position: int = MSG_BOTTOM, *, fixed: bool = False,
                     transparent: bool = False, dont_hide_hero: bool = False) -> "Script":
         return self.raw(MESSAGE_OPTIONS,

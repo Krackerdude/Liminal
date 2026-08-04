@@ -105,3 +105,45 @@ physically engage with that place that exists nowhere else in the game.**
 
 The test: if you removed the mechanic and the world still played identically
 apart from a few locked doors, it was a puzzle, not a system.
+
+---
+
+## The sequencing rule
+
+The interaction rule above says every world needs a verb. This says what the
+verb has to be *worth*.
+
+**Reference points: *Please, Don't Touch Anything*, *Blue Prince*, *House.wad*,
+and the deep easter eggs in Call of Duty Zombies.** What those share is not
+difficulty — it is that the world is holding information the player has to
+assemble themselves, across the whole space, with nothing acknowledging that
+they are doing it.
+
+So:
+
+**Sequence over switches.** A mechanic that opens one door when you press one
+thing is a lock. A mechanic worth building has an *order* to it — do these in
+this sequence, in this state, and something happens that would not otherwise.
+The order is discoverable somewhere in the world, never in a menu.
+
+**Hints live in the environment.** Scratched into a wall, spelled out by where
+things are standing, audible only in one place, visible only in one state of
+the map. The player finds the instruction, not the tutorial.
+
+**Reward the ones who go the extra mile.** Most players should finish a world
+having used its verb casually and seen most of it. The player who pays close
+attention gets somewhere the casual one never knew existed. Both are correct
+outcomes; only the second is earned.
+
+**Some consequences are permanent, and some of those are terrible.** A world is
+allowed to be worse forever because of something you did. It must never warn
+you first, and it must never be undoable. The game does not have a bad ending
+to reach — it has states you can put it into and cannot take back.
+
+**The tone is allowed to break.** A world that has been childlike for an hour
+may stop being childlike. Palette, overlay, music and residents all move
+together when it does, and nothing comments on it.
+
+**Hide things properly.** If every instance of a mechanic is in plain sight, the
+mechanic has no depth. Some should be somewhere nobody would look, and finding
+one should feel like the world made a mistake.

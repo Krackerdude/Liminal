@@ -27,6 +27,7 @@ are how they get built.
 | Subworlds | **34** |
 | Secrets per subworld | **1–5** |
 | Subworld music | **one generated track each**, 34 additional tracks |
+| World layers | **18 extra maps**, and they are *not* subworlds |
 
 **Uneven NPC density is a requirement, not an accident.** Some worlds have
 none at all and are meant to feel emptied rather than unfinished. Others are
@@ -40,6 +41,19 @@ be inside than anything above it — mechanics that break the rules the main
 worlds established, visuals that do not read as places, features that are
 genuinely frightening rather than merely strange. If a subworld could be
 described as "the X world but smaller", it is cut.
+
+**Layers are not subworlds.** Four worlds need more maps than they have, and
+they are additional *states or floors of the same world*, reached by that
+world's own verb and sharing its identity, music family and cast:
+
+| world | layers | what they are |
+|---|---|---|
+| stairs | 5 | floors, each more corrupted than the last, reached by falling in a particular order |
+| umbrellas | 5 | planes, ascending, the imagery coming apart the higher you get |
+| faces | 4 | broadcast states of one map, each a different palette with its own residents and items |
+| neon | 4 | the insides of murals, entered by standing on them |
+
+A subworld is secret, hostile and unrelated. A layer is the world continuing.
 
 **Reaching a subworld is never signposted.** No door is drawn as a door. The
 route is a behaviour, a condition, or a coincidence — not an exit.

@@ -276,7 +276,12 @@ WORLD_CAST: dict[str, list[str]] = {
 BESPOKE: dict[str, dict] = {"pink": kin.PINK, "numbers": kin.NUMBERS,
                             "blocks": kin.BLOCKS,
                             "toys": kin.TOYS,
-                            "neon": kin.NEON}
+                            "neon": kin.NEON,
+                            "checker": kin.CHECKER,
+                            "sand": kin.SAND,
+                            "faces": kin.FACES,
+                            "umbrellas": kin.UMBRELLAS,
+                            "stars": kin.STARS}
 
 
 def _sheets() -> dict[str, list[tuple[str, object]]]:

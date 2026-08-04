@@ -341,6 +341,15 @@ class Script:
         """
         return self.raw(STORE_TERRAIN_ID, [1, x_var, y_var, var_id])
 
+    def teleport_var(self, map_id: int, x_var: int, y_var: int) -> "Script":
+        """Teleport to coordinates held in variables (RPG Maker 2000 form).
+
+        The engine reads the destination from the three variables *starting*
+        at ``map_var``, so they have to be consecutive; this writes the map id
+        into the first of them first.
+        """
+        return self.raw(TELEPORT, [map_id, x_var, y_var, 0, 1])
+
     def memorize_location(self, map_var: int, x_var: int, y_var: int) -> "Script":
         return self.raw(MEMORIZE_LOCATION, [map_var, x_var, y_var])
 

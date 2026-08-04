@@ -82,3 +82,26 @@ After generating any world, render it and ask, honestly:
 > boundaries and a path of discovery?
 
 If the answer is the first one, it does not ship.
+
+---
+
+## The interaction rule
+
+**Every world must contain one core interactive system that is deeply tied to
+its theme.**
+
+That system has to be usable *throughout* the world, not confined to one
+puzzle room. It should encourage curiosity, experimentation and traversal by
+letting the player interact with the environment over and over in ways that
+mean something. Objects belonging to the world's theme should all respond to
+it consistently, so the place reads as cohesive and alive.
+
+It should unlock alternate routes, reveal hidden spaces, change how the
+residents behave, transform scenery, or create new interactions — and it must
+never feel like a puzzle-game mechanic, and never need a tutorial.
+
+**When a player enters a new world they should immediately find a new way to
+physically engage with that place that exists nowhere else in the game.**
+
+The test: if you removed the mechanic and the world still played identically
+apart from a few locked doors, it was a puzzle, not a system.

@@ -28,19 +28,27 @@ from ..maps import (ANIM_CONTINUOUS, ANIM_FIXED_GRAPHIC, DIR_DOWN, DIR_LEFT,
                     DIR_RIGHT, DIR_UP, LAYER_BELOW, LAYER_SAME, MOVE_CUSTOM,
                     MOVE_RANDOM, MOVE_STATIONARY, TRIGGER_ACTION,
                     TRIGGER_AUTO, TRIGGER_PARALLEL, TRIGGER_TOUCH, Page)
-from ..state import (SW_DEEP_UNLOCKED, SW_EARS_ACTIVE, SW_EYE_ACTIVE,
+from ..state import (SW_INTERACT_BASE, SW_DEEP_UNLOCKED, SW_EARS_ACTIVE, SW_EYE_ACTIVE,
                      SW_FOLLOWER, SW_HAS_EFFECT, SW_KEY_ACTIVE,
                      SW_LANTERN_ACTIVE, SW_MENU_OPEN, SW_POLE_ACTIVE,
                      SW_QUIET_ACTIVE, SW_STATIC_ACTIVE, SW_STONE_ACTIVE,
                      SW_TALL_ACTIVE, SW_WOKE_ONCE, SW_WORLD_MEMORY_BASE,
                      SW_WORLD_SECRET_BASE, VR_DREAM_DISTANCE, VR_EQUIPPED,
                      VR_LOOPS, VR_ROLL, VR_SCRATCH, VR_VISITS_BASE, VR_WORLD)
-from . import atmosphere
+from . import atmosphere, interact
 from . import systems as sys
 from .cast_lookup import charset_slot
 from ..art.cast import WORLD_CAST
 from .layout import solid_ids
 from .worlds import DREAM_ORDER, POPULATION, WORLD_ORDER, World
+
+# Interactables draw as the world's own door graphic at a small size, which
+# reads as "part of the architecture" rather than as an item lying about.
+_ICON_SHEET, _ICON_SLOT = "Blank", 0
+
+# Each interactable owns a switch for the whole playthrough; this hands them
+# out in order across every world.
+_interact_next = [0]
 
 EFFECT_INDEX = {key: index for index, (key, _, _) in enumerate(EFFECTS, start=1)}
 
@@ -447,6 +455,37 @@ def dream_events(world: World, worlds: dict[str, World],
                 move=MOVE_STATIONARY if still else MOVE_RANDOM,
                 speed=2 + (resident % 3 == 0),
                 quiet_line=NPC_QUIET.get(name)))
+
+    # -- this world's own verb, everywhere in it.
+    system = interact.of(key)
+    if system is not None:
+        zones = list(getattr(world.plan, "zones", []) or [])
+        base = SW_INTERACT_BASE + _interact_next[0]
+        for n in range(system.count):
+            # spread across *all* the zones, not the occupied third: the
+            # mechanic has to be in the empty rooms too or the empty rooms
+            # have nothing in them to find.
+            if zones:
+                ix, iy = _near(world, zones[n % len(zones)], rng)
+            else:
+                ix, iy = world.spot(rng, pad=2)
+            switch = base + n
+            untouched = Script()
+            untouched.se(system.sound, volume=40)
+            untouched.msg(*system.before)
+            untouched.se(system.done, volume=55)
+            untouched.switch(switch, True)
+            used = Script()
+            used.se(system.sound, volume=28)
+            used.msg(*system.after)
+            _place(world, f"{system.thing} {n}", ix, iy, [
+                Page(script=untouched, trigger=TRIGGER_ACTION,
+                     charset=_ICON_SHEET, charset_index=_ICON_SLOT),
+                Page(script=used, trigger=TRIGGER_ACTION, switch_a=switch,
+                     charset=_ICON_SHEET, charset_index=_ICON_SLOT,
+                     translucent=True),
+            ])
+        _interact_next[0] += system.count
 
     # -- hidden layer: things that need a condition.  Phase 6 fills this in;
     # until then a world simply has no conditional secrets rather than

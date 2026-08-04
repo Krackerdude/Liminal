@@ -24,7 +24,7 @@ a die was thrown.
 from __future__ import annotations
 
 from ..art.menu import EFFECTS, icon_position
-from . import atmosphere
+from . import atmosphere, mechanics
 from ..cmds import (MSG_BOTTOM, MSG_MIDDLE, MSG_TOP, MV_SPEED_UP, PLAYER,
                     Script)
 from ..db import TRIGGER_CALL, TRIGGER_PARALLEL, CommonEvent
@@ -34,8 +34,8 @@ from ..state import (SW_DEEP_UNLOCKED, SW_EFFECT_ACTIVE, SW_EYE_ACTIVE,
                      SW_WOKE_ONCE, VR_DREAM_DISTANCE, VR_EFFECTS_FOUND,
                      VR_EQUIPPED, VR_LAST_X, VR_LAST_Y, VR_LOOPS,
                      VR_MENU_CURSOR, VR_PREV_WORLD, VR_ROLL, VR_SCRATCH,
-                     VR_KEY, VR_STEPS, VR_TEMP_X, VR_TEMP_Y, VR_VISITS_BASE,
-                     VR_WORLD)
+                     VR_KEY, VR_STEPS, VR_STILL, VR_TEMP_X, VR_TEMP_Y,
+                     VR_VISITS_BASE, VR_WORLD)
 
 # Common event numbers.  Referenced by name everywhere else.
 CE_BOOT = 1
@@ -528,16 +528,33 @@ def atmosphere_watch(worlds) -> CommonEvent:
     s.var_from_var(VR_SCRATCH, VR_LAST_X, op=2)
     s.var_from_var(VR_KEY, VR_TEMP_Y)
     s.var_from_var(VR_KEY, VR_LAST_Y, op=2)
+    # Standing still is the only input this game has that is not walking, so
+    # several worlds read it.  The counter climbs while the tile under the
+    # player does not change and resets the moment it does.
+    s.var_from_var(VR_KEY, VR_TEMP_X)
+    s.var_from_var(VR_KEY, VR_LAST_X, op=2)
+    with s.if_var(VR_KEY, 0):
+        s.var_from_var(VR_KEY, VR_TEMP_Y)
+        s.var_from_var(VR_KEY, VR_LAST_Y, op=2)
+        with s.if_var(VR_KEY, 0):
+            s.var(VR_STILL, 2, op=1)
+    with s.if_var(VR_KEY, 0, 1):
+        s.var(VR_STILL, 0)
+
     s.store_terrain(VR_SCRATCH, VR_TEMP_X, VR_TEMP_Y)
 
     for index, key in enumerate(WORLD_ORDER, start=1):
         air = atmosphere.of(key)
+        rule = mechanics.RULES.get(key)
         with s.if_var(VR_WORLD, index):
             for terrain, sound in enumerate(air.steps, start=1):
                 with s.if_var(VR_SCRATCH, terrain):
                     s.se(sound, volume=air.step_volume)
             if air.shake:
                 s.shake(air.shake[0], air.shake[1], 2, wait=False)
+            # and whatever this world alone is allowed to do
+            if rule is not None:
+                rule(s)
     s.wait(2)
     return CommonEvent(CE_ATMOSPHERE, "atmosphere", TRIGGER_PARALLEL, None, s)
 

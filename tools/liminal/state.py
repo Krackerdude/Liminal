@@ -49,6 +49,13 @@ SW_DEEP_UNLOCKED = 39
 SW_WORLD_MEMORY_BASE = 40   # 40 + world index
 SW_WORLD_SECRET_BASE = 60   # 60 + world index
 
+# Every interactive object in the game owns one switch, so its state persists
+# for the whole playthrough: a brick pulled out of a wall stays out, a wound
+# toy stays wound, a raised tide stays raised.  Two hundred is generous now
+# and will not be later.
+SW_INTERACT_BASE = 100
+SW_INTERACT_COUNT = 200
+
 # --- variables ---------------------------------------------------------------
 VR_EQUIPPED = 1             # 0 none, else the effect's number
 VR_DREAM_DISTANCE = 2       # total tiles walked across every loop, ever
@@ -70,6 +77,9 @@ VR_TEMP_Y = 15
 # read that lands in a variable somebody else is using is a keypress that never
 # happened.
 VR_KEY = 16
+# Frames since the player last changed tile.  Standing still is the only
+# input this game has that is not walking, so several worlds read it.
+VR_STILL = 17
 VR_VISITS_BASE = 20         # 20 + world index: times you have entered it
 
 # --- names, for the database editor lists ------------------------------------
@@ -86,6 +96,8 @@ def switch_names(world_names: list[str]) -> dict[int, str]:
     })
     for key, index in SW_EFFECT_ACTIVE.items():
         names[index] = f"{key} active"
+    for index in range(SW_INTERACT_COUNT):
+        names[SW_INTERACT_BASE + index] = f"used {index:03d}"
     for index, world in enumerate(world_names):
         names[SW_WORLD_MEMORY_BASE + index] = f"{world} changed"
         names[SW_WORLD_SECRET_BASE + index] = f"{world} secret"
@@ -99,7 +111,7 @@ def variable_names(world_names: list[str]) -> dict[int, str]:
         VR_WORLD: "world", VR_SCRATCH: "scratch", VR_MENU_CURSOR: "menu cursor",
         VR_ROLL: "roll", VR_STEPS: "steps", VR_EFFECTS_FOUND: "effects found",
         VR_MENU_SLOT: "menu slot", VR_PREV_WORLD: "previous world",
-        VR_TEMP_X: "temp x", VR_TEMP_Y: "temp y", VR_KEY: "key",
+        VR_TEMP_X: "temp x", VR_TEMP_Y: "temp y", VR_KEY: "key", VR_STILL: "still",
     }
     for index, world in enumerate(world_names):
         names[VR_VISITS_BASE + index] = f"visits {world}"

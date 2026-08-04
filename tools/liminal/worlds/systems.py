@@ -24,7 +24,8 @@ a die was thrown.
 from __future__ import annotations
 
 from ..art.menu import EFFECTS, icon_position
-from ..cmds import (MSG_BOTTOM, MSG_MIDDLE, MSG_TOP, PLAYER, Script)
+from ..cmds import (MSG_BOTTOM, MSG_MIDDLE, MSG_TOP, MV_SPEED_UP, PLAYER,
+                    Script)
 from ..db import TRIGGER_CALL, TRIGGER_PARALLEL, CommonEvent
 from ..state import (SW_DEEP_UNLOCKED, SW_EFFECT_ACTIVE, SW_EYE_ACTIVE,
                      SW_FOLLOWER, SW_HAS_EFFECT, SW_MENU_BUSY, SW_MENU_OPEN,
@@ -67,7 +68,12 @@ EFFECT_KEYS = [key for key, _, _ in EFFECTS]
 # --- boot --------------------------------------------------------------------
 
 def boot() -> CommonEvent:
-    """Runs once at the very start, then switches itself off."""
+    """Runs once at the very start, then never again.
+
+    Called by the first arrival event to run on a new game, which recognises
+    itself by ``VR_WORLD`` still being zero — no map has an index of zero, so
+    that value can only mean nothing has happened yet.
+    """
     s = Script()
     s.comment("first frame of a new game")
     s.var(VR_EQUIPPED, 0)
@@ -76,6 +82,12 @@ def boot() -> CommonEvent:
     s.var(VR_WORLD, 1)
     s.switch(SW_WOKE_ONCE, False)
     s.tint(100, 100, 100, 100, 0, False)
+    # The pace of the whole game, set once and deliberately.  RPG Maker's
+    # default is 4, one tile roughly every four frames; the worlds here are a
+    # hundred and forty tiles across and meant to be walked rather than
+    # crossed, so this is a decision and not an inherited default.
+    s.move_route(PLAYER, [MV_SPEED_UP], frequency=8)
+    s.await_movement()
     return CommonEvent(CE_BOOT, "boot", TRIGGER_CALL, None, s)
 
 
@@ -102,6 +114,7 @@ def arrival(worlds) -> CommonEvent:
                 s.show_picture(PIC_OVERLAY, world.overlay, 160, 120,
                                transparency=world.overlay_opacity,
                                use_transparent_color=True)
+                s.call_event(CE_OVERLAY_ON)
             s.var(VR_VISITS_BASE + index - 1, 1, op=1)
     # entering anywhere resets the sense of having gone in a circle
     s.var(VR_LOOPS, 0)
@@ -387,15 +400,21 @@ def give_effect() -> CommonEvent:
     return CommonEvent(CE_GIVE_EFFECT, "give effect", TRIGGER_CALL, None, s)
 
 
-def wake() -> CommonEvent:
-    """Waking up: the only way out of a dream, and it costs nothing."""
+def wake(worlds) -> CommonEvent:
+    """Waking up: the way back to the room, and it costs nothing.
+
+    Called from the nexus mirror.  The destination is read from the room
+    itself rather than written down here, because a hardcoded spawn is a
+    softlock waiting for somebody to move the bed.
+    """
     s = Script()
     s.bgm_fadeout(20)
     s.tint(200, 200, 200, 0, 12, True)
     s.se("TapeStop", volume=60)
     s.fade_out(2)
     s.call_event(CE_OVERLAY_OFF)
-    s.teleport(1, 10, 11)      # the room
+    room = worlds["room"]
+    s.teleport(room.map_id, *room.spawn)
     s.var(VR_WORLD, 1)
     s.call_event(CE_ARRIVE)
     s.tint(100, 100, 100, 100, 0, False)
@@ -428,6 +447,6 @@ def build(worlds) -> list[CommonEvent]:
         give_effect(),
         overlay_on(),
         overlay_off(),
-        wake(),
+        wake(worlds),
         diary_key(),
     ]

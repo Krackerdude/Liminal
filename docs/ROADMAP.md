@@ -113,7 +113,7 @@ map loads clean.
 
 ---
 
-## Phase 1 — Traversal · **M**
+## Phase 1 — Traversal · **M** · ✅ done
 
 Make all fourteen places reachable and leaveable.
 
@@ -125,13 +125,19 @@ Make all fourteen places reachable and leaveable.
 - Bed → nexus, and waking → room
 - Player sprite, spawn, movement speed
 
-**Verification.** A scripted walk that visits every map and returns, asserting
-the player's map id changes as expected — plus a screenshot per world from
-inside the running engine, which is the first time any of this art will have
-been seen at play scale rather than as an overhead render.
+**Verification.** `tools/traverse.py` plays recorded button input through the
+Player and reads its log to see which map it loaded next — the only check in
+the project that presses a key. Every link is covered: room to nexus through
+the bed, nexus to a dream through its door, and all twelve dreams back out
+through their own.
 
-**Done when:** you can walk out of the room, through the nexus, into and out
-of all fourteen dreams.
+**What it found.** Three engine rules that no amount of reading the format
+would have surfaced, all in the commit above. Then two of its own: an empty
+upper-layer cell is not zero, and a test that walks a fixed number of frames
+is really a test of the walking speed — the room route now walks *into walls*
+so it lands in the same place whatever the pace is set to.
+
+**Done:** the loop closes. Room, nexus, all twelve dreams, and back.
 
 ---
 

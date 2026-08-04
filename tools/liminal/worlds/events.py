@@ -78,6 +78,12 @@ def _arrival_event(world: World) -> Page:
     """Auto-start on entry: set the world number, grade, then erase itself."""
     index = WORLD_ORDER.index(world.key) + 1
     s = Script()
+    # A new game has never set VR_WORLD, and no map is world zero, so this is
+    # the only moment in a playthrough when it can still be zero.  Boot is a
+    # call-triggered common event, and until this existed nothing called it:
+    # every new game started with its state uninitialised.
+    with s.if_var(VR_WORLD, 0):
+        s.call_event(sys.CE_BOOT)
     s.var(VR_WORLD, index)
     s.call_event(sys.CE_ARRIVE)
     s.erase_event()
@@ -154,7 +160,9 @@ def room_events(world: World, worlds: dict[str, World]) -> None:
             sleep.fade_in(11)          # wave: the doors assemble
         with branch(1):
             sleep.msg_options(MSG_BOTTOM)
-    _place(world, "bed", 2, 4, [Page(script=sleep, trigger=TRIGGER_ACTION)])
+    # the head of the bed, against the back wall: the tile you reach if you
+    # walk into the corner, which is how anyone actually crosses a room
+    _place(world, "bed", 2, 3, [Page(script=sleep, trigger=TRIGGER_ACTION)])
 
     # The television: shows the world you were last in.
     tv = Script()
@@ -234,12 +242,24 @@ def nexus_events(world: World, worlds: dict[str, World]) -> None:
         _place(world, f"door_{key}", x + 1, y + 2,
                [_door(target.map_id, *target.spawn)])
 
-    # The mirror here shows the room, which is not behind you.
+    # The mirror here shows the room, which is not behind you — and it is the
+    # only way back to it.  Twelve doors lead out of the nexus and none of
+    # them lead home; without this the room is somewhere you can only ever
+    # leave.  Nothing labels it as an exit.  It shows you the room, and if you
+    # keep looking, you are in it.
     mirror = Script()
     mirror.se("Watch", volume=40)
     mirror.msg("the room is in it.", "", "you are not.")
+    mirror.msg_options(MSG_MIDDLE)
+    mirror.msg("keep looking?")
+    with mirror.choice(["yes", "no"], cancel=2) as branch:
+        with branch(0):
+            mirror.msg_options(MSG_BOTTOM)
+            mirror.call_event(sys.CE_WAKE)
+        with branch(1):
+            mirror.msg_options(MSG_BOTTOM)
     mx, my = world.landmarks["mirror"][0]
-    _place(world, "mirror", mx + 1, my + 3,
+    _place(world, "mirror", mx + 1, my + 2,
            [Page(script=mirror, trigger=TRIGGER_ACTION)])
 
     # The keeper sits by the doors and has never looked up.

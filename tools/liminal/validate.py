@@ -196,9 +196,17 @@ def check(worlds, common_events, switches: dict[int, str],
         return (world.map.get_lower(x, y) not in solid
                 and world.map.get_upper(x, y) not in solid)
 
+    called: set[int] = set()
+
+    def note_calls(commands) -> None:
+        for cmd in commands:
+            if cmd.code == CALL_EVENT and len(cmd.params) >= 2 and cmd.params[0] == 0:
+                called.add(cmd.params[1])
+
     for event in common_events:
         _walk(event.script.commands, f"common/{event.name}", report, assets,
               maps, common_ids, switch_ids, variable_ids, standable)
+        note_calls(event.script.commands)
 
     for key in WORLD_ORDER:
         world = worlds[key]
@@ -244,10 +252,19 @@ def check(worlds, common_events, switches: dict[int, str],
                                  "layer, so nothing can ever talk to it")
                 _walk(page.script.commands, f"{where}#{number}", report, assets,
                       maps, common_ids, switch_ids, variable_ids, standable)
+                note_calls(page.script.commands)
 
         # A world nobody can leave is a bug, not a statement.
         if key != "room" and not _has_exit(m):
             report.error(key, "has no teleport out of it")
+
+    # A call-triggered common event nobody calls is machinery that will rot:
+    # it keeps compiling, keeps passing every other check, and does nothing.
+    from .db import TRIGGER_CALL
+    for event in common_events:
+        if event.trigger == TRIGGER_CALL and event.ident not in called:
+            report.warn(f"common/{event.name}",
+                        "is call-triggered and nothing calls it")
 
     if system:
         for field_name, folder in (("system_graphic", assets.system),

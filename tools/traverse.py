@@ -56,16 +56,55 @@ def frames(script: list[tuple[int, list[int]]]) -> str:
     return "\n".join(lines) + "\n"
 
 
-# Arrive, let the fade and the arrival event finish, turn to face the door
-# (the door is solid, so this only turns), then open it and wait out the
-# transition on the other side.
-WALK_OUT = [
-    (150, []),
-    (24, [UP]),
-    (12, []),
-    (10, [DECISION]),
-    (300, []),
-]
+# Frames to hold a direction so the engine registers a turn against a wall.
+# Eight was not enough and produced a player standing correctly in front of a
+# door that would not open — the failure looks identical to a broken door.
+FACE = 24
+
+# Long enough to cross any room and come to rest against the far wall.  Legs
+# are expressed as "walk until something stops you" rather than as a tile
+# count on purpose: a tile count is really a frame count, and it silently
+# stopped being right the moment the walking speed was tuned.
+UNTIL_BLOCKED = 140
+
+# How long to settle after arriving, before touching anything.
+SETTLE = 150
+
+
+def until_blocked(button: int) -> tuple[int, list[int]]:
+    return (UNTIL_BLOCKED, [button])
+
+
+def walk(*legs: tuple[int, list[int]], face: int | None = None,
+         presses: int = 1) -> list[tuple[int, list[int]]]:
+    """Settle, walk the legs, turn to face the target, then act.
+
+    The gaps are load-bearing: pressing decision on the same frame a direction
+    is released catches the player mid-step and the press is swallowed.
+    ``presses`` is for targets that answer with a message and a choice rather
+    than acting immediately.
+    """
+    seq: list[tuple[int, list[int]]] = [(SETTLE, []), *legs]
+    if face is not None:
+        seq += [(12, []), (FACE, [face])]
+    for _ in range(presses):
+        seq += [(12, []), (10, [DECISION])]
+    seq += [(300, [])]
+    return seq
+
+
+# Every world's own door stands directly above the tile you arrive on, so
+# leaving is the same three beats everywhere: turn round, open it, wait.
+WALK_OUT = walk(face=UP)
+
+# The room: into the back wall, then along it until the bed stops us.  The bed
+# asks before it does anything, so this needs the extra presses to get through
+# the message and pick "yes".
+TO_BED = walk(until_blocked(UP), (12, []), until_blocked(LEFT),
+              face=LEFT, presses=4)
+
+# The nexus: the first door is above the arrival tile, like every other door.
+TO_FIRST_DOOR = walk(face=UP)
 
 
 def run(player: Path, game: Path, input_log: Path, seconds: int) -> list[int]:
@@ -120,8 +159,29 @@ def main() -> int:
     keys = [args.world] if args.world else list(W.DREAM_ORDER)
     nexus_id = worlds["nexus"].map_id
 
-    print(f"  walking out of {len(keys)} world(s)\n")
     failures = 0
+
+    if not args.world:
+        # The two links that are not a dream's own door, checked the same way:
+        # play the input, then ask the engine which map it loaded.
+        print("  the way in\n")
+        for label, key, script, expect in (
+                ("room -> nexus", "room", TO_BED, worlds["nexus"].map_id),
+                ("nexus -> pink", "nexus", TO_FIRST_DOOR, worlds["pink"].map_id)):
+            with tempfile.TemporaryDirectory(prefix="stage-") as tmp:
+                stage = staged_game(worlds, key, Path(tmp))
+                log = Path(tmp) / "input.log"
+                log.write_text(frames(script))
+                loaded = run(player, stage, log, args.seconds)
+            went = loaded[1:]
+            if went and went[0] == expect:
+                print(f"  {label:<16} ok")
+            else:
+                failures += 1
+                print(f"  {label:<16} FAILED (loaded {loaded})")
+        print()
+
+    print(f"  walking out of {len(keys)} world(s)\n")
     for key in keys:
         world = worlds[key]
         with tempfile.TemporaryDirectory(prefix="stage-") as tmp:
@@ -143,9 +203,10 @@ def main() -> int:
 
     print()
     if failures:
-        print(f"  {failures} of {len(keys)} worlds could not be left")
+        print(f"  {failures} link(s) broken")
         return 1
-    print(f"  all {len(keys)} worlds can be left through their door")
+    print(f"  the loop closes: room -> nexus -> dream -> nexus, "
+          f"and all {len(keys)} worlds can be left through their door")
     return 0
 
 

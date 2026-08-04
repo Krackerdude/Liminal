@@ -81,7 +81,9 @@ def _arrival_event(world: World) -> Page:
     s.var(VR_WORLD, index)
     s.call_event(sys.CE_ARRIVE)
     s.erase_event()
-    return Page(script=s, trigger=TRIGGER_AUTO)
+    # below the player: nothing talks to this, and it must not stand in a
+    # doorway blocking the tile it happens to have been placed on
+    return Page(script=s, trigger=TRIGGER_AUTO, layer=LAYER_BELOW)
 
 
 def _npc_pages(name: str, lines: list[str], *, move=MOVE_RANDOM,
@@ -152,7 +154,7 @@ def room_events(world: World, worlds: dict[str, World]) -> None:
             sleep.fade_in(11)          # wave: the doors assemble
         with branch(1):
             sleep.msg_options(MSG_BOTTOM)
-    m.add_event("bed", 4, 5, [Page(script=sleep, trigger=TRIGGER_ACTION)])
+    _place(world, "bed", 2, 4, [Page(script=sleep, trigger=TRIGGER_ACTION)])
 
     # The television: shows the world you were last in.
     tv = Script()
@@ -165,7 +167,7 @@ def room_events(world: World, worlds: dict[str, World]) -> None:
                "it stops when you look directly at it.")
     with tv.if_var(VR_DREAM_DISTANCE, 0):
         tv.msg("it is not plugged in.")
-    m.add_event("television", 9, 5, [Page(script=tv, trigger=TRIGGER_ACTION)])
+    _place(world, "television", 2, 11, [Page(script=tv, trigger=TRIGGER_ACTION)])
 
     # The mirror: after you have been away long enough, it is late.
     mirror = Script()
@@ -174,7 +176,7 @@ def room_events(world: World, worlds: dict[str, World]) -> None:
         mirror.msg("you are still there.", "", "you look tired.")
     with mirror.if_var(VR_DREAM_DISTANCE, 3, 2):
         mirror.msg("you are still there.")
-    m.add_event("mirror", 12, 5, [Page(script=mirror, trigger=TRIGGER_ACTION)])
+    _place(world, "mirror", 18, 13, [Page(script=mirror, trigger=TRIGGER_ACTION)])
 
     # The wardrobe: a deep layer, and the only thing in the game with a lock.
     wardrobe = Script()
@@ -189,7 +191,7 @@ def room_events(world: World, worlds: dict[str, World]) -> None:
         with arm(True):
             wardrobe.msg("it does not open.",
                          "it has never opened.")
-    m.add_event("wardrobe", 18, 5, [Page(script=wardrobe, trigger=TRIGGER_ACTION)])
+    _place(world, "wardrobe", 18, 4, [Page(script=wardrobe, trigger=TRIGGER_ACTION)])
 
     # The window: nothing outside, unless you are wearing the eye.
     window = Script()
@@ -203,11 +205,19 @@ def room_events(world: World, worlds: dict[str, World]) -> None:
             window.msg("none of it is lit from anywhere.")
         with arm(True):
             window.msg("it is too dark to see out.")
-    m.add_event("window", 7, 2, [Page(script=window, trigger=TRIGGER_ACTION)])
+    _place(world, "window", 5, 2, [Page(script=window, trigger=TRIGGER_ACTION)])
 
     desk = Script()
     desk.msg("there is nothing written on it.")
-    m.add_event("desk", 14, 6, [Page(script=desk, trigger=TRIGGER_ACTION)])
+    _place(world, "desk", 18, 8, [Page(script=desk, trigger=TRIGGER_ACTION)])
+
+    # The room's door.  Every world has exactly one, and this is the only one
+    # in the game that does not lead anywhere — the way out of here is the bed.
+    # Nobody ever says so.
+    door = Script()
+    door.se("Wrong", volume=40)
+    door.msg("it does not open.")
+    _place(world, "door", 9, 2, [Page(script=door, trigger=TRIGGER_ACTION)])
 
 
 # --- the nexus ---------------------------------------------------------------
@@ -219,7 +229,9 @@ def nexus_events(world: World, worlds: dict[str, World]) -> None:
     for index, (x, y) in enumerate(world.landmarks["doors"]):
         key = DREAM_ORDER[index]
         target = worlds[key]
-        _place(world, f"door_{key}", x + 1, y + 3,
+        # on the door's own bottom tile, so you use it by facing it rather
+        # than by standing on top of it
+        _place(world, f"door_{key}", x + 1, y + 2,
                [_door(target.map_id, *target.spawn)])
 
     # The mirror here shows the room, which is not behind you.
@@ -293,17 +305,23 @@ def dream_events(world: World, worlds: dict[str, World],
     index = WORLD_ORDER.index(key)
     m.add_event("arrive", 0, 0, [_arrival_event(world)])
 
-    # -- the way back.  Every dream has one, and it is never signposted.
+    # -- the door.  One per world, standing where you arrived, and the only way
+    # out.  Walking away from it is the whole game; walking back to it is the
+    # only thing this world will ever ask of you.
+    # You come back out of the door you went in, standing in front of it, so
+    # the hub keeps its shape: each world has a fixed place in the ring and
+    # returning tells you where you have been without anything saying so.
+    nexus = worlds["nexus"]
+    nx, ny = nexus.landmarks["doors"][DREAM_ORDER.index(key)]
     back = Script()
     back.se("DoorShut", volume=60)
     back.bgm_fadeout(10)
     back.fade_out(6)
     back.call_event(sys.CE_OVERLAY_OFF)
-    back.teleport(worlds["nexus"].map_id, *worlds["nexus"].spawn)
+    back.teleport(nexus.map_id, nx + 1, ny + 3)
     back.fade_in(6)
-    bx, by = world.spot(rng, pad=3)
-    _place(world, "way back", bx, by,
-           [Page(script=back, trigger=TRIGGER_ACTION)])
+    bx, by = world.landmarks["door_face"][0]
+    _place(world, "door", bx, by, [Page(script=back, trigger=TRIGGER_ACTION)])
 
     # -- the effect that lives here
     effect_key = EFFECT_HOME[key]

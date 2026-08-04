@@ -68,15 +68,44 @@ ScreenshotTimestamp=0
 """
 
 
+def staged_game(worlds, key: str, tmp: Path) -> Path:
+    """A throwaway copy of the game that starts on one world's arrival tile.
+
+    ``--start-map-id`` puts the player on another map at *the room's*
+    coordinates, which is not where anyone will ever arrive, so screenshots
+    taken that way show a spot the player never stands on.  Rewriting the map
+    tree is the only way to see what arriving actually looks like.
+    """
+    import build
+
+    stage = tmp / "game"
+    stage.mkdir()
+    for entry in GAME.iterdir():
+        if entry.is_dir():
+            (stage / entry.name).symlink_to(entry)
+        elif entry.name != "RPG_RT.lmt":
+            shutil.copy(entry, stage / entry.name)
+
+    world = worlds[key]
+    xml = stage / "treemap.xml"
+    xml.write_text(build.build_treemap(build.map_infos(worlds),
+                                       start_map=world.map_id,
+                                       start_x=world.spawn[0],
+                                       start_y=world.spawn[1]), encoding="utf-8")
+    build.convert(build.find_lcf2xml(), xml, stage, "RPG_RT.lmt")
+    xml.unlink()
+    return stage
+
+
 def boot(player: Path, map_id: int, seconds: int,
-         shot: Path | None = None) -> list[str]:
+         shot: Path | None = None, game: Path | None = None) -> list[str]:
     with tempfile.TemporaryDirectory(prefix="smoke-") as tmp:
         log = Path(tmp) / "player.log"
         env = dict(os.environ, SDL_VIDEODRIVER="dummy", SDL_AUDIODRIVER="dummy")
-        cmd = [str(player), "--project-path", str(GAME), "--no-audio",
+        cmd = [str(player), "--project-path", str(game or GAME), "--no-audio",
                "--new-game", "--no-vsync", "--window",
                "--save-path", tmp, "--log-file", str(log)]
-        if map_id:
+        if map_id and game is None:
             cmd += ["--start-map-id", str(map_id)]
         if shot is not None:
             # The Player has no screenshot flag, but it will take one on a
@@ -135,10 +164,15 @@ def main() -> int:
         targets = [(key, index) for index, key in
                    enumerate(W.WORLD_ORDER, start=1)]
 
+    worlds = W.build_all() if args.shots and not args.map else None
+
     failures = 0
     for name, map_id in targets:
         shot = args.shots / f"{map_id:02d}_{name}.png" if args.shots else None
-        problems = boot(player, map_id, args.seconds, shot)
+        with tempfile.TemporaryDirectory(prefix="stage-") as stage_tmp:
+            game = (staged_game(worlds, name, Path(stage_tmp))
+                    if worlds is not None else None)
+            problems = boot(player, map_id, args.seconds, shot, game)
         # The same complaint repeats every frame; say it once.
         unique = list(dict.fromkeys(problems))
         if unique:

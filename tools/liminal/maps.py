@@ -53,6 +53,15 @@ BLOCK_D = 4000     # terrain autotiles, 12 sets of 50
 BLOCK_E = 5000     # 144 plain lower tiles
 BLOCK_F = 10000    # 144 plain upper tiles
 
+# "Nothing on the upper layer" is written as block F tile zero, **not** as a
+# literal zero.  The engine reads an upper cell as ``value - BLOCK_F`` and uses
+# the result to index a 144-entry table, so a stored 0 indexes that table at
+# -10000: an out-of-bounds read whose answer is whatever happens to be in
+# memory.  It cost a day of chasing doors that opened on some builds and not
+# others.  Every chipset therefore reserves upper index 0 as a blank, passable
+# tile, and an empty cell points at it.
+EMPTY_UPPER = BLOCK_F
+
 
 def lower(index: int) -> int:
     """Tile id for plain lower-layer tile ``index`` (0..143)."""
@@ -88,7 +97,11 @@ class Page:
     move_commands: Sequence = ()
     move_repeat: bool = True
     trigger: int = TRIGGER_ACTION
-    layer: int = LAYER_BELOW
+    # RPG Maker's own default, and load-bearing: the engine only looks for
+    # action-triggered events on the *same* layer as the player.  An event on
+    # the below layer can never be talked to from the tile in front of it, so
+    # every door, resident and object in the game was silently unreachable.
+    layer: int = LAYER_SAME
     overlap_forbidden: bool = False
     animation_type: int = ANIM_NON_CONTINUOUS
     switch_a: int | None = None
@@ -162,7 +175,7 @@ class Map:
         self.chipset_id = chipset_id
         self.scroll_type = scroll_type
         self.lower = [fill] * (width * height)
-        self.upper = [0] * (width * height)
+        self.upper = [EMPTY_UPPER] * (width * height)
         self.events: list[Event] = []
         self.parallax: str | None = None
         self.parallax_loop_x = True
@@ -182,7 +195,9 @@ class Map:
         return self.lower[self.idx(x, y)]
 
     def set_upper(self, x: int, y: int, tile: int) -> None:
-        self.upper[self.idx(x, y)] = tile
+        # Callers write 0 to mean "clear this cell"; the engine needs that
+        # spelled as block F tile zero.  See EMPTY_UPPER.
+        self.upper[self.idx(x, y)] = tile or EMPTY_UPPER
 
     def get_upper(self, x: int, y: int) -> int:
         return self.upper[self.idx(x, y)]

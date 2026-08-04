@@ -25,6 +25,8 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from pathlib import Path
 
+from .maps import LAYER_SAME, TRIGGER_ACTION
+from .worlds.layout import solid_ids
 from .cmds import (CALL_EVENT, CHANGE_SPRITE, CONDITIONAL_BRANCH,
                    CONTROL_SWITCHES, CONTROL_VARS, ELSE_BRANCH, END_BRANCH,
                    END_LOOP, LOOP, PLAY_BGM, PLAY_SOUND, SHOW_CHOICE,
@@ -91,7 +93,8 @@ class Assets:
 
 def _walk(commands: list[Command], where: str, report: Report,
           assets: Assets, maps: dict[int, tuple[int, int]],
-          common_ids: set[int], switches: set[int], variables: set[int]) -> None:
+          common_ids: set[int], switches: set[int], variables: set[int],
+          standable) -> None:
     """Check one command list."""
     depth = 0
     for position, cmd in enumerate(commands):
@@ -134,6 +137,11 @@ def _walk(commands: list[Command], where: str, report: Report,
                 if not (0 <= x < w and 0 <= y < h):
                     report.error(here, f"teleports to ({x},{y}) on map {target}, "
                                        f"which is {w}x{h}")
+                elif not standable(target, x, y):
+                    # The classic softlock: arrive inside a wall and the only
+                    # way out is the title screen.
+                    report.error(here, f"teleports into solid ground at "
+                                       f"({x},{y}) on map {target}")
         elif code == CALL_EVENT and len(params) >= 2 and params[0] == 0:
             if params[1] not in common_ids:
                 report.error(here, f"calls common event {params[1]}, "
@@ -179,9 +187,18 @@ def check(worlds, common_events, switches: dict[int, str],
     common_ids = {e.ident for e in common_events}
     switch_ids, variable_ids = set(switches), set(variables)
 
+    by_id = {worlds[k].map_id: worlds[k] for k in WORLD_ORDER}
+    solids = {mid: solid_ids(w.chipset) for mid, w in by_id.items()}
+
+    def standable(map_id: int, x: int, y: int) -> bool:
+        world = by_id[map_id]
+        solid = solids[map_id]
+        return (world.map.get_lower(x, y) not in solid
+                and world.map.get_upper(x, y) not in solid)
+
     for event in common_events:
         _walk(event.script.commands, f"common/{event.name}", report, assets,
-              maps, common_ids, switch_ids, variable_ids)
+              maps, common_ids, switch_ids, variable_ids, standable)
 
     for key in WORLD_ORDER:
         world = worlds[key]
@@ -196,6 +213,8 @@ def check(worlds, common_events, switches: dict[int, str],
         sx, sy = world.spawn
         if not (0 <= sx < m.width and 0 <= sy < m.height):
             report.error(key, f"spawns at ({sx},{sy}) on a {m.width}x{m.height} map")
+        elif not standable(world.map_id, sx, sy):
+            report.error(key, f"spawns inside solid ground at ({sx},{sy})")
 
         seen: dict[tuple[int, int], str] = {}
         for event in m.events:
@@ -215,8 +234,16 @@ def check(worlds, common_events, switches: dict[int, str],
                 if page.charset and page.charset not in assets.charsets:
                     report.error(f"{where}#{number}",
                                  f"uses missing charset {page.charset!r}")
+                # The engine only looks for action events on the same layer as
+                # the player.  On any other layer the event exists, runs its
+                # conditions, draws its sprite — and can never be talked to.
+                if (page.trigger == TRIGGER_ACTION
+                        and page.layer != LAYER_SAME):
+                    report.error(f"{where}#{number}",
+                                 "is action-triggered but not on the player's "
+                                 "layer, so nothing can ever talk to it")
                 _walk(page.script.commands, f"{where}#{number}", report, assets,
-                      maps, common_ids, switch_ids, variable_ids)
+                      maps, common_ids, switch_ids, variable_ids, standable)
 
         # A world nobody can leave is a bug, not a statement.
         if key != "room" and not _has_exit(m):

@@ -23,6 +23,7 @@ from dataclasses import dataclass, field
 
 from ..art.chipsets import ChipsetBuild
 from ..art.sheets import BUILDERS
+from .. import maps
 from ..maps import SCROLL_BOTH, SCROLL_NONE, Map, MapInfo
 from . import gen, layout
 from .gen import MazeSpec, Placer
@@ -147,33 +148,50 @@ def _new(key: str, map_id: int, width: int, height: int, *,
 # --- the two places that are not dreams --------------------------------------
 
 def build_room(map_id: int) -> World:
-    """A small room with one bed, one door and one window.  Does not loop."""
+    """A small room with one bed, one door and one window.  Does not loop.
+
+    Four walls, not one.  A room with a single back wall gives furniture only
+    one place to stand, and everything lines up along it like a showroom — so
+    the near and side walls are real, and the furniture is grouped the way a
+    person's things actually collect: the sleeping corner on one side, the
+    everything-else corner on the other, and the middle left alone.
+    """
     world, cs, rng = _new("room", map_id, 21, 17, loop=False)
     m, t = world.map, cs.tiles
 
     m.fill_rect(0, 0, m.width, m.height, t["ground"])
-    m.fill_rect(2, 8, 8, 6, t["rug"])
-    # walls around the edge, three tiles deep at the top so the room has a back
+
+    # the back wall, three tiles deep, and the other three one tile deep
     for x in range(m.width):
         gen.stamp(m, cs.obj("wall"), x, 0)
-    for y in range(m.height):
-        m.set_lower(0, y, t["void"])
-        m.set_lower(m.width - 1, y, t["void"])
+    for y in range(3, m.height):
+        m.set_lower(0, y, t["skirt"])
+        m.set_lower(m.width - 1, y, t["skirt"])
     for x in range(m.width):
-        m.set_lower(x, m.height - 1, t["void"])
+        m.set_lower(x, m.height - 1, t["skirt"])
 
-    gen.stamp(m, cs.obj("bed"), 3, 3)
-    gen.stamp(m, cs.obj("desk"), 13, 4)
-    gen.stamp(m, cs.obj("wardrobe"), 17, 3)
-    gen.stamp(m, cs.obj("television"), 8, 3)
-    gen.stamp(m, cs.obj("mirror"), 11, 3)
-    gen.stamp(m, cs.obj("window"), 6, 1)
-    m.set_upper(10, 1, t["lamp"])
+    # -- the sleeping corner, left
+    gen.stamp(m, cs.obj("bed"), 1, 3)
+    gen.stamp(m, cs.obj("television"), 1, 11)
+
+    # -- the rest of a life, right.  Spread down the wall rather than lined up
+    # along the back one, so crossing the room passes each of them in turn.
+    gen.stamp(m, cs.obj("wardrobe"), 18, 3)
+    gen.stamp(m, cs.obj("desk"), 18, 8)
+    gen.stamp(m, cs.obj("mirror"), 18, 12)
+
+    # -- the back wall itself: the door you cannot use, and the window
+    gen.stamp(m, cs.obj("door"), 9, 0)
+    gen.stamp(m, cs.obj("window"), 5, 1)
+    m.set_upper(14, 1, t["lamp"])
+
+    # The rug sits in front of the television, not filling a corner.
+    m.fill_rect(5, 9, 6, 4, t["rug"])
 
     world.landmarks = {
-        "bed": [(3, 3)], "desk": [(13, 4)], "wardrobe": [(17, 3)],
-        "television": [(8, 3)], "mirror": [(11, 3)], "window": [(6, 1)],
-        "door": [(10, 15)],
+        "bed": [(1, 3)], "desk": [(18, 8)], "wardrobe": [(18, 3)],
+        "television": [(1, 11)], "mirror": [(18, 12)], "window": [(5, 1)],
+        "door": [(9, 0)],
     }
     world.spawn = (10, 11)
     world.npcs = []
@@ -211,7 +229,11 @@ def build_nexus(map_id: int) -> World:
         "mirror": [(m.width // 2 - 1, 2)],
         "bench": [(m.width // 2 - 1, m.height - 6)],
     }
-    world.spawn = (m.width // 2, m.height // 2)
+    # Arriving in the dead centre of the ring shows nothing at all — the doors
+    # are eleven tiles out and the screen is fifteen tall.  Standing in front
+    # of the first one instead means the hub opens on a door, and the ring
+    # curves away to either side of it.
+    world.spawn = (doors[0][0] + 1, doors[0][1] + 3)
     world.npcs = ["keeper", "sleeper", "cloud_ladder"]
     return world
 
@@ -1094,6 +1116,87 @@ def snap_spawn(world: World) -> None:
                     return
 
 
+def place_door(world: World) -> None:
+    """Stand one door in the world, at the point the player arrives.
+
+    Every world has exactly one, and it is the same door in both directions:
+    you come out of it and you go back through it.  Nothing else in a dream is
+    an exit, so the way home is a place you have to find your way back to
+    rather than a menu command — and the first thing you see on arriving is
+    the thing you will eventually be looking for.
+
+    The landing around it is cleared to bare floor so the door reads as
+    deliberate rather than as something that grew there, and so a 2x3 solid
+    object dropped into a generated layout cannot wall anything off.
+    """
+    if "door" not in world.chipset.objects:
+        return
+    m, fld = world.map, world.plan
+    grid = world.chipset.obj("door")
+    solid = solid_ids(world.chipset)
+
+    def standable(x: int, y: int) -> bool:
+        return (m.get_lower(x, y) not in solid
+                and m.get_upper(x, y) not in solid)
+
+    def fits(sx: int, sy: int) -> bool:
+        """Is there already room here, without moving anything?"""
+        # somewhere to stand, and somewhere to stand aside
+        if not all(standable(sx + dx, sy) for dx in (-1, 0, 1)):
+            return False
+        for row in range(grid.rows):
+            for col in range(grid.cols):
+                x, y = sx - 1 + col, sy - grid.rows + row
+                # the door's own space must be empty, and it must be standing
+                # on floor rather than embedded in a wall or hanging over void
+                if m.get_upper(x, y) != maps.EMPTY_UPPER:
+                    return False
+                if m.get_lower(x, y) in solid:
+                    return False
+                if fld is not None and fld.is_protected(x, y):
+                    return False      # never block a corridor with a door
+        return True
+
+    sx, sy = world.spawn
+    if not fits(sx, sy):
+        # Look for a spot that already works.  The door does not get to clear
+        # the ground it stands on — an object that bulldozes a rectangle of
+        # plain floor out of a patterned world is exactly the thing this
+        # project keeps having to un-learn.
+        found = None
+        for radius in range(1, 40):
+            for dy in range(-radius, radius + 1):
+                for dx in range(-radius, radius + 1):
+                    if max(abs(dx), abs(dy)) != radius:
+                        continue
+                    if fits(sx + dx, sy + dy):
+                        found = ((sx + dx) % m.width, (sy + dy) % m.height)
+                        break
+                if found:
+                    break
+            if found:
+                break
+        if found is None:
+            return
+        world.spawn = found
+        sx, sy = found
+
+    # the door stands with its base one tile above the arrival point
+    dx, dy = sx - 1, sy - grid.rows
+    gen.stamp(m, grid, dx, dy)
+    # The door is solid, and the connectivity repair deletes solid things
+    # standing on cells the layout calls floor — which is how the first version
+    # of this ended up placing fourteen doors and shipping none of them.  A
+    # door is a wall you can talk to, so the layout has to be told that.
+    if fld is not None:
+        for y in range(dy, dy + grid.rows):
+            for x in range(dx, dx + grid.cols):
+                fld.set(x % m.width, y % m.height, layout.WALL)
+    world.landmarks["door"] = [(dx % m.width, dy % m.height)]
+    # the tile you talk to it from is the one you are standing on
+    world.landmarks["door_face"] = [((dx + 1) % m.width, (dy + grid.rows - 1) % m.height)]
+
+
 def place_landmarks(world: World) -> None:
     """Drop each world's unique structures into its biggest rooms.
 
@@ -1165,6 +1268,10 @@ def build_all() -> dict[str, World]:
         place_landmarks(world)
         enforce_density(world)
         snap_spawn(world)
+        if key in DREAM_ORDER:
+            # after snap_spawn, so the door goes where the player really lands,
+            # and before the connectivity repair, which gets the last word
+            place_door(world)
         if world.plan is not None:
             # Last line of defence: nothing the decoration pass added is
             # allowed to have cut the world in half.

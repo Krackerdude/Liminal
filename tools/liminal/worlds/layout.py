@@ -27,6 +27,8 @@ import math
 import random
 from dataclasses import dataclass, field
 
+from ..maps import EMPTY_UPPER
+
 VOID = 0
 FLOOR = 1
 WALL = 2
@@ -699,7 +701,7 @@ def repair_connectivity(m, field: Field, chipset, start: tuple[int, int],
                 m.set_lower(x, y, floor_tile)
                 removed += 1
             if m.get_upper(x, y) in solid:
-                m.set_upper(x, y, 0)
+                m.set_upper(x, y, EMPTY_UPPER)
                 removed += 1
     return removed
 

@@ -106,6 +106,23 @@ class ChipsetBuilder:
         self.terrain = [1] * 162
         self.animation_type = 0
         self.animation_speed = 12
+        # Identical artwork gets one slot, not one per user.  Objects repeat
+        # themselves constantly — the flat middle of a block, a run of wall,
+        # the same shadow under six different props — and a sheet has only 144
+        # slots per layer to spend.
+        self._seen_lower: dict[tuple, int] = {}
+        self._seen_upper: dict[tuple, int] = {}
+        # Upper index 0 is reserved and blank: it is what an empty upper cell
+        # points at.  See maps.EMPTY_UPPER for why an empty cell cannot simply
+        # be zero.
+        #
+        # ``above=True`` is load-bearing and not about draw order.  The engine
+        # reads a passable upper tile that is *not* marked above-hero as "this
+        # cell is walkable, ignore the lower layer" — so a blank passable tile
+        # covering every cell in the map made the entire world walkable, walls
+        # and all.  Marked above-hero, it defers to the floor underneath, which
+        # is what "nothing here" is supposed to mean.
+        self.add_upper("empty", Canvas(TILE, TILE, TRANSPARENT), above=True)
 
     # -- single tiles --------------------------------------------------------
     def add(self, name: str, tile: Canvas, *, passable: bool = True,
@@ -117,7 +134,12 @@ class ChipsetBuilder:
             # would punch a black hole in the floor.
             raise ValueError(
                 f"{self.name}: lower tile {name!r} has transparent pixels; "
-                f"pass ground= so it can be composited onto the floor")
+                f"it belongs on the upper layer")
+        key = (tile.px.tobytes(), passable, terrain)
+        if key in self._seen_lower:
+            tile_id = self._seen_lower[key]
+            self.tiles[name] = tile_id
+            return tile_id
         index = self._lower_next
         self._lower_next += 1
         col, row = _block_e_cell(index)
@@ -126,11 +148,17 @@ class ChipsetBuilder:
         self.terrain[18 + index] = terrain
         tile_id = BLOCK_E + index
         self.tiles[name] = tile_id
+        self._seen_lower[key] = tile_id
         return tile_id
 
     def add_upper(self, name: str, tile: Canvas, *, passable: bool = True,
                   above: bool = False) -> int:
         """Add an overlay tile.  ``above`` draws it in front of the player."""
+        key = (tile.px.tobytes(), passable, above)
+        if key in self._seen_upper:
+            tile_id = self._seen_upper[key]
+            self.tiles[name] = tile_id
+            return tile_id
         if self._upper_next >= 144:
             raise ValueError(f"{self.name}: out of block F slots")
         index = self._upper_next
@@ -143,6 +171,7 @@ class ChipsetBuilder:
         self.passable_upper[index] = bits
         tile_id = BLOCK_F + index
         self.tiles[name] = tile_id
+        self._seen_upper[key] = tile_id
         return tile_id
 
     def add_animated(self, name: str, frames: Sequence[Canvas], *,
@@ -164,8 +193,8 @@ class ChipsetBuilder:
 
     # -- multi-tile objects --------------------------------------------------
     def add_object(self, name: str, art: Canvas, *, solid: str = "all",
-                   upper: bool = False, above: bool = False,
-                   terrain: int = 1, ground: Canvas | None = None) -> TileGrid:
+                   upper: bool | None = None, above: bool | None = None,
+                   terrain: int = 1) -> TileGrid:
         """Slice a large drawing into tiles and register it as one object.
 
         ``solid`` says which sub-tiles block movement:
@@ -176,46 +205,61 @@ class ChipsetBuilder:
                        a tree or a hand and be drawn in front of it
         ``"bottom2"``  the lowest two rows, for very tall things
 
-        ``ground`` is composited underneath every piece.  Lower-layer tiles
-        *must* be opaque — RPG Maker draws nothing behind that layer, so a
-        transparent margin becomes a black hole in the middle of the floor.
+        **The art decides the layer, not the caller.**  Anything with a
+        transparent pixel in it goes on the upper layer, where whatever floor
+        is really underneath shows through; only art that is opaque to the
+        edges may sit on the lower layer, which is a *surface* and not a place
+        to put things.
 
-        The cost is that the ground gets **baked into the tile**, so a prop
-        composited onto grass carries a square of grass with it wherever it is
-        placed, including into the middle of a road.  Anything that can stand
-        on more than one surface therefore belongs on the upper layer, where it
-        keeps its transparency and shows whatever floor is really beneath it.
-        Reserve the lower layer for objects that only ever sit on one surface.
+        This used to work the other way round — objects were composited onto a
+        copy of the ground tile so they could live on the lower layer — and the
+        result was that every prop carried a square of plain floor around with
+        it and stamped it over whatever pattern, mural or carpet it landed on.
+        Densely painted floors were being punched full of holes by the objects
+        standing on them.  An object is an object; it does not get to decide
+        what it is standing on.
+
+        Draw order follows from the same rule: a non-solid row with solid rows
+        beneath it is the part of a standing thing you can walk behind, so it
+        is drawn in front of the player.  Everything else draws behind them.
         """
         cols, rows = art.w // TILE, art.h // TILE
-        ids = [[0] * cols for _ in range(rows)]
+        pieces: dict[tuple[int, int], Canvas] = {}
+        opaque = True
         for row in range(rows):
             for col in range(cols):
                 piece = art.sub(col * TILE, row * TILE, TILE, TILE)
                 if _is_blank(piece):
-                    ids[row][col] = 0
                     continue
-                if not upper and ground is not None:
-                    backed = ground.copy()
-                    backed.paste(piece, 0, 0, mask=TRANSPARENT)
-                    piece = backed
-                if solid == "all":
-                    blocking = True
-                elif solid == "none":
-                    blocking = False
-                elif solid == "bottom":
-                    blocking = row == rows - 1
-                elif solid == "bottom2":
-                    blocking = row >= rows - 2
-                else:
-                    blocking = False
-                piece_name = f"{name}:{col},{row}"
-                if upper:
-                    ids[row][col] = self.add_upper(
-                        piece_name, piece, passable=not blocking, above=above)
-                else:
-                    ids[row][col] = self.add(
-                        piece_name, piece, passable=not blocking, terrain=terrain)
+                pieces[(col, row)] = piece
+                if _has_transparency(piece):
+                    opaque = False
+        if upper is None:
+            upper = not opaque
+
+        def row_solid(row: int) -> bool:
+            if solid == "all":
+                return True
+            if solid == "bottom":
+                return row == rows - 1
+            if solid == "bottom2":
+                return row >= rows - 2
+            return False
+
+        ids = [[0] * cols for _ in range(rows)]
+        for (col, row), piece in pieces.items():
+            blocking = row_solid(row)
+            piece_name = f"{name}:{col},{row}"
+            if upper:
+                in_front = above
+                if in_front is None:
+                    in_front = not blocking and any(row_solid(r)
+                                                    for r in range(row + 1, rows))
+                ids[row][col] = self.add_upper(
+                    piece_name, piece, passable=not blocking, above=in_front)
+            else:
+                ids[row][col] = self.add(
+                    piece_name, piece, passable=not blocking, terrain=terrain)
         grid = TileGrid(name, cols, rows, ids, upper=upper)
         self.objects[name] = grid
         return grid

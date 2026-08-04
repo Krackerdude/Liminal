@@ -164,8 +164,8 @@ def _decals(cb: ChipsetBuilder, pal: Palette, world: str, ground: Canvas) -> Non
     # the big paintings on the floor
     for index, kind in enumerate(MURALS[world]):
         cb.add_object(f"mural_{index}",
-                      ct.floor_mural(pal, kind, 4, 4, ground=ground),
-                      solid="none", ground=ground)
+                      ct.floor_mural(pal, kind, 4, 4),
+                      solid="none")
     # a second and third wall pattern, so boundaries are not one note
     motif = WALL_MOTIF.get(world, "brick")
     alt = {"brick": "strata", "digits": "grid", "blocks": "checker",
@@ -215,8 +215,12 @@ def build_room() -> ChipsetBuild:
     rug.dither(pal.accent, 0.35)
     cb.add("rug", rug)
 
-    cb.add_object("wall", ct.wall_run(pal, height=3, brick=False), ground=boards)
-    cb.add_object("door", ct.door_frame(pal, leaf=pal.form_dark), ground=boards)
+    cb.add_object("wall", ct.wall_run(pal, height=3, brick=False))
+    cb.add_object("door", ct.door_frame(pal, leaf=pal.form_dark))
+    # The near and side walls, one tile deep, so the room is a room and not a
+    # slab of floor with a headboard.  Without these there is only one wall to
+    # put anything against, and everything ends up in a row along it.
+    cb.add("skirt", ct.wall_run(pal, height=1, brick=False), passable=False)
 
     bed = ct._canvas(2, 3)
     bed.round_rect(1, 4, 30, 42, 5, pal.form)
@@ -224,18 +228,18 @@ def build_room() -> ChipsetBuild:
     bed.round_rect(3, 24, 26, 20, 4, pal.accent_soft)
     bed.round_rect(1, 0, 30, 8, 4, pal.form_dark)
     outline_in(bed, cooler(pal.form_dark, 0.3))
-    cb.add_object("bed", bed, solid="all", ground=boards)
+    cb.add_object("bed", bed, solid="all")
 
     desk = ct._canvas(2, 2)
     desk.round_rect(1, 8, 30, 12, 3, pal.form_dark)
     desk.rect(4, 20, 4, 11, cooler(pal.form_dark, 0.2))
     desk.rect(24, 20, 4, 11, cooler(pal.form_dark, 0.2))
     outline_in(desk, cooler(pal.form_dark, 0.45))
-    cb.add_object("desk", desk, solid="bottom", ground=boards)
+    cb.add_object("desk", desk, solid="bottom")
 
-    cb.add_object("wardrobe", ct.wardrobe(pal, 2, 3), solid="all", ground=boards)
-    cb.add_object("television", ct.old_television(pal, 2, 2), solid="all", ground=boards)
-    cb.add_object("mirror", ct.standing_mirror(pal, 2, 3), solid="all", ground=boards)
+    cb.add_object("wardrobe", ct.wardrobe(pal, 2, 3), solid="all")
+    cb.add_object("television", ct.old_television(pal, 2, 2), solid="all")
+    cb.add_object("mirror", ct.standing_mirror(pal, 2, 3), solid="all")
 
     window = ct._canvas(2, 2)
     window.round_rect(2, 2, 28, 26, 3, pal.form_dark)
@@ -260,11 +264,11 @@ def build_nexus() -> ChipsetBuild:
     ground = ct.soft_ground(pal.ground, pal.ground_b, 0.35)
     _basics(cb, pal, ground)
 
-    cb.add_object("door", ct.door_frame(pal, 2, 3, glow=pal.accent), ground=ground)
-    cb.add_object("door_shut", ct.door_frame(pal, 2, 3), ground=ground)
-    cb.add_object("lamp", ct.lamp_post(pal, 1, 3), solid="bottom", ground=ground)
-    cb.add_object("bench", ct.bench_seat(pal, 3, 2), solid="bottom", ground=ground)
-    cb.add_object("mirror", ct.standing_mirror(pal, 2, 3), solid="all", ground=ground)
+    cb.add_object("door", ct.door_frame(pal, 2, 3, glow=pal.accent))
+    cb.add_object("door_shut", ct.door_frame(pal, 2, 3))
+    cb.add_object("lamp", ct.lamp_post(pal, 1, 3), solid="bottom")
+    cb.add_object("bench", ct.bench_seat(pal, 3, 2), solid="bottom")
+    cb.add_object("mirror", ct.standing_mirror(pal, 2, 3), solid="all")
 
     arch = ct._canvas(3, 1)
     arch.rect(0, 8, 48, 8, pal.form_dark)
@@ -288,12 +292,12 @@ def build_pink() -> ChipsetBuild:
     ground = ct.soft_ground(pal.ground, pal.ground_b, 0.3)
     _basics(cb, pal, ground, ct.brick_ground(pal, course=8))
 
-    cb.add_object("wall", ct.wall_run(pal, height=3, brick=True), ground=ground)
-    cb.add_object("wall_short", ct.wall_run(pal, height=2, brick=True), ground=ground)
+    cb.add_object("wall", ct.wall_run(pal, height=3, brick=True))
+    cb.add_object("wall_short", ct.wall_run(pal, height=2, brick=True))
     # The impossible door: same brick, same pink, no reason for it.
-    cb.add_object("door", ct.door_frame(pal, 2, 3, glow=pal.accent), ground=ground)
-    cb.add_object("arch", ct.brick_arch(pal, 4, 4), solid="bottom2", ground=ground)
-    cb.add_object("niche", ct.wall_niche(pal, 2, 3), ground=ground)
+    cb.add_object("door", ct.door_frame(pal, 2, 3, glow=pal.accent))
+    cb.add_object("arch", ct.brick_arch(pal, 4, 4), solid="bottom2")
+    cb.add_object("niche", ct.wall_niche(pal, 2, 3))
 
     col = ct._canvas(1, 3)
     col.rect(2, 0, 12, 48, pal.form)
@@ -301,7 +305,7 @@ def build_pink() -> ChipsetBuild:
     col.rect(11, 0, 3, 48, pal.form_dark)
     col.round_rect(0, 0, 16, 6, 2, pal.form_light)
     outline_in(col, cooler(pal.form_dark, 0.3))
-    cb.add_object("column", col, solid="bottom", ground=ground)
+    cb.add_object("column", col, solid="bottom")
 
     _shadows(cb, pal)
     _landmarks(cb, pal, "pink")
@@ -320,12 +324,12 @@ def build_numbers() -> ChipsetBuild:
 
     for digit in (0, 1, 3, 5, 7, 9):
         cb.add_object(f"digit_{digit}", ct.big_digit(pal, digit, 3, 4),
-                      solid="bottom", ground=ground)
+                      solid="bottom")
     for kind in ("plus", "minus", "equals"):
         cb.add_object(f"sign_{kind}", ct.operator_sign(pal, kind, 2, 2),
-                      solid="bottom", ground=ground)
-    cb.add_object("plinth", ct.number_plinth(pal, 3, 2), solid="all", ground=ground)
-    cb.add_object("door", ct.door_frame(pal, 2, 3, glow=pal.accent), ground=ground)
+                      solid="bottom")
+    cb.add_object("plinth", ct.number_plinth(pal, 3, 2), solid="all")
+    cb.add_object("door", ct.door_frame(pal, 2, 3, glow=pal.accent))
     _shadows(cb, pal)
     _landmarks(cb, pal, "numbers")
     _animate(cb, pal, "numbers")
@@ -344,12 +348,12 @@ def build_blocks() -> ChipsetBuild:
     colors = ((228, 128, 124), (120, 176, 226), (238, 206, 126), (140, 200, 152))
     for index, (color, mark) in enumerate(zip(colors,
                                               ("dot", "ring", "square", "cross"))):
-        cb.add_object(f"block_{index}", ct.toy_block(pal, color, 3, 3, mark=mark), ground=ground)
+        cb.add_object(f"block_{index}", ct.toy_block(pal, color, 3, 3, mark=mark))
     # Scale is not consistent here, and never explains itself.
-    cb.add_object("block_tiny", ct.toy_block(pal, colors[1], 1, 1, mark="dot"), ground=ground)
-    cb.add_object("block_huge", ct.toy_block(pal, colors[0], 4, 4, mark="ring"), ground=ground)
-    cb.add_object("ball", ct.ball_toy(pal, colors[2], 2, 2), solid="all", ground=ground)
-    cb.add_object("door", ct.door_frame(pal, 2, 3, glow=pal.accent), ground=ground)
+    cb.add_object("block_tiny", ct.toy_block(pal, colors[1], 1, 1, mark="dot"))
+    cb.add_object("block_huge", ct.toy_block(pal, colors[0], 4, 4, mark="ring"))
+    cb.add_object("ball", ct.ball_toy(pal, colors[2], 2, 2), solid="all")
+    cb.add_object("door", ct.door_frame(pal, 2, 3, glow=pal.accent))
     _shadows(cb, pal)
     _landmarks(cb, pal, "blocks")
     _animate(cb, pal, "blocks")
@@ -378,14 +382,14 @@ def build_stairs() -> ChipsetBuild:
            passable=False)
 
     cb.add_object("stair_up", ct.floating_stair(pal, 4, 3, rising=True),
-                  solid="none", ground=ground)
+                  solid="none")
     cb.add_object("stair_down", ct.floating_stair(pal, 4, 3, rising=False),
-                  solid="none", ground=ground)
-    cb.add_object("landing", ct.stair_landing(pal, 3, 2), solid="none", ground=ground)
-    cb.add_object("spiral", ct.spiral_stair(pal, 3, 5), solid="none", ground=ground)
-    cb.add_object("stair_broken", ct.broken_stair(pal, 3, 2), solid="none", ground=ground)
-    cb.add_object("door", ct.door_frame(pal, 2, 3, glow=pal.accent), ground=ground)
-    cb.add_object("lamp", ct.lamp_post(pal, 1, 3), solid="bottom", ground=ground)
+                  solid="none")
+    cb.add_object("landing", ct.stair_landing(pal, 3, 2), solid="none")
+    cb.add_object("spiral", ct.spiral_stair(pal, 3, 5), solid="none")
+    cb.add_object("stair_broken", ct.broken_stair(pal, 3, 2), solid="none")
+    cb.add_object("door", ct.door_frame(pal, 2, 3, glow=pal.accent))
+    cb.add_object("lamp", ct.lamp_post(pal, 1, 3), solid="bottom")
     _shadows(cb, pal)
     _landmarks(cb, pal, "stairs")
     _animate(cb, pal, "stairs")
@@ -404,15 +408,15 @@ def build_sand() -> ChipsetBuild:
     dune.hline(6, 0, TILE - 1, warmer(pal.ground, 0.2))
     _basics(cb, pal, ground, dune)
 
-    cb.add_object("structure", ct.tiny_structure(pal, 2, 3), solid="bottom", ground=ground)
-    cb.add_object("obelisk", ct.obelisk(pal, 2, 5), solid="bottom", ground=ground)
-    cb.add_object("dead_tree", ct.dead_tree(pal, 3, 4), solid="bottom", ground=ground)
+    cb.add_object("structure", ct.tiny_structure(pal, 2, 3), solid="bottom")
+    cb.add_object("obelisk", ct.obelisk(pal, 2, 5), solid="bottom")
+    cb.add_object("dead_tree", ct.dead_tree(pal, 3, 4), solid="bottom")
     post = ct._canvas(1, 3)
     post.rect(6, 4, 4, 44, pal.form_dark)
     post.round_rect(3, 0, 10, 8, 3, pal.accent)
     outline_in(post, cooler(pal.form_dark, 0.3))
-    cb.add_object("post", post, solid="bottom", ground=ground)
-    cb.add_object("door", ct.door_frame(pal, 2, 3, glow=pal.accent_soft), ground=ground)
+    cb.add_object("post", post, solid="bottom")
+    cb.add_object("door", ct.door_frame(pal, 2, 3, glow=pal.accent_soft))
     _shadows(cb, pal)
     _landmarks(cb, pal, "sand")
     _animate(cb, pal, "sand")
@@ -450,19 +454,19 @@ def build_faces() -> ChipsetBuild:
     paving = ct.pattern_tile(pal, "grid", (150, 148, 146), (176, 174, 170))
     cb.add("paving", paving)
 
-    cb.add_object("tree", ct.round_tree(pal, 3, 4, face=True), solid="bottom", ground=ground)
+    cb.add_object("tree", ct.round_tree(pal, 3, 4, face=True), solid="bottom")
     cb.add_object("tree_plain", ct.round_tree(pal, 3, 4, face=False),
-                  solid="bottom", ground=ground)
-    cb.add_object("stump", ct.stump_face(pal, 2, 2), solid="all", ground=ground)
+                  solid="bottom")
+    cb.add_object("stump", ct.stump_face(pal, 2, 2), solid="all")
     cb.add_object("mushroom", ct.mushroom(pal, (216, 128, 118), 2, 2),
-                  solid="bottom", ground=ground)
+                  solid="bottom")
     bush = ct._canvas(2, 2)
     bush.blob(16, 20, 13, pal.accent_soft)
     bush.blob(9, 22, 8, pal.accent_soft)
     bush.blob(23, 22, 8, pal.accent_soft)
     bush.blob(13, 15, 6, warmer(pal.accent_soft, 0.22))
     outline_in(bush, cooler(pal.accent_soft, 0.4))
-    cb.add_object("bush", bush, solid="bottom", ground=ground)
+    cb.add_object("bush", bush, solid="bottom")
 
     # Street furniture, scattered through the trees as though the town was
     # never cleared — only grown over.
@@ -480,7 +484,7 @@ def build_faces() -> ChipsetBuild:
     cb.add_object("road_sign", lm.road_sign(pal, 2, 3), solid="bottom",
                   upper=True)
 
-    cb.add_object("door", ct.door_frame(pal, 2, 3, glow=pal.accent), ground=ground)
+    cb.add_object("door", ct.door_frame(pal, 2, 3, glow=pal.accent))
     _shadows(cb, pal)
     _landmarks(cb, pal, "faces")
     _animate(cb, pal, "faces")
@@ -496,13 +500,13 @@ def build_hands() -> ChipsetBuild:
     ground = ct.grass_ground(pal, 0)
     _basics(cb, pal, ground, ct.grass_ground(pal, 2))
 
-    cb.add_object("hand_up", ct.stone_hand(pal, 3, 4, pose="up"), solid="bottom", ground=ground)
+    cb.add_object("hand_up", ct.stone_hand(pal, 3, 4, pose="up"), solid="bottom")
     cb.add_object("hand_reach", ct.stone_hand(pal, 3, 4, pose="reach"),
-                  solid="bottom", ground=ground)
+                  solid="bottom")
     cb.add_object("hand_broken", ct.stone_hand(pal, 3, 3, pose="broken"),
-                  solid="all", ground=ground)
-    cb.add_object("plinth", ct.number_plinth(pal, 3, 2), solid="all", ground=ground)
-    cb.add_object("door", ct.door_frame(pal, 2, 3, glow=pal.accent), ground=ground)
+                  solid="all")
+    cb.add_object("plinth", ct.number_plinth(pal, 3, 2), solid="all")
+    cb.add_object("door", ct.door_frame(pal, 2, 3, glow=pal.accent))
     _shadows(cb, pal)
     _landmarks(cb, pal, "hands")
     _animate(cb, pal, "hands")
@@ -525,12 +529,12 @@ def build_checker() -> ChipsetBuild:
     cb.add("wall_face", ct.wall_band(pal, "checker", face=True),
            passable=False)
 
-    cb.add_object("house", ct.little_house(pal, pal.accent, 4, 4), solid="bottom2", ground=ground)
+    cb.add_object("house", ct.little_house(pal, pal.accent, 4, 4), solid="bottom2")
     cb.add_object("house_pale", ct.little_house(pal, pal.accent_soft, 4, 4),
-                  solid="bottom2", ground=ground)
-    cb.add_object("pillar", ct.checker_pillar(pal, 1, 4), solid="bottom", ground=ground)
-    cb.add_object("fence", ct.picket_fence(pal, 3, 1), solid="all", ground=ground)
-    cb.add_object("door", ct.door_frame(pal, 2, 3, glow=pal.accent), ground=ground)
+                  solid="bottom2")
+    cb.add_object("pillar", ct.checker_pillar(pal, 1, 4), solid="bottom")
+    cb.add_object("fence", ct.picket_fence(pal, 3, 1), solid="all")
+    cb.add_object("door", ct.door_frame(pal, 2, 3, glow=pal.accent))
     _shadows(cb, pal)
     _landmarks(cb, pal, "checker")
     _animate(cb, pal, "checker")
@@ -549,14 +553,13 @@ def build_toys() -> ChipsetBuild:
     for index, color in enumerate(((232, 130, 132), (122, 190, 200),
                                    (248, 214, 118))):
         cb.add_object(f"crayon_{index}", ct.crayon(pal, color, 2, 5),
-                      solid="bottom", ground=ground)
-    cb.add_object("die", ct.die_block(pal, 3, 3, pips=5), ground=ground)
-    cb.add_object("die_small", ct.die_block(pal, 2, 2, pips=3), ground=ground)
-    cb.add_object("ball", ct.ball_toy(pal, (232, 130, 132), 2, 2), solid="all",
-                  ground=ground)
-    cb.add_object("rings", ct.ring_stack(pal, 2, 3), solid="bottom", ground=ground)
-    cb.add_object("jack", ct.jack_toy(pal, 2, 2), solid="all", ground=ground)
-    cb.add_object("door", ct.door_frame(pal, 2, 3, glow=pal.accent), ground=ground)
+                      solid="bottom")
+    cb.add_object("die", ct.die_block(pal, 3, 3, pips=5))
+    cb.add_object("die_small", ct.die_block(pal, 2, 2, pips=3))
+    cb.add_object("ball", ct.ball_toy(pal, (232, 130, 132), 2, 2), solid="all")
+    cb.add_object("rings", ct.ring_stack(pal, 2, 3), solid="bottom")
+    cb.add_object("jack", ct.jack_toy(pal, 2, 2), solid="all")
+    cb.add_object("door", ct.door_frame(pal, 2, 3, glow=pal.accent))
     _shadows(cb, pal)
     _landmarks(cb, pal, "toys")
     _animate(cb, pal, "toys")
@@ -577,8 +580,8 @@ def build_neon() -> ChipsetBuild:
     _basics(cb, pal, ground, grid)
 
     for kind in ("eye", "spiral", "mouth", "arrow", "star"):
-        cb.add_object(f"scrawl_{kind}", ct.scrawl(pal, kind, 4, 4), solid="none", ground=ground)
-    cb.add_object("door", ct.door_frame(pal, 2, 3, glow=pal.accent), ground=ground)
+        cb.add_object(f"scrawl_{kind}", ct.scrawl(pal, kind, 4, 4), solid="none")
+    cb.add_object("door", ct.door_frame(pal, 2, 3, glow=pal.accent))
     _shadows(cb, pal)
     _landmarks(cb, pal, "neon")
     _animate(cb, pal, "neon")
@@ -597,15 +600,15 @@ def build_umbrellas() -> ChipsetBuild:
     for index, color in enumerate(((198, 96, 96), (104, 132, 176),
                                    (242, 208, 130))):
         cb.add_object(f"umbrella_{index}", ct.umbrella(pal, color, 3, 4),
-                      solid="bottom", ground=ground)
+                      solid="bottom")
     closed = ct._canvas(1, 3)
     closed.round_rect(6, 4, 5, 40, 2, (198, 96, 96))
     closed.rect(7, 40, 3, 8, pal.form_dark)
     outline_in(closed, cooler((198, 96, 96), 0.4))
-    cb.add_object("umbrella_shut", closed, solid="bottom", ground=ground)
+    cb.add_object("umbrella_shut", closed, solid="bottom")
     cb.add_object("mushroom", ct.mushroom(pal, (104, 132, 176), 2, 2),
-                  solid="bottom", ground=ground)
-    cb.add_object("door", ct.door_frame(pal, 2, 3, glow=pal.accent), ground=ground)
+                  solid="bottom")
+    cb.add_object("door", ct.door_frame(pal, 2, 3, glow=pal.accent))
     _shadows(cb, pal)
     _landmarks(cb, pal, "umbrellas")
     _animate(cb, pal, "umbrellas")
@@ -635,12 +638,12 @@ def build_stars() -> ChipsetBuild:
     deep.mix(pal.void, 0.35)
     cb.add("deep", deep, passable=False, terrain=2)
 
-    cb.add_object("door", ct.door_frame(pal, 2, 3, glow=pal.accent), ground=ground)
-    cb.add_object("lamp", ct.lamp_post(pal, 1, 3), solid="bottom", ground=ground)
-    cb.add_object("pole", ct.telephone_pole(pal, 3, 5), solid="bottom", ground=ground)
-    cb.add_object("pier", ct.pier(pal, 4, 2), solid="none", ground=ground)
-    cb.add_object("island", ct.floating_island(pal, 4, 3), solid="none", ground=ground)
-    cb.add_object("buoy", ct.buoy(pal, 1, 2), solid="all", ground=ground)
+    cb.add_object("door", ct.door_frame(pal, 2, 3, glow=pal.accent))
+    cb.add_object("lamp", ct.lamp_post(pal, 1, 3), solid="bottom")
+    cb.add_object("pole", ct.telephone_pole(pal, 3, 5), solid="bottom")
+    cb.add_object("pier", ct.pier(pal, 4, 2), solid="none")
+    cb.add_object("island", ct.floating_island(pal, 4, 3), solid="none")
+    cb.add_object("buoy", ct.buoy(pal, 1, 2), solid="all")
     _shadows(cb, pal)
     _landmarks(cb, pal, "stars")
     _animate(cb, pal, "stars")

@@ -12,6 +12,7 @@ that is the point.
 
 from __future__ import annotations
 
+from . import kin
 from .canvas import Canvas
 from .charsets import (Body, creature_block, draw_block_cat, draw_cloud_ladder,
                        draw_cone, draw_floating_eye, draw_long_bird,
@@ -170,16 +171,8 @@ def slot_of(name: str) -> tuple[str, int]:
 # no residents get no designs — an empty place does not need a cast.
 
 EXTRA: dict[str, list[tuple[str, object]]] = {
-    "pink": [
-        # listens to the wall, and has been for some time
-        ("wall_ear", Body(skin=(240, 206, 208), hair=(204, 128, 154),
-                          shirt=(232, 172, 190), trousers=(174, 110, 140),
-                          feature="ears", feature_color=(244, 198, 210))),
-        # carries one loose brick and will not say where it came from
-        ("brick_carrier", Body(skin=(232, 196, 200), hair=(178, 110, 138),
-                               shirt=(214, 150, 172), trousers=(150, 92, 120),
-                               carry="block", feature_color=(226, 150, 152))),
-    ],
+    # pink's four are bespoke drawings; see art/kin.py
+    "pink": [],
     "numbers": [
         ("divider", Body(skin=(226, 224, 216), hair=(120, 130, 128),
                          shirt=(186, 198, 194), trousers=(96, 108, 106),
@@ -279,6 +272,10 @@ WORLD_CAST: dict[str, list[str]] = {
 }
 
 
+# Worlds whose whole cast has been redrawn as bespoke per-facing functions.
+BESPOKE: dict[str, dict] = {"pink": kin.PINK}
+
+
 def _sheets() -> dict[str, list[tuple[str, object]]]:
     """Every charset, with the extra residents folded in beside the originals.
 
@@ -290,11 +287,15 @@ def _sheets() -> dict[str, list[tuple[str, object]]]:
     out = dict(CAST)
     for world, entries in EXTRA.items():
         out[f"Kin{world.title()}"] = list(entries)
+    for world, designs in BESPOKE.items():
+        out[f"Kin{world.title()}"] = list(designs.items())
     return out
 
 
 for _world, _entries in EXTRA.items():
     WORLD_CAST[_world] = WORLD_CAST[_world] + [n for n, _ in _entries]
+for _world, _designs in BESPOKE.items():
+    WORLD_CAST[_world] = list(_designs)
 
 
 def build_sheets() -> dict[str, Canvas]:

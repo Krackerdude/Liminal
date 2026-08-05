@@ -140,7 +140,6 @@ def _step_into(height: int) -> Script:
     s = Script()
     s.msg(*FALL[height])
     s.se("WaterStep", volume=70)
-    s.shake(4, 6, 8, wait=False)
     s.bgm_fadeout(4)
     s.call_event(sys.CE_OVERLAY_OFF)
     s.fade_out(atmosphere.of("umbrellas").leave)

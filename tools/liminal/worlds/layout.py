@@ -474,7 +474,7 @@ def carpet(m, field: Field, zone: Zone, tiles: dict[str, int],
     def put(dx: int, dy: int, tile: int) -> None:
         x, y = zone.cx + dx, zone.cy + dy
         if field.is_floor(x, y) and m.get_lower(x, y) in bare:
-            m.set_lower(x, y, tile)
+            _set_floor(m, x, y, tile)
 
     if style == "border":
         # a framed rug: two courses in from the wall, all the way round
@@ -545,19 +545,19 @@ def floor_wash(m, field: Field, tiles: dict[str, int], rng: random.Random, *,
             continue
         if style == "grid":
             if x % period == 0 and y % period == 0:
-                m.set_lower(x, y, ids[((x // period) + (y // period)) % len(ids)])
+                _set_floor(m, x, y, ids[((x // period) + (y // period)) % len(ids)])
         elif style == "rows":
             if y % period == 0:
-                m.set_lower(x, y, ids[(y // period) % len(ids)])
+                _set_floor(m, x, y, ids[(y // period) % len(ids)])
         elif style == "diagonal":
             if (x + y) % period == 0:
-                m.set_lower(x, y, ids[((x + y) // period) % len(ids)])
+                _set_floor(m, x, y, ids[((x + y) // period) % len(ids)])
         elif style == "dense":
             if (x % 2 == 0) or (y % 2 == 0):
-                m.set_lower(x, y, ids[(x // 2 + y // 2) % len(ids)])
+                _set_floor(m, x, y, ids[(x // 2 + y // 2) % len(ids)])
         elif style == "scatter":
             if rng.random() < 1.0 / period:
-                m.set_lower(x, y, ids[rng.randrange(len(ids))])
+                _set_floor(m, x, y, ids[rng.randrange(len(ids))])
 
 
 def glow_floor(m, field: Field, zone: Zone, tiles: dict[str, int],
@@ -570,7 +570,30 @@ def glow_floor(m, field: Field, zone: Zone, tiles: dict[str, int],
     bare |= {v for k, v in tiles.items() if k.startswith("pattern_")}
     for x, y in positions:
         if field.is_floor(x, y) and m.get_lower(x, y) in bare:
-            m.set_lower(x, y, tile)
+            _set_floor(m, x, y, tile)
+
+
+def _set_floor(m, x: int, y: int, tile: int) -> None:
+    """Write a floor tile, unless an object is standing on it."""
+    if _floorable(m, x, y):
+        m.set_lower(x, y, tile)
+
+
+def _floorable(m, x: int, y: int) -> bool:
+    """May a floor pass write this cell?
+
+    No, if an object is standing on it.  This is the other half of the
+    layering fix and it is the half that was actually causing the damage:
+    worlds stamp their props *first* and the shared decoration passes —
+    the floor wash, the carpets, the glow — run *after*, over the whole zone,
+    with no idea anything was there.  Every one of them was free to repaint
+    the ground out from under a prop, and for anything that had landed on the
+    lower layer that meant erasing the prop itself.
+
+    Objects register their footprint in ``Map.claimed`` when they are stamped,
+    so this is one question with one answer for every pass in the build.
+    """
+    return ((x % m.width, y % m.height)) not in m.claimed
 
 
 def paint(m, field: Field, tiles: dict[str, int], *, floor: str = "ground",

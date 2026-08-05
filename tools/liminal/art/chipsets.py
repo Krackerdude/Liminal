@@ -235,6 +235,10 @@ class ChipsetBuilder:
                 if _has_transparency(piece):
                     opaque = False
         if upper is None:
+            # Art with any transparency in it is an object and goes above
+            # the floor; art opaque to its own edges may be a surface.  That
+            # much is sound.  What was *not* sound is that nothing stopped a
+            # later pass from painting over the result — see Map.claimed.
             upper = not opaque
 
         def row_solid(row: int) -> bool:
@@ -652,44 +656,129 @@ def die_block(pal: Palette, cols: int = 3, rows: int = 3, pips: int = 5) -> Canv
     return outline_in(art, (176, 168, 162))
 
 
+# What each world's portal shows in its glass.  Never the player: a mirror you
+# walk into that reflects you back is a mirror, and these are doors.  Each one
+# reflects something *from the world on the other side*, so the nexus reads as
+# a room full of windows rather than a room full of exits.
+REFLECTION: dict[str, str] = {
+    "room": "bed", "nexus": "door", "pink": "brick", "numbers": "digit",
+    "blocks": "block", "stairs": "steps", "sand": "dune", "faces": "tree",
+    "hands": "hand", "checker": "square", "toys": "toy", "neon": "scrawl",
+    "umbrellas": "brolly", "stars": "star",
+}
+
+
+def _reflect(art: Canvas, kind: str, x: int, y: int, w: int, h: int,
+             ink: RGB, pale: RGB) -> None:
+    """One small silhouette in the glass, in two flat values."""
+    cx, cy = x + w // 2, y + h // 2
+    if kind == "bed":
+        art.round_rect(x + 1, cy, w - 2, h // 3, 2, ink)
+        art.round_rect(x + 1, cy - 3, w // 3, 4, 1, pale)
+    elif kind == "door":
+        art.round_rect(cx - w // 6, y + 2, w // 3, h - 4, 2, ink)
+        art.dot(cx + w // 8, cy, pale)
+    elif kind == "brick":
+        for row in range(y + 2, y + h - 2, 4):
+            art.hline(row, x + 1, x + w - 2, ink)
+            art.vline(x + 1 + ((row // 4) % 2) * (w // 2), row, row + 3, ink)
+    elif kind == "digit":
+        art.rect(cx - 3, y + 3, 2, h - 8, ink)
+        art.rect(cx - 5, y + 5, 3, 2, ink)
+        art.rect(cx - 5, y + h - 5, 8, 2, ink)
+    elif kind == "block":
+        art.round_rect(cx - 5, cy - 4, 9, 9, 2, ink)
+        art.round_rect(cx - 3, cy - 2, 5, 5, 1, pale)
+    elif kind == "steps":
+        for step in range(4):
+            art.rect(x + 2 + step * 2, cy + 4 - step * 3, w - 6 - step * 2, 2,
+                     ink if step % 2 else pale)
+    elif kind == "dune":
+        art.ellipse(cx, cy + 5, w * 0.42, h * 0.22, ink)
+        art.ellipse(cx - 3, cy + 1, w * 0.22, h * 0.14, pale)
+    elif kind == "tree":
+        art.rect(cx - 1, cy, 3, h // 3, ink)
+        art.blob(cx, cy - 2, w * 0.30, ink)
+        art.blob(cx - 2, cy - 4, w * 0.16, pale)
+    elif kind == "hand":
+        art.round_rect(cx - 4, cy - 1, 9, h // 3, 2, ink)
+        for finger in range(3):
+            art.rect(cx - 3 + finger * 3, cy - 6, 2, 6, ink)
+    elif kind == "square":
+        art.checker(ink, pale, max(2, w // 4))
+        art.rect(x, y, 1, h, pale)
+    elif kind == "toy":
+        art.blob(cx, cy, w * 0.24, ink)
+        art.blob(cx - 2, cy - 2, w * 0.10, pale)
+        art.rect(cx - 1, cy + 4, 3, 5, ink)
+    elif kind == "scrawl":
+        art.line(x + 2, cy + 4, cx, y + 3, ink)
+        art.line(cx, y + 3, x + w - 3, cy + 5, ink)
+        art.line(x + 4, cy, x + w - 5, cy - 1, pale)
+    elif kind == "brolly":
+        art.ellipse(cx, cy, w * 0.36, h * 0.20, ink)
+        art.rect(cx - 1, cy, 2, h // 3, ink)
+        art.ellipse(cx - 3, cy - 2, w * 0.14, h * 0.08, pale)
+    elif kind == "star":
+        for angle in range(0, 360, 72):
+            radians = math.radians(angle - 90)
+            art.line(cx, cy, int(cx + w * 0.30 * math.cos(radians)),
+                     int(cy + h * 0.22 * math.sin(radians)), ink)
+        art.dot(cx, cy, pale)
+
+
 def door_frame(pal: Palette, cols: int = 2, rows: int = 3, *,
                glow: RGB | None = None, leaf: RGB | None = None,
-               arch: bool = True) -> Canvas:
-    """A door standing on its own.  The most important object in the game.
+               arch: bool = True, reflect: str = "") -> Canvas:
+    """A standing mirror.  The most important object in the game.
 
-    Flat colour, an arched head, two sunken panels and a round handle — it has
-    to read as *door* at a glance from across a dark room, because that glance
-    is the only invitation the game ever offers.
+    These were arched doors and they read as ovals — a shape with no obvious
+    meaning at this size.  They are mirrors now, matching the one in the room
+    the player wakes up in, which turns the nexus from a corridor of exits
+    into a room full of windows.
+
+    The frame takes the world's own form colour, the glass takes a cooled
+    version of its accent, and ``reflect`` names a silhouette from the world
+    on the other side that stands in the glass instead of the player.  A
+    mirror that reflects *you* is furniture; one that reflects somewhere else
+    is a door.
     """
     art = _canvas(cols, rows)
     w, h = cols * TILE, rows * TILE
     body = leaf or pal.form
     jamb = pal.form_dark
 
-    top = 2
-    radius = (w // 2 - 1) if arch else 3
-    art.round_rect(0, top, w, h - top, radius, jamb)
-    art.round_rect(2, top + 2, w - 4, h - top - 2, max(0, radius - 2), body)
-    art.round_rect(2, top + 2, 3, h - top - 2, 1, warmer(body, 0.22))
-    art.rect(w - 5, top + 6, 3, h - top - 8, cooler(body, 0.20))
+    # The frame: square-shouldered, with a plinth, so it stands rather than
+    # floats and never reads as an oval.
+    #
+    # Inset by two pixels on every side, and that inset is load-bearing rather
+    # than cosmetic.  add_object puts art on the upper layer only if some tile
+    # of it has a transparent pixel; the first version of this filled its whole
+    # bounding box, outline_in then filled the last transparent ring, and the
+    # mirror went to the *lower* layer — where it stopped being an object
+    # standing on the floor and became a two-by-three hole punched through it.
+    art.rect(2, 2, w - 4, h - 3, jamb)
+    art.rect(3, 3, w - 6, h - 6, warmer(jamb, 0.18))
+    art.rect(2, h - 4, w - 4, 3, cooler(jamb, 0.25))
+    art.rect(4, h - 3, w - 8, 2, jamb)
 
-    if glow is not None:
-        # An open door: the leaf is replaced by soft light, flat-shaded in two
-        # steps rather than a gradient.
-        art.round_rect(2, top + 2, w - 4, h - top - 2, max(0, radius - 2),
-                       cooler(glow, 0.35))
-        art.round_rect(4, top + 5, w - 8, h - top - 5, max(0, radius - 4), glow)
-        art.round_rect(6, top + 8, w - 12, h - top - 10, max(0, radius - 6),
-                       warmer(glow, 0.45))
-    else:
-        panel_w, panel_h = w - 12, (h - top - 12) // 2
-        art.round_rect(6, top + 8, panel_w, panel_h, 2, cooler(body, 0.16))
-        art.round_rect(7, top + 9, panel_w - 2, panel_h - 2, 2, body)
-        art.round_rect(6, top + 12 + panel_h, panel_w, panel_h, 2,
-                       cooler(body, 0.16))
-        art.round_rect(7, top + 13 + panel_h, panel_w - 2, panel_h - 2, 2, body)
-        art.blob(w - 7, h // 2 + 2, 2.2, pal.accent)
-        art.dot(w - 8, h // 2 + 1, warmer(pal.accent, 0.5))
+    glass = cooler(glow or pal.accent_soft, 0.15)
+    gx, gy, gw, gh = 5, 5, w - 10, h - 11
+    art.rect(gx, gy, gw, gh, glass)
+    # the sky in it: a lighter band across the top and a darker one at the
+    # foot, both flat, so the surface reads as glass and not as a hole
+    art.rect(gx, gy, gw, max(2, gh // 4), warmer(glass, 0.30))
+    art.rect(gx, gy + gh - max(2, gh // 5), gw, max(2, gh // 5),
+             cooler(glass, 0.28))
+    if reflect:
+        _reflect(art, reflect, gx, gy, gw, gh,
+                 cooler(glass, 0.52), warmer(glass, 0.48))
+    # one hard specular streak down the glass, which is what says "mirror"
+    art.line(gx + 1, gy + gh - 2, gx + gw // 3, gy + 1, warmer(glass, 0.55))
+    art.line(gx + 2, gy + gh - 2, gx + 1 + gw // 3, gy + 1, glass)
+
+    art.rect(gx - 1, gy - 1, gw + 2, 1, warmer(body, 0.30))
+    art.rect(gx - 1, gy + gh, gw + 2, 1, cooler(body, 0.30))
     return outline_in(art, cooler(jamb, 0.35))
 
 

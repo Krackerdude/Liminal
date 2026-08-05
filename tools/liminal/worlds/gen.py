@@ -61,20 +61,38 @@ class Placer:
                 self.taken.discard(((x + dx) % self.w, (y + dy) % self.h))
 
 
-def stamp(m: Map, grid: TileGrid, x: int, y: int) -> None:
+def stamp(m: Map, grid: TileGrid, x: int, y: int, *,
+          overlap: bool = False, pad: int = 0) -> bool:
     """Place a multi-tile object with its top-left at (x, y).
+
+    Refuses, and draws nothing, if any object is already standing in that
+    footprint.  This is the single most important guard in the map builder:
+    every world used to be free to stamp wherever it liked, and the umbrella
+    forest was doing it a hundred and fifty times per map with a hundred and
+    twenty-eight cells landing on top of each other — which is why it read as
+    a heap of clipped canopies rather than a wood.
+
+    Pass ``overlap=True`` only for art that is *meant* to sit on top of
+    something else.  Returns whether it was placed, so callers can try again
+    somewhere else instead of silently producing a mess.
 
     Coordinates wrap, so an object placed near an edge spills onto the far
     side and the join is hidden by the object itself.
     """
+    if not overlap and not m.is_clear(x, y, grid.cols, grid.rows, pad):
+        return False
     setter = m.set_upper if grid.upper else m.set_lower
     for col, row, tile_id in grid:
         if tile_id:
             setter(x + col, y + row, tile_id)
+    m.claim(x, y, grid.cols, grid.rows)
+    return True
 
 
-def stamp_centered(m: Map, grid: TileGrid, cx: int, cy: int) -> None:
-    stamp(m, grid, cx - grid.cols // 2, cy - grid.rows // 2)
+def stamp_centered(m: Map, grid: TileGrid, cx: int, cy: int, *,
+                   overlap: bool = False, pad: int = 0) -> bool:
+    return stamp(m, grid, cx - grid.cols // 2, cy - grid.rows // 2,
+                 overlap=overlap, pad=pad)
 
 
 def fill_ground(m: Map, tiles: dict[str, int], rng: random.Random, *,

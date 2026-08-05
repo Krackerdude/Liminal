@@ -15,7 +15,7 @@ from __future__ import annotations
 from . import kin
 from .dreamer import Dreamer, dreamer_block
 from .canvas import Canvas
-from .charsets import (Body, creature_block, draw_block_cat, draw_cloud_ladder,
+from .charsets import (Body, creature_block, gleam_block, draw_block_cat, draw_cloud_ladder,
                        draw_cone, draw_floating_eye, draw_long_bird,
                        draw_mailbox, draw_pawn, draw_seedling, draw_shade,
                        draw_television, draw_umbrella_watcher,
@@ -369,6 +369,8 @@ def build_sheets() -> dict[str, Canvas]:
     # attached to.  An explicitly empty sheet is the only way to mean "no
     # graphic" and be believed.
     out["Blank"] = sheet([])
+    # every interactable in the game wears this
+    out["Gleam"] = gleam_block()
     # The player is the author's own artwork, transcribed out of the reference
     # sheet by art/dreamer.py rather than generated.  Effects add a halo, a
     # translucency pass or one small object; none of them repaint the figure.

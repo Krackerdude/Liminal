@@ -567,7 +567,7 @@ def atmosphere_watch(worlds) -> CommonEvent:
                 with s.if_var(VR_SCRATCH, terrain):
                     s.se(sound, volume=air.step_volume)
             if air.shake:
-                s.shake(air.shake[0], air.shake[1], 2, wait=False)
+                pass    # camera shake is banned; see atmosphere.Atmosphere
             # and whatever this world alone is allowed to do
             if rule is not None:
                 rule(s)

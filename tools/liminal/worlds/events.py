@@ -47,7 +47,9 @@ from .worlds import DREAM_ORDER, POPULATION, WORLD_ORDER, World
 
 # Interactables draw as the world's own door graphic at a small size, which
 # reads as "part of the architecture" rather than as an item lying about.
-_ICON_SHEET, _ICON_SLOT = "Blank", 0
+# Interactables wear a faint pulsing gleam rather than nothing at all.  They
+# were on the Blank charset, which made every one of them literally invisible.
+_ICON_SHEET, _ICON_SLOT = "Gleam", 0
 
 # Each interactable owns a switch for the whole playthrough; this hands them
 # out in order across every world.
@@ -155,6 +157,38 @@ def _at_edge(world: World, zone, rng: random.Random) -> tuple[int, int]:
 def _place(world: World, name: str, x: int, y: int, pages) -> None:
     """Add an event at the first tile near ``(x, y)`` that is not taken."""
     world.map.add_event(name, *_free_tile(world, x, y), pages)
+
+
+def _place_wide(world: World, name: str, x: int, y: int, pages, *,
+                reach: int = 1) -> None:
+    """The same, plus relays on the tiles around it that do the same thing.
+
+    A shelter is four tiles by three and used to answer on exactly one of
+    them, so finding an object and finding its one live pixel were two
+    different problems and only the second one was interesting.  This puts the
+    same pages on every free tile within ``reach``, so walking up to the thing
+    anywhere along its face and pressing the action key works.
+
+    The relays are the identical page list, which means they share the switch
+    the real one sets: using any of them marks the object used, and every
+    other relay flips to the used page with it.
+    """
+    m = world.map
+    ox, oy = _free_tile(world, x, y)
+    m.add_event(name, ox, oy, pages)
+    taken = {(e.x, e.y) for e in m.events}
+    solid = solid_ids(world.chipset)
+    for dy in range(-reach, reach + 1):
+        for dx in range(-reach, reach + 1):
+            if dx == 0 and dy == 0:
+                continue
+            px, py = (ox + dx) % m.width, (oy + dy) % m.height
+            if (px, py) in taken:
+                continue
+            if (m.get_lower(px, py) in solid or m.get_upper(px, py) in solid):
+                continue
+            m.add_event(f"{name} reach {dx},{dy}", px, py, pages)
+            taken.add((px, py))
 
 
 def _arrival_event(world: World) -> Page:
@@ -563,7 +597,7 @@ def dream_events(world: World, worlds: dict[str, World],
             after.se(system.sound, volume=28)
             after.msg(*system.after)
 
-            _place(world, f"{system.thing} {n}", ix, iy, [
+            _place_wide(world, f"{system.thing} {n}", ix, iy, [
                 Page(script=touch, trigger=TRIGGER_ACTION,
                      charset=_ICON_SHEET, charset_index=_ICON_SLOT),
                 Page(script=after, trigger=TRIGGER_ACTION, switch_a=switch,
@@ -804,7 +838,6 @@ def _numbers_system(world: World, worlds: dict[str, World],
     kill.flash(255, 255, 255, 31, 2, True)
     kill.tint(58, 62, 60, 24, 14, True)
     kill.se("LowThud", volume=90)
-    kill.shake(5, 6, 8, wait=True)
     kill.switch(altered, True)
     kill.switch(SW_WORLD_MEMORY_BASE + index, True)
     kill.call_event(sys.CE_OVERLAY_OFF)
@@ -901,7 +934,6 @@ def _stairs_system(world: World, worlds: dict[str, World],
         fall.var(VR_FALL, 97, op=5)              # keep it inside one number
         fall.var(VR_FALLS, 1, op=1)
         fall.bgm_fadeout(4)
-        fall.shake(4, 5, 6, wait=False)
         fall.fade_out(atmosphere.of("stairs").leave)
         fall.wait(10)
         fall.call_event(sys.CE_OVERLAY_OFF)

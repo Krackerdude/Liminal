@@ -49,6 +49,19 @@ SW_DEEP_UNLOCKED = 39
 SW_WORLD_MEMORY_BASE = 40   # 40 + world index
 SW_WORLD_SECRET_BASE = 60   # 60 + world index
 
+# Every interactive object in the game owns one switch, so its state persists
+# for the whole playthrough: a brick pulled out of a wall stays out, a wound
+# toy stays wound, a raised tide stays raised.  Two hundred is generous now
+# and was not: the redesign that made these load-bearing pushed the count
+# past two hundred on its first build.
+# A world that has been permanently changed by its own mechanic.  Separate
+# from "world memory", which records that something happened; this records
+# that the place is *different now* and stays different.
+SW_WORLD_STATE_BASE = 80    # 80 + world index
+
+SW_INTERACT_BASE = 100
+SW_INTERACT_COUNT = 320
+
 # --- variables ---------------------------------------------------------------
 VR_EQUIPPED = 1             # 0 none, else the effect's number
 VR_DREAM_DISTANCE = 2       # total tiles walked across every loop, ever
@@ -65,9 +78,78 @@ VR_MENU_SLOT = 12
 VR_PREV_WORLD = 13
 VR_TEMP_X = 14
 VR_TEMP_Y = 15
+# The diary watcher needs a variable nothing else touches.  It shares the frame
+# with the loop watch, which rewrites VR_SCRATCH every single frame, and a key
+# read that lands in a variable somebody else is using is a keypress that never
+# happened.
+VR_KEY = 16
+# The number the counters in the number world are currently set to.
+VR_SET_NUMBER = 17
+# Frames since the player last changed tile.  Standing still is the only
+# input this game has that is not walking, so several worlds read it.
+VR_STILL = 17
 VR_VISITS_BASE = 20         # 20 + world index: times you have entered it
 
+# The number world's registers.  Six independent numbers, each set separately
+# on its own plinths, each editing a different property of the map.  The state
+# of that world is the whole tuple, not any one of them.
+# The stairwell remembers the order you fell through it.  Not how many falls
+# — the *sequence*, folded into one number, so the same four edges taken in a
+# different order are a different answer.
+VR_FALL = 18
+VR_FALLS = 19
+
+# The grove is one town received on four channels, and the receiver is chased
+# rather than switched: VR_CHASE counts how many junctions of the drift you
+# have followed correctly, and resets to nothing the moment you pick a wrong
+# one.  VR_CHANNEL is only what the town currently is; it is never set
+# directly by anything the player can reach.
+VR_CHASE = 50
+VR_CHANNEL = 51
+VR_CHASE_FROM = 52          # which junction the current step was started at
+VR_RING_DIR = 53            # which way the ring came from: 0 up 1 right 2 down 3 left
+VR_RING_X = 54              # where you were standing when it started
+VR_RING_Y = 55
+VR_RING_WAIT = 56           # seconds left before the next ring
+
+# The four things the grove has that can be carried, one found on each
+# channel and every one of them used on a different channel from the one that
+# had it.  They are switches rather than inventory because none of them are
+# items in the menu sense — the game has no menu they would appear in.
+SW_FACE_BASE = SW_INTERACT_BASE + SW_INTERACT_COUNT      # past the pool
+SW_FACE_COIN = SW_FACE_BASE + 0
+SW_FACE_TAPE = SW_FACE_BASE + 1
+SW_FACE_SEED = SW_FACE_BASE + 2
+SW_FACE_BULB = SW_FACE_BASE + 3
+SW_FACE_MAST = SW_FACE_BASE + 4         # the compound gate is open
+SW_FACE_ENDED = SW_FACE_BASE + 5        # you have stood under the mast
+SW_FACE_HEARD = SW_FACE_BASE + 6        # the receiver is in your hands
+SW_FACE_ITEM = {"coin": SW_FACE_COIN, "tape": SW_FACE_TAPE,
+                "seed": SW_FACE_SEED, "bulb": SW_FACE_BULB}
+
+VR_REG_BASE = 40
+REG_US, REG_FAR, REG_LIGHT, REG_WAYS, REG_AGO, REG_YOU = range(6)
+REG_NAMES = ("how many of us", "how far", "how bright",
+             "how many ways", "how long ago", "how many of you")
+REG_MAX = (20, 9, 9, 9, 9, 4)
+
 # --- names, for the database editor lists ------------------------------------
+
+def _dense(names: dict[int, str]) -> dict[int, str]:
+    """Fill every gap between 1 and the highest id in use.
+
+    The allocation above is deliberately spaced out — leaving room beside each
+    group is what stops a new switch from being wedged into somebody else's
+    range — but the database is a list, not a map, and a list with holes in it
+    is a list whose length is not its highest index.  Anything allocated past
+    that length is then addressing storage the engine has no reason to have
+    made.  Nothing is saved by shipping the holes, so they are filled.
+    """
+    if not names:
+        return names
+    return {index: names.get(index, "-") for index in range(1, max(names) + 1)}
+
+
 
 def switch_names(world_names: list[str]) -> dict[int, str]:
     names: dict[int, str] = {}
@@ -81,10 +163,18 @@ def switch_names(world_names: list[str]) -> dict[int, str]:
     })
     for key, index in SW_EFFECT_ACTIVE.items():
         names[index] = f"{key} active"
+    for index in range(SW_INTERACT_COUNT):
+        names[SW_INTERACT_BASE + index] = f"used {index:03d}"
+    for index, world in enumerate(world_names):
+        names[SW_WORLD_STATE_BASE + index] = f"{world} altered"
     for index, world in enumerate(world_names):
         names[SW_WORLD_MEMORY_BASE + index] = f"{world} changed"
         names[SW_WORLD_SECRET_BASE + index] = f"{world} secret"
-    return names
+    names.update({SW_FACE_COIN: "the coin", SW_FACE_TAPE: "the tape",
+                  SW_FACE_SEED: "the seed", SW_FACE_BULB: "the bulb",
+                  SW_FACE_MAST: "the compound", SW_FACE_ENDED: "under the mast",
+                  SW_FACE_HEARD: "the receiver"})
+    return _dense(names)
 
 
 def variable_names(world_names: list[str]) -> dict[int, str]:
@@ -94,8 +184,16 @@ def variable_names(world_names: list[str]) -> dict[int, str]:
         VR_WORLD: "world", VR_SCRATCH: "scratch", VR_MENU_CURSOR: "menu cursor",
         VR_ROLL: "roll", VR_STEPS: "steps", VR_EFFECTS_FOUND: "effects found",
         VR_MENU_SLOT: "menu slot", VR_PREV_WORLD: "previous world",
-        VR_TEMP_X: "temp x", VR_TEMP_Y: "temp y",
+        VR_TEMP_X: "temp x", VR_TEMP_Y: "temp y", VR_KEY: "key",
+        VR_SET_NUMBER: "the number", VR_STILL: "still",
+        VR_FALL: "the way down", VR_FALLS: "falls",
     }
     for index, world in enumerate(world_names):
         names[VR_VISITS_BASE + index] = f"visits {world}"
-    return names
+    for index, label in enumerate(REG_NAMES):
+        names[VR_REG_BASE + index] = label
+    names.update({VR_CHASE: "the chase", VR_CHANNEL: "the channel",
+                  VR_CHASE_FROM: "chased from", VR_RING_DIR: "the ring",
+                  VR_RING_X: "ring x", VR_RING_Y: "ring y",
+                  VR_RING_WAIT: "until the ring"})
+    return _dense(names)

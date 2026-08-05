@@ -27,6 +27,8 @@ import math
 import random
 from dataclasses import dataclass, field
 
+from ..maps import EMPTY_UPPER
+
 VOID = 0
 FLOOR = 1
 WALL = 2
@@ -70,6 +72,10 @@ class Field:
         # placed here: a prop dropped in a doorway can cut a world in half,
         # and the player has no way to move it.
         self.protected: set[tuple[int, int]] = set()
+        # Rooms that are meant to be unreachable.  The connectivity repair
+        # must leave these alone, or it will helpfully break open the one
+        # thing in the world the player is supposed to only ever look at.
+        self.sealed: set[tuple[int, int]] = set()
 
     def get(self, x: int, y: int) -> int:
         return self.cells[y % self.h][x % self.w]
@@ -158,6 +164,29 @@ class Field:
                 if self.get(x + dx, y + dy) != VOID:
                     self.set(x + dx, y + dy, value)
 
+    def protect_chokepoints(self, window: int = 2, threshold: float = 0.62
+                            ) -> None:
+        """Replace accumulated protection with only the places that need it.
+
+        Carving generators mark every tile they touch as protected, which in a
+        world made of paths means the whole world is off limits and nothing can
+        ever be placed.  What actually has to stay clear is *chokepoints* — the
+        tiles where the walkable space is narrow enough that one prop would
+        close it.  Anywhere the floor is open, decoration is safe.
+        """
+        narrow: set[tuple[int, int]] = set()
+        span = window * 2 + 1
+        area = span * span
+        for x, y in self.floor_cells():
+            free = 0
+            for dy in range(-window, window + 1):
+                for dx in range(-window, window + 1):
+                    if self.is_floor(x + dx, y + dy):
+                        free += 1
+            if free < area * threshold:
+                narrow.add((x, y))
+        self.protected = narrow
+
     def release_zone_interiors(self, keep_margin: int = 3) -> None:
         """Stop protecting the parts of a corridor that run inside a room.
 
@@ -175,6 +204,53 @@ class Field:
                     inside.add(((zone.cx + dx) % self.w,
                                 (zone.cy + dy) % self.h))
         self.protected -= inside
+
+    def components(self) -> list[list[tuple[int, int]]]:
+        """Every separately-reachable island of floor, largest first."""
+        seen: set[tuple[int, int]] = set()
+        groups: list[list[tuple[int, int]]] = []
+        for start in self.floor_cells():
+            if start in seen:
+                continue
+            group: list[tuple[int, int]] = []
+            stack = [start]
+            while stack:
+                x, y = stack.pop()
+                if (x, y) in seen or not self.is_floor(x, y):
+                    continue
+                seen.add((x, y))
+                group.append((x, y))
+                for dx, dy in ((1, 0), (-1, 0), (0, 1), (0, -1)):
+                    nxt = ((x + dx) % self.w, (y + dy) % self.h)
+                    if nxt not in seen:
+                        stack.append(nxt)
+            groups.append(group)
+        groups.sort(key=len, reverse=True)
+        return groups
+
+    def ensure_connected(self, *, width: int = 3,
+                         ignore: set[tuple[int, int]] | None = None) -> int:
+        """Carve passages until every piece of floor is reachable.
+
+        A generator can leave islands behind — a corridor that missed, a zone
+        placed past the edge of the group it was meant to join.  The prop-level
+        repair cannot help with that, because the problem is the shape of the
+        world rather than something standing in it.  This joins the pieces.
+        """
+        ignore = ignore or self.sealed
+        joins = 0
+        for _ in range(12):
+            groups = [g for g in self.components()
+                      if not set(g) <= ignore]
+            if len(groups) <= 1:
+                break
+            main = groups[0]
+            anchor = main[len(main) // 2]
+            for group in groups[1:]:
+                target = group[len(group) // 2]
+                self.corridor(anchor, target, width=width)
+                joins += 1
+        return joins
 
     # -- boundaries ----------------------------------------------------------
     def build_walls(self, thickness: int = 2) -> None:
@@ -450,6 +526,40 @@ def carpet(m, field: Field, zone: Zone, tiles: dict[str, int],
             put(dx, 1, ids[1 % len(ids)])
 
 
+def floor_wash(m, field: Field, tiles: dict[str, int], rng: random.Random, *,
+               period: int = 3, style: str = "grid") -> None:
+    """Treat every walkable tile in the world, not just the rooms.
+
+    Rooms are only part of a world; in a layout made of paths and corridors
+    most of the floor is *between* rooms, and leaving that bare is what makes
+    a world look unfinished no matter how well the rooms are dressed.  This
+    lays a base flooring everywhere, and the per-room carpets go on top of it.
+    """
+    keys = [k for k in tiles if k.startswith("pattern_")]
+    if not keys:
+        return
+    ids = [tiles[k] for k in keys]
+    bare = {tiles[k] for k in ("ground", "ground_b", "path") if k in tiles}
+    for x, y in field.floor_cells():
+        if m.get_lower(x, y) not in bare:
+            continue
+        if style == "grid":
+            if x % period == 0 and y % period == 0:
+                m.set_lower(x, y, ids[((x // period) + (y // period)) % len(ids)])
+        elif style == "rows":
+            if y % period == 0:
+                m.set_lower(x, y, ids[(y // period) % len(ids)])
+        elif style == "diagonal":
+            if (x + y) % period == 0:
+                m.set_lower(x, y, ids[((x + y) // period) % len(ids)])
+        elif style == "dense":
+            if (x % 2 == 0) or (y % 2 == 0):
+                m.set_lower(x, y, ids[(x // 2 + y // 2) % len(ids)])
+        elif style == "scatter":
+            if rng.random() < 1.0 / period:
+                m.set_lower(x, y, ids[rng.randrange(len(ids))])
+
+
 def glow_floor(m, field: Field, zone: Zone, tiles: dict[str, int],
                anim: str, positions: list[tuple[int, int]]) -> None:
     """Drop animated tiles onto the floor at chosen points."""
@@ -583,7 +693,7 @@ def repair_connectivity(m, field: Field, chipset, start: tuple[int, int],
     for _ in range(8):
         seen = reachable(m, solid, start)
         stranded = [(x, y) for (x, y) in field.floor_cells()
-                    if (x, y) not in seen]
+                    if (x, y) not in seen and (x, y) not in field.sealed]
         if not stranded:
             break
         for x, y in stranded:
@@ -591,7 +701,7 @@ def repair_connectivity(m, field: Field, chipset, start: tuple[int, int],
                 m.set_lower(x, y, floor_tile)
                 removed += 1
             if m.get_upper(x, y) in solid:
-                m.set_upper(x, y, 0)
+                m.set_upper(x, y, EMPTY_UPPER)
                 removed += 1
     return removed
 
@@ -814,3 +924,102 @@ def archipelago(field: Field, rng: random.Random, *, islands: int = 24,
         field.corridor((a.cx, a.cy), (b.cx, b.cy), width=pier,
                        bend="hv" if step % 2 else "vh")
     return zones
+
+
+# --- second constraints -------------------------------------------------------
+# The strongest worlds combine two rules that reinforce each other — one great
+# hall *and* fourteen recesses, one avenue *and* ten courts.  A world defined
+# by a single variable ("floating slabs", "terraces") stays generic no matter
+# how it is decorated.  These add the second rule.
+
+def compress(field: Field, rng: random.Random, zones: list[Zone], *,
+             blowouts: int = 5, size: tuple[int, int] = (34, 28)) -> list[Zone]:
+    """Punch a few enormous rooms into a world of narrow corridors.
+
+    The second constraint for a warren: the halls stay one to three tiles
+    wide, and then without warning open into something the size of a stadium
+    for a single screen before closing again.  The contrast is the effect;
+    neither the tightness nor the size would do anything alone.
+    """
+    big = []
+    for index in range(blowouts):
+        anchor = zones[rng.randrange(len(zones))] if zones else None
+        cx = anchor.cx if anchor else rng.randrange(field.w)
+        cy = anchor.cy if anchor else rng.randrange(field.h)
+        zone = field.carve(Zone(f"blowout{index}", cx, cy,
+                                size[0] + rng.randint(-6, 8),
+                                size[1] + rng.randint(-4, 6),
+                                rng.choice(("round", "octagon"))))
+        big.append(zone)
+    return big
+
+
+def glimpsed_rooms(field: Field, rng: random.Random, *, count: int = 14,
+                   size: tuple[int, int] = (9, 7)) -> list[Zone]:
+    """Rooms sealed inside the wall mass, which can be seen but never entered.
+
+    Carved as floor so they are painted like rooms, then walled off completely
+    — the player sees a lit interior through the boundary and can never work
+    out how to reach it, because there is no way.
+    """
+    sealed = []
+    for index in range(count):
+        cx, cy = rng.randrange(field.w), rng.randrange(field.h)
+        # only somewhere already solid, so it really is embedded in the mass
+        if field.get(cx, cy) != VOID:
+            continue
+        zone = Zone(f"sealed{index}", cx, cy, size[0], size[1], "rect")
+        for dy in range(-size[1] // 2, size[1] // 2 + 1):
+            for dx in range(-size[0] // 2, size[0] // 2 + 1):
+                field.set(cx + dx, cy + dy, FLOOR_ALT)
+        sealed.append(zone)
+    return sealed
+
+
+def seal_off(field: Field, zones: list[Zone], thickness: int = 2) -> None:
+    """Wall a set of zones in completely, after the walls have been built."""
+    for zone in zones:
+        for dy in range(-zone.h // 2, zone.h // 2 + 1):
+            for dx in range(-zone.w // 2, zone.w // 2 + 1):
+                field.sealed.add(((zone.cx + dx) % field.w,
+                                  (zone.cy + dy) % field.h))
+    for zone in zones:
+        for dy in range(-zone.h // 2 - thickness, zone.h // 2 + thickness + 1):
+            for dx in range(-zone.w // 2 - thickness, zone.w // 2 + thickness + 1):
+                inside = (abs(dx) <= zone.w // 2 and abs(dy) <= zone.h // 2)
+                if not inside:
+                    field.set(zone.cx + dx, zone.cy + dy, WALL)
+
+
+def regions(field: Field, rng: random.Random, hall: Zone, *, count: int = 7,
+            size: tuple[int, int] = (26, 20)) -> list[Zone]:
+    """Divide one enormous room into districts without ever leaving it.
+
+    The second constraint for a great hall: instead of adding more rooms, the
+    single room is given internal regions that differ from one another. The
+    player never passes through a door, and the space still changes.
+    """
+    out = []
+    for index in range(count):
+        angle = index * math.tau / count + rng.uniform(-0.25, 0.25)
+        radius = rng.uniform(0.30, 0.62)
+        cx = int(hall.cx + math.cos(angle) * hall.w * 0.5 * radius)
+        cy = int(hall.cy + math.sin(angle) * hall.h * 0.5 * radius)
+        out.append(Zone(f"region{index}", cx, cy,
+                        size[0] + rng.randint(-6, 8),
+                        size[1] + rng.randint(-4, 6),
+                        rng.choice(("round", "rect", "diamond"))))
+    return out
+
+
+def vary_zones(zones: list[Zone], rng: random.Random,
+               shapes: tuple[str, ...] = ("rect", "round", "diamond",
+                                          "octagon", "cross", "ring")) -> None:
+    """Give every zone in a set a different geometry.
+
+    The second constraint for anything built from repeated units: the units
+    stop being repeated.  A world of twenty-eight slabs where one is round,
+    one is a ring and one is a cross reads as twenty-eight decisions.
+    """
+    for index, zone in enumerate(zones):
+        zone.shape = shapes[index % len(shapes)]

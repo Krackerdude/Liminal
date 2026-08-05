@@ -158,7 +158,10 @@ def title_screen() -> Canvas:
 
     draw_text_centered(art, "LIMINAL", 26, (246, 240, 226), scale=4, spacing=2,
                        shadow=(30, 26, 44))
-    draw_text_centered(art, "A PLACE THAT WAS ALREADY HERE", 200,
+    # Right at the bottom edge.  The engine puts its own command window in the
+    # middle of the lower half and will not be moved, so anything written
+    # there is written underneath "begin / return / leave".
+    draw_text_centered(art, "A PLACE THAT WAS ALREADY HERE", 228,
                        (128, 120, 148), scale=1, spacing=1)
     return art
 

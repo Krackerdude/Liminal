@@ -24,15 +24,19 @@ a die was thrown.
 from __future__ import annotations
 
 from ..art.menu import EFFECTS, icon_position
-from ..cmds import (MSG_BOTTOM, MSG_MIDDLE, MSG_TOP, PLAYER, Script)
+from . import atmosphere, mechanics
+from ..cmds import (MSG_BOTTOM, MSG_MIDDLE, MSG_TOP, MV_SPEED_UP, PLAYER,
+                    Script)
 from ..db import TRIGGER_CALL, TRIGGER_PARALLEL, CommonEvent
 from ..state import (SW_DEEP_UNLOCKED, SW_EFFECT_ACTIVE, SW_EYE_ACTIVE,
                      SW_FOLLOWER, SW_HAS_EFFECT, SW_MENU_BUSY, SW_MENU_OPEN,
                      SW_OVERLAY_ON, SW_QUIET_ACTIVE, SW_TITLE_CHANGED,
-                     SW_WOKE_ONCE, VR_DREAM_DISTANCE, VR_EFFECTS_FOUND,
+                     SW_WOKE_ONCE, SW_WORLD_STATE_BASE, VR_DREAM_DISTANCE, VR_EFFECTS_FOUND,
                      VR_EQUIPPED, VR_LAST_X, VR_LAST_Y, VR_LOOPS,
                      VR_MENU_CURSOR, VR_PREV_WORLD, VR_ROLL, VR_SCRATCH,
-                     VR_STEPS, VR_TEMP_X, VR_TEMP_Y, VR_VISITS_BASE, VR_WORLD)
+                     VR_KEY, VR_REG_BASE, REG_MAX, VR_STEPS, VR_STILL,
+                     VR_TEMP_X, VR_TEMP_Y,
+                     VR_VISITS_BASE, VR_WORLD)
 
 # Common event numbers.  Referenced by name everywhere else.
 CE_BOOT = 1
@@ -47,18 +51,25 @@ CE_OVERLAY_ON = 9
 CE_OVERLAY_OFF = 10
 CE_WAKE = 11
 CE_DIARY_KEY = 12
+CE_ATMOSPHERE = 13
 
 # Picture layers.  Higher numbers draw in front.
 PIC_OVERLAY = 5           # the world's own film: grain, haze, scanlines
-PIC_VEIL = 10
+# The diary, back to front.  Ids *are* the draw order, so the garnishes that
+# turn behind the page have to be numbered below it.
+PIC_VEIL = 6
+PIC_HALO = 7              # rotates one way, forever
+PIC_RINGS = 8             # rotates the other way, faster
 PIC_PANEL = 11
 PIC_FRAME = 12
 PIC_TITLE = 13
 PIC_ICON_BASE = 14        # 14..25, one per effect slot
+PIC_BLOOM = 26            # the light under whatever is selected
 PIC_GHOST = 27
 PIC_CURSOR = 28
 PIC_GLINT = 29
 PIC_DUST = 30
+PIC_MOTES = 31            # waves, forever
 PIC_FLASH = 40            # for anomalies: static, eye, white
 
 EFFECT_KEYS = [key for key, _, _ in EFFECTS]
@@ -67,7 +78,12 @@ EFFECT_KEYS = [key for key, _, _ in EFFECTS]
 # --- boot --------------------------------------------------------------------
 
 def boot() -> CommonEvent:
-    """Runs once at the very start, then switches itself off."""
+    """Runs once at the very start, then never again.
+
+    Called by the first arrival event to run on a new game, which recognises
+    itself by ``VR_WORLD`` still being zero — no map has an index of zero, so
+    that value can only mean nothing has happened yet.
+    """
     s = Script()
     s.comment("first frame of a new game")
     s.var(VR_EQUIPPED, 0)
@@ -75,7 +91,16 @@ def boot() -> CommonEvent:
     s.var(VR_EFFECTS_FOUND, 0)
     s.var(VR_WORLD, 1)
     s.switch(SW_WOKE_ONCE, False)
+    # The number world starts with everything present and nothing turned
+    # down; every register is at its own maximum, which is the state a world
+    # is in before anybody has counted it.
+    for reg, top in enumerate(REG_MAX):
+        s.var(VR_REG_BASE + reg, top)
     s.tint(100, 100, 100, 100, 0, False)
+    # The pace of the whole game, set once and deliberately.  RPG Maker's
+    # default is 4, one tile roughly every four frames; the worlds here are a
+    # hundred and forty tiles across and meant to be walked rather than
+    # crossed, so this is a decision and not an inherited default.
     return CommonEvent(CE_BOOT, "boot", TRIGGER_CALL, None, s)
 
 
@@ -98,10 +123,32 @@ def arrival(worlds) -> CommonEvent:
             r, g, b, sat = world.tint
             s.tint(r, g, b, sat, 8, False)
             s.bgm(world.music, fadein=25, volume=82)
+            air = atmosphere.of(key)
             if world.overlay:
+                # The film each world wears, moving on the engine's own clock
+                # rather than the interpreter's, so it keeps going while the
+                # player just walks.
                 s.show_picture(PIC_OVERLAY, world.overlay, 160, 120,
                                transparency=world.overlay_opacity,
-                               use_transparent_color=True)
+                               use_transparent_color=True,
+                               effect=air.film, power=air.film_power)
+                s.call_event(CE_OVERLAY_ON)
+            # Weather, camera tremor and camera drift, in that order: the
+            # first two are set and forgotten, the third has to be re-armed
+            # every time the screen is re-graded.
+            s.weather(*(air.weather or (0, 0)))
+            if air.drift:
+                s.pan(*air.drift, wait=False)
+            # A world its own mechanic has permanently changed is graded,
+            # scored and filmed differently from then on, on every visit for
+            # the rest of the save.  Nothing announces it; it is simply how
+            # the place is now.
+            with s.if_switch(SW_WORLD_STATE_BASE + index - 1):
+                s.tint(58, 62, 60, 24, 10, False)
+                s.bgm("Wrong", fadein=20, volume=80)
+                s.show_picture(PIC_OVERLAY, "StaticB", 160, 120,
+                               transparency=58, use_transparent_color=True,
+                               effect=2, power=9)
             s.var(VR_VISITS_BASE + index - 1, 1, op=1)
     # entering anywhere resets the sense of having gone in a circle
     s.var(VR_LOOPS, 0)
@@ -205,19 +252,37 @@ def diary_open() -> Script:
                    use_transparent_color=False)
     s.move_picture(PIC_VEIL, 160, 120, transparency=45, tenths=2)
 
-    # 2. the page arrives small and overshoots before settling
+    # 2. the garnishes.  ``effect=1`` is the engine's continuous rotation and
+    # ``effect=2`` its wave, and both are driven by the engine's own clock
+    # rather than the interpreter's — so these keep turning through the
+    # blocking key-wait below.  Everything else in this menu is a one-shot
+    # animation; these are the parts that never stop.
+    s.show_picture(PIC_HALO, "MenuHalo", 160, 120, magnify=30,
+                   transparency=100, effect=1, power=3)
+    s.move_picture(PIC_HALO, 160, 120, magnify=104, transparency=62, tenths=4,
+                   effect=1, power=3)
+    s.show_picture(PIC_RINGS, "MenuRings", 160, 120, magnify=140,
+                   transparency=100, effect=1, power=-5)
+    s.move_picture(PIC_RINGS, 160, 120, magnify=100, transparency=72, tenths=4,
+                   effect=1, power=-5)
+
+    # 3. the page arrives small and overshoots before settling
     s.show_picture(PIC_PANEL, "MenuPanel", 160, 128, magnify=20,
                    transparency=100)
     s.move_picture(PIC_PANEL, 160, 118, magnify=108, transparency=0, tenths=2,
                    wait=True)
     s.move_picture(PIC_PANEL, 160, 120, magnify=100, tenths=1, wait=True)
 
-    # 3. the border drops in behind it
-    s.show_picture(PIC_FRAME, "MenuFrame", 160, 92, transparency=100)
-    s.move_picture(PIC_FRAME, 160, 124, transparency=0, tenths=2, wait=True)
-    s.move_picture(PIC_FRAME, 160, 120, tenths=1)
+    # 4. the border drops in behind it and lands hard — this is the one crisp
+    # edge in the menu, so it gets the one abrupt movement
+    s.show_picture(PIC_FRAME, "MenuFrame", 160, 88, magnify=112,
+                   transparency=100)
+    s.move_picture(PIC_FRAME, 160, 126, magnify=100, transparency=0, tenths=2,
+                   wait=True)
+    s.move_picture(PIC_FRAME, 160, 120, tenths=1, wait=True)
+    s.se("LowThud", volume=40)
 
-    # 4. a light travels across the border, once
+    # 5. a light travels across the border, once
     s.show_picture(PIC_GLINT, "MenuGlint", 30, 120, transparency=40)
     s.move_picture(PIC_GLINT, 292, 120, transparency=100, tenths=6)
 
@@ -241,13 +306,23 @@ def diary_open() -> Script:
         if slot % 4 == 3:
             s.se("Cursor", volume=28)
 
-    # 6. dust over everything, then the cursor last of all
+    # 7. the light under the selection, then dust, then the cursor last of all.
+    # The bloom and the motes are the other two things that never stop: the
+    # bloom breathes on the engine's rotation, the motes swim on its wave.
+    s.show_picture(PIC_BLOOM, "MenuBloom", *icon_position(0), magnify=60,
+                   transparency=100, effect=1, power=2)
+    s.move_picture(PIC_BLOOM, *icon_position(0), magnify=100, transparency=40,
+                   tenths=2, effect=1, power=2)
     s.show_picture(PIC_DUST, "MenuDust", 160, 120, transparency=72)
+    s.show_picture(PIC_MOTES, "MenuMotes", 160, 120, transparency=100,
+                   effect=2, power=6)
+    s.move_picture(PIC_MOTES, 160, 120, transparency=62, tenths=3,
+                   effect=2, power=6)
     s.show_picture(PIC_GHOST, "MenuGhost", *icon_position(0), transparency=100)
     s.show_picture(PIC_CURSOR, "MenuCursor", *icon_position(0), magnify=150,
-                   transparency=60)
+                   transparency=60, effect=1, power=1)
     s.move_picture(PIC_CURSOR, *icon_position(0), magnify=100, transparency=0,
-                   tenths=1)
+                   tenths=1, effect=1, power=1)
     s.switch(SW_MENU_BUSY, False)
     return s
 
@@ -263,12 +338,21 @@ def diary_close() -> Script:
         x, y = icon_position(slot)
         s.move_picture(_icon_pic(slot), x, y + 6, magnify=40, transparency=100,
                        tenths=1)
+    s.erase_picture(PIC_BLOOM)
     s.move_picture(PIC_TITLE, 160, 40, transparency=100, tenths=1)
-    s.move_picture(PIC_FRAME, 160, 150, transparency=100, tenths=2)
-    s.move_picture(PIC_PANEL, 160, 120, magnify=16, transparency=100, tenths=2,
-                   wait=True)
+    s.move_picture(PIC_MOTES, 160, 120, transparency=100, tenths=1,
+                   effect=2, power=14)
+    s.move_picture(PIC_FRAME, 160, 150, magnify=108, transparency=100, tenths=2)
+    s.move_picture(PIC_PANEL, 160, 120, magnify=16, transparency=100, tenths=2)
+    # the garnishes wind down rather than cutting: the halo spins away small,
+    # the rings open outward
+    s.move_picture(PIC_HALO, 160, 120, magnify=18, transparency=100, tenths=2,
+                   effect=1, power=7)
+    s.move_picture(PIC_RINGS, 160, 120, magnify=190, transparency=100, tenths=2,
+                   effect=1, power=-9, wait=True)
     s.move_picture(PIC_VEIL, 160, 120, transparency=100, tenths=1, wait=True)
-    for pic in (PIC_VEIL, PIC_PANEL, PIC_FRAME, PIC_TITLE, PIC_GLINT, PIC_DUST):
+    for pic in (PIC_VEIL, PIC_HALO, PIC_RINGS, PIC_PANEL, PIC_FRAME, PIC_TITLE,
+                PIC_GLINT, PIC_DUST, PIC_MOTES):
         s.erase_picture(pic)
     for slot in range(len(EFFECT_KEYS)):
         s.erase_picture(_icon_pic(slot))
@@ -314,9 +398,17 @@ def diary() -> CommonEvent:
             x, y = icon_position(slot)
             with s.if_var(VR_MENU_CURSOR, slot):
                 s.move_picture(PIC_GHOST, x, y, transparency=100, tenths=2)
+                # the light gets there first and the cursor catches up, which
+                # is what makes the selection feel like it is being lit rather
+                # than being pointed at
+                s.move_picture(PIC_BLOOM, x, y, magnify=118, transparency=28,
+                               tenths=1, effect=1, power=2)
                 s.move_picture(PIC_CURSOR, x, y, magnify=118, tenths=1,
-                               wait=True)
-                s.move_picture(PIC_CURSOR, x, y, magnify=100, tenths=1)
+                               effect=1, power=1, wait=True)
+                s.move_picture(PIC_CURSOR, x, y, magnify=100, tenths=1,
+                               effect=1, power=1)
+                s.move_picture(PIC_BLOOM, x, y, magnify=100, transparency=40,
+                               tenths=1, effect=1, power=2)
 
     s.extend(diary_close())
     return CommonEvent(CE_DIARY, "diary", TRIGGER_CALL, None, s)
@@ -327,12 +419,14 @@ def diary_key() -> CommonEvent:
     s = Script()
     with s.if_switch(SW_MENU_OPEN, False):
         with s.if_switch(SW_MENU_BUSY, False):
-            s.key_input(VR_SCRATCH, wait=False, decision=False, cancel=False,
+            s.key_input(VR_KEY, wait=False, decision=False, cancel=False,
                         directions=False, shift=True)
-            with s.if_var(VR_SCRATCH, 7):
+            with s.if_var(VR_KEY, 7):
                 s.switch(SW_MENU_OPEN, True)
                 s.call_event(CE_DIARY)
-    s.wait(1)
+    # No wait.  RPG Maker measures a wait in *tenths of a second*, so the
+    # habitual `wait 1` at the end of a parallel loop polls six frames apart,
+    # and a tap shorter than that is a keypress the game never sees.
     return CommonEvent(CE_DIARY_KEY, "diary key", TRIGGER_PARALLEL, None, s)
 
 
@@ -350,7 +444,13 @@ def equip() -> CommonEvent:
                         s.call_event(CE_UNEQUIP)
                         s.var(VR_EQUIPPED, slot + 1)
                         s.switch(SW_EFFECT_ACTIVE[key], True)
-                        s.set_sprite(1, "Dreamer", min(slot, 7))
+                        # thirteen selves across two sheets: the plain one
+                        # and the first seven effects on Dreamer, the rest on
+                        # DreamerB.  Wearing something has to look like it.
+                        if slot < 7:
+                            s.set_sprite(1, "Dreamer", slot + 1)
+                        else:
+                            s.set_sprite(1, "DreamerB", slot - 7)
                         s.se("Decision", volume=70)
                         s.flash(255, 250, 230, 22, 3, False)
             with s.if_switch(SW_HAS_EFFECT[key], False):
@@ -387,19 +487,27 @@ def give_effect() -> CommonEvent:
     return CommonEvent(CE_GIVE_EFFECT, "give effect", TRIGGER_CALL, None, s)
 
 
-def wake() -> CommonEvent:
-    """Waking up: the only way out of a dream, and it costs nothing."""
+def wake(worlds) -> CommonEvent:
+    """Waking up: the way back to the room, and it costs nothing.
+
+    Called from the nexus mirror.  The destination is read from the room
+    itself rather than written down here, because a hardcoded spawn is a
+    softlock waiting for somebody to move the bed.
+    """
     s = Script()
     s.bgm_fadeout(20)
     s.tint(200, 200, 200, 0, 12, True)
     s.se("TapeStop", volume=60)
     s.fade_out(2)
     s.call_event(CE_OVERLAY_OFF)
-    s.teleport(1, 10, 11)      # the room
+    room = worlds["room"]
+    s.weather(0, 0)
+    s.pan_reset(speed=6, wait=False)
+    s.teleport(room.map_id, *room.spawn)
     s.var(VR_WORLD, 1)
     s.call_event(CE_ARRIVE)
     s.tint(100, 100, 100, 100, 0, False)
-    s.fade_in(2)
+    s.fade_in(atmosphere.of("room").enter)
     return CommonEvent(CE_WAKE, "wake", TRIGGER_CALL, None, s)
 
 
@@ -416,6 +524,57 @@ def overlay_off() -> CommonEvent:
     return CommonEvent(CE_OVERLAY_OFF, "overlay off", TRIGGER_CALL, None, s)
 
 
+def atmosphere_watch(worlds) -> CommonEvent:
+    """Footsteps, and the tremor some worlds never stop having.
+
+    RPG Maker's shake is a one-shot, so a *continuous* tremor has to be
+    re-armed — which is fine, because this event is already running every
+    frame to watch the ground.  Footing is read from the terrain id under the
+    player rather than from which world it is: a world with one footstep sound
+    is a world with one surface, whatever its art is doing.
+    """
+    from .worlds import WORLD_ORDER
+
+    s = Script()
+    s.comment("footing and tremor")
+    s.var_from_event(VR_TEMP_X, PLAYER, 1)
+    s.var_from_event(VR_TEMP_Y, PLAYER, 2)
+    # only when the player has actually moved onto a new tile
+    s.var_from_var(VR_SCRATCH, VR_TEMP_X)
+    s.var_from_var(VR_SCRATCH, VR_LAST_X, op=2)
+    s.var_from_var(VR_KEY, VR_TEMP_Y)
+    s.var_from_var(VR_KEY, VR_LAST_Y, op=2)
+    # Standing still is the only input this game has that is not walking, so
+    # several worlds read it.  The counter climbs while the tile under the
+    # player does not change and resets the moment it does.
+    s.var_from_var(VR_KEY, VR_TEMP_X)
+    s.var_from_var(VR_KEY, VR_LAST_X, op=2)
+    with s.if_var(VR_KEY, 0):
+        s.var_from_var(VR_KEY, VR_TEMP_Y)
+        s.var_from_var(VR_KEY, VR_LAST_Y, op=2)
+        with s.if_var(VR_KEY, 0):
+            s.var(VR_STILL, 2, op=1)
+    with s.if_var(VR_KEY, 0, 1):
+        s.var(VR_STILL, 0)
+
+    s.store_terrain(VR_SCRATCH, VR_TEMP_X, VR_TEMP_Y)
+
+    for index, key in enumerate(WORLD_ORDER, start=1):
+        air = atmosphere.of(key)
+        rule = mechanics.RULES.get(key)
+        with s.if_var(VR_WORLD, index):
+            for terrain, sound in enumerate(air.steps, start=1):
+                with s.if_var(VR_SCRATCH, terrain):
+                    s.se(sound, volume=air.step_volume)
+            if air.shake:
+                s.shake(air.shake[0], air.shake[1], 2, wait=False)
+            # and whatever this world alone is allowed to do
+            if rule is not None:
+                rule(s)
+    s.wait(2)
+    return CommonEvent(CE_ATMOSPHERE, "atmosphere", TRIGGER_PARALLEL, None, s)
+
+
 def build(worlds) -> list[CommonEvent]:
     return [
         boot(),
@@ -428,6 +587,7 @@ def build(worlds) -> list[CommonEvent]:
         give_effect(),
         overlay_on(),
         overlay_off(),
-        wake(),
+        wake(worlds),
         diary_key(),
+        atmosphere_watch(worlds),
     ]

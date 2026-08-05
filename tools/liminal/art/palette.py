@@ -137,4 +137,39 @@ PALETTES: dict[str, Palette] = {
         accent=(252, 248, 226), accent_soft=(160, 200, 240),
         void=(14, 14, 34),
     ),
+
+    # --- the grove, on its other three channels ------------------------------
+    #
+    # These are not other places.  They are the same town received differently,
+    # so each one is built from the grove's palette with one thing done to it,
+    # and the relationships between the colours are preserved exactly: whatever
+    # was the brightest thing in the grove is still the brightest thing here.
+
+    # OVERGROWN.  The growth never stopped.  Everything green is greener and
+    # everything that was not green has had green put on it; the only colour
+    # left that is not a leaf is the one lane marking still showing through.
+    "faces2": Palette(
+        ground=(96, 158, 92), ground_b=(78, 138, 78),
+        form=(112, 104, 62), form_light=(150, 152, 78), form_dark=(52, 66, 40),
+        accent=(176, 214, 118), accent_soft=(56, 122, 74),
+        void=(20, 46, 28),
+    ),
+    # OFF-COLOUR.  The colour is draining out of the signal from the greens
+    # inwards, which is why the concrete survives best: it had least to lose.
+    # Nothing here is warm.  What green remains reads as damp, not alive.
+    "faces3": Palette(
+        ground=(146, 152, 144), ground_b=(130, 136, 130),
+        form=(140, 138, 132), form_light=(186, 186, 180), form_dark=(84, 86, 84),
+        accent=(226, 230, 232), accent_soft=(112, 126, 118),
+        void=(52, 56, 58),
+    ),
+    # NO SIGNAL.  Not a place any more — the pattern a transmitter sends when
+    # it has nothing to send, with the town still faintly legible underneath.
+    # Test-card red, test-card white, and the black between the bars.
+    "faces4": Palette(
+        ground=(42, 20, 24), ground_b=(30, 15, 19),
+        form=(206, 58, 54), form_light=(242, 128, 106), form_dark=(96, 22, 28),
+        accent=(240, 236, 226), accent_soft=(74, 128, 148),
+        void=(18, 10, 14),
+    ),
 }

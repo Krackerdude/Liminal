@@ -106,6 +106,23 @@ class ChipsetBuilder:
         self.terrain = [1] * 162
         self.animation_type = 0
         self.animation_speed = 12
+        # Identical artwork gets one slot, not one per user.  Objects repeat
+        # themselves constantly — the flat middle of a block, a run of wall,
+        # the same shadow under six different props — and a sheet has only 144
+        # slots per layer to spend.
+        self._seen_lower: dict[tuple, int] = {}
+        self._seen_upper: dict[tuple, int] = {}
+        # Upper index 0 is reserved and blank: it is what an empty upper cell
+        # points at.  See maps.EMPTY_UPPER for why an empty cell cannot simply
+        # be zero.
+        #
+        # ``above=True`` is load-bearing and not about draw order.  The engine
+        # reads a passable upper tile that is *not* marked above-hero as "this
+        # cell is walkable, ignore the lower layer" — so a blank passable tile
+        # covering every cell in the map made the entire world walkable, walls
+        # and all.  Marked above-hero, it defers to the floor underneath, which
+        # is what "nothing here" is supposed to mean.
+        self.add_upper("empty", Canvas(TILE, TILE, TRANSPARENT), above=True)
 
     # -- single tiles --------------------------------------------------------
     def add(self, name: str, tile: Canvas, *, passable: bool = True,
@@ -117,7 +134,12 @@ class ChipsetBuilder:
             # would punch a black hole in the floor.
             raise ValueError(
                 f"{self.name}: lower tile {name!r} has transparent pixels; "
-                f"pass ground= so it can be composited onto the floor")
+                f"it belongs on the upper layer")
+        key = (tile.px.tobytes(), passable, terrain)
+        if key in self._seen_lower:
+            tile_id = self._seen_lower[key]
+            self.tiles[name] = tile_id
+            return tile_id
         index = self._lower_next
         self._lower_next += 1
         col, row = _block_e_cell(index)
@@ -126,11 +148,17 @@ class ChipsetBuilder:
         self.terrain[18 + index] = terrain
         tile_id = BLOCK_E + index
         self.tiles[name] = tile_id
+        self._seen_lower[key] = tile_id
         return tile_id
 
     def add_upper(self, name: str, tile: Canvas, *, passable: bool = True,
                   above: bool = False) -> int:
         """Add an overlay tile.  ``above`` draws it in front of the player."""
+        key = (tile.px.tobytes(), passable, above)
+        if key in self._seen_upper:
+            tile_id = self._seen_upper[key]
+            self.tiles[name] = tile_id
+            return tile_id
         if self._upper_next >= 144:
             raise ValueError(f"{self.name}: out of block F slots")
         index = self._upper_next
@@ -143,6 +171,7 @@ class ChipsetBuilder:
         self.passable_upper[index] = bits
         tile_id = BLOCK_F + index
         self.tiles[name] = tile_id
+        self._seen_upper[key] = tile_id
         return tile_id
 
     def add_animated(self, name: str, frames: Sequence[Canvas], *,
@@ -164,8 +193,8 @@ class ChipsetBuilder:
 
     # -- multi-tile objects --------------------------------------------------
     def add_object(self, name: str, art: Canvas, *, solid: str = "all",
-                   upper: bool = False, above: bool = False,
-                   terrain: int = 1, ground: Canvas | None = None) -> TileGrid:
+                   upper: bool | None = None, above: bool | None = None,
+                   terrain: int = 1) -> TileGrid:
         """Slice a large drawing into tiles and register it as one object.
 
         ``solid`` says which sub-tiles block movement:
@@ -176,41 +205,61 @@ class ChipsetBuilder:
                        a tree or a hand and be drawn in front of it
         ``"bottom2"``  the lowest two rows, for very tall things
 
-        ``ground`` is composited underneath every piece.  Lower-layer tiles
-        *must* be opaque — RPG Maker draws nothing behind that layer, so a
-        transparent margin becomes a black hole in the middle of the floor.
-        Upper-layer objects skip this, since keeping their transparency is the
-        entire point of putting them up there.
+        **The art decides the layer, not the caller.**  Anything with a
+        transparent pixel in it goes on the upper layer, where whatever floor
+        is really underneath shows through; only art that is opaque to the
+        edges may sit on the lower layer, which is a *surface* and not a place
+        to put things.
+
+        This used to work the other way round — objects were composited onto a
+        copy of the ground tile so they could live on the lower layer — and the
+        result was that every prop carried a square of plain floor around with
+        it and stamped it over whatever pattern, mural or carpet it landed on.
+        Densely painted floors were being punched full of holes by the objects
+        standing on them.  An object is an object; it does not get to decide
+        what it is standing on.
+
+        Draw order follows from the same rule: a non-solid row with solid rows
+        beneath it is the part of a standing thing you can walk behind, so it
+        is drawn in front of the player.  Everything else draws behind them.
         """
         cols, rows = art.w // TILE, art.h // TILE
-        ids = [[0] * cols for _ in range(rows)]
+        pieces: dict[tuple[int, int], Canvas] = {}
+        opaque = True
         for row in range(rows):
             for col in range(cols):
                 piece = art.sub(col * TILE, row * TILE, TILE, TILE)
                 if _is_blank(piece):
-                    ids[row][col] = 0
                     continue
-                if not upper and ground is not None:
-                    backed = ground.copy()
-                    backed.paste(piece, 0, 0, mask=TRANSPARENT)
-                    piece = backed
-                if solid == "all":
-                    blocking = True
-                elif solid == "none":
-                    blocking = False
-                elif solid == "bottom":
-                    blocking = row == rows - 1
-                elif solid == "bottom2":
-                    blocking = row >= rows - 2
-                else:
-                    blocking = False
-                piece_name = f"{name}:{col},{row}"
-                if upper:
-                    ids[row][col] = self.add_upper(
-                        piece_name, piece, passable=not blocking, above=above)
-                else:
-                    ids[row][col] = self.add(
-                        piece_name, piece, passable=not blocking, terrain=terrain)
+                pieces[(col, row)] = piece
+                if _has_transparency(piece):
+                    opaque = False
+        if upper is None:
+            upper = not opaque
+
+        def row_solid(row: int) -> bool:
+            if solid == "all":
+                return True
+            if solid == "bottom":
+                return row == rows - 1
+            if solid == "bottom2":
+                return row >= rows - 2
+            return False
+
+        ids = [[0] * cols for _ in range(rows)]
+        for (col, row), piece in pieces.items():
+            blocking = row_solid(row)
+            piece_name = f"{name}:{col},{row}"
+            if upper:
+                in_front = above
+                if in_front is None:
+                    in_front = not blocking and any(row_solid(r)
+                                                    for r in range(row + 1, rows))
+                ids[row][col] = self.add_upper(
+                    piece_name, piece, passable=not blocking, above=in_front)
+            else:
+                ids[row][col] = self.add(
+                    piece_name, piece, passable=not blocking, terrain=terrain)
         grid = TileGrid(name, cols, rows, ids, upper=upper)
         self.objects[name] = grid
         return grid
@@ -1048,6 +1097,111 @@ def mushroom(pal: Palette, color: RGB, cols: int = 2, rows: int = 2) -> Canvas:
     return outline_in(art, cooler(color, 0.4))
 
 
+# --- props that only exist on one channel of the grove -----------------------
+# The grove is broadcast four ways.  These are the things that are only there
+# on one of them — not decoration, but the evidence that a channel is a
+# different reception of the same street rather than a different street.
+
+def bramble(pal: Palette, cols: int = 2, rows: int = 2) -> Canvas:
+    """A tangle across the ground, thick enough to stop a person.
+
+    Drawn as one continuous run of stems rather than a bush, because the point
+    is that it is *growing across* something — a road, a doorway, a gap in a
+    wall that used to be a route.
+    """
+    art = _canvas(cols, rows)
+    w, h = cols * TILE, rows * TILE
+    stem = pal.form_dark
+    for index in range(7):
+        x0 = int(w * index / 7)
+        art.line(x0, h - 2, x0 + w // 3, int(h * 0.18), stem)
+        art.line(x0 + 1, h - 2, x0 + w // 3 + 1, int(h * 0.18), pal.form)
+        art.line(x0 + w // 3, int(h * 0.18), x0 - w // 6, int(h * 0.42), stem)
+    for index in range(9):
+        art.blob(3 + (index * 7) % (w - 6), 6 + (index * 11) % (h - 8), 2.6,
+                 pal.accent_soft)
+    for index in range(5):
+        art.dot(5 + (index * 13) % (w - 6), 9 + (index * 7) % (h - 6),
+                pal.accent)
+    return outline_in(art, cooler(pal.form_dark, 0.35))
+
+
+def hive(pal: Palette, cols: int = 2, rows: int = 3) -> Canvas:
+    """Something built in the fork of a tree, by something that is not a bird."""
+    art = _canvas(cols, rows)
+    w, h = cols * TILE, rows * TILE
+    art.rect(w // 2 - 2, int(h * 0.60), 5, h - int(h * 0.60), pal.form_dark)
+    for index, radius in enumerate((0.34, 0.40, 0.34, 0.24)):
+        art.ellipse(w / 2, h * (0.16 + index * 0.13), w * radius, h * 0.09,
+                    pal.form_light if index % 2 else pal.form)
+    art.ellipse(w / 2, h * 0.52, 3.2, 2.2, cooler(pal.form_dark, 0.4))
+    return outline_in(art, cooler(pal.form_dark, 0.3))
+
+
+def tree_glyph(pal: Palette, cols: int = 3, rows: int = 4) -> Canvas:
+    """The symbol for a tree, at the size of a tree.
+
+    On the dead channel nothing is rendered any more, only indicated: a stroke
+    for the trunk and a triangle for everything above it.  It occupies the
+    exact footprint of the real tree it has replaced.
+    """
+    art = _canvas(cols, rows)
+    w, h = cols * TILE, rows * TILE
+    ink = pal.accent
+    art.rect(w // 2 - 2, int(h * 0.55), 5, int(h * 0.42), ink)
+    for row in range(int(h * 0.55)):
+        span = int((row / (h * 0.55)) * (w * 0.46))
+        art.dot(w // 2 - span, row, ink)
+        art.dot(w // 2 + span, row, ink)
+    art.hline(int(h * 0.55) - 1, int(w * 0.04), int(w * 0.96), ink)
+    art.rect(w // 2 - 4, int(h * 0.30), 9, 2, pal.form)
+    return art
+
+
+def aerial(pal: Palette, cols: int = 2, rows: int = 4) -> Canvas:
+    """A rooftop aerial on a pole, in a wood, pointing at nothing nearby."""
+    art = _canvas(cols, rows)
+    w, h = cols * TILE, rows * TILE
+    art.rect(w // 2 - 1, int(h * 0.22), 3, h - int(h * 0.22) - 1, pal.form)
+    art.rect(w // 2 - 1, int(h * 0.22), 1, h - int(h * 0.22) - 1, pal.form_light)
+    art.line(w // 2, int(h * 0.30), w - 3, int(h * 0.12), pal.form_dark)
+    for index in range(6):
+        y = int(h * 0.13) + index * 3
+        x0 = w // 2 + index
+        art.hline(y, x0, min(w - 2, x0 + 9 - index), pal.form_light)
+    art.blob(w // 2, int(h * 0.22), 2.0, pal.accent)
+    return outline_in(art, cooler(pal.form_dark, 0.3))
+
+
+def meter_box(pal: Palette, cols: int = 1, rows: int = 2) -> Canvas:
+    """A supply meter on a post.  Its dial is still turning."""
+    art = _canvas(cols, rows)
+    w, h = cols * TILE, rows * TILE
+    art.rect(w // 2 - 1, h // 2, 3, h // 2, pal.form_dark)
+    art.round_rect(1, 2, w - 2, h // 2, 2, pal.form)
+    art.rect(2, 3, w - 4, h // 2 - 3, pal.form_light)
+    art.rect(3, 5, w - 6, 4, cooler(pal.form_dark, 0.2))
+    art.dot(w // 2, 7, pal.accent)
+    return outline_in(art, cooler(pal.form_dark, 0.3))
+
+
+def tone_pillar(pal: Palette, cols: int = 1, rows: int = 4) -> Canvas:
+    """A column of the test tone, stood upright and made solid.
+
+    It is the sound drawn as an object, which is only possible on the channel
+    where the picture has already stopped pretending to be a place.
+    """
+    art = _canvas(cols, rows)
+    w, h = cols * TILE, rows * TILE
+    for row in range(h):
+        phase = (row * 3) % 12
+        width = 2 + abs(6 - phase) // 2
+        tone = pal.accent if phase < 6 else pal.form
+        art.rect(w // 2 - width, row, width * 2, 1, tone)
+    art.rect(w // 2 - 1, 0, 3, h, pal.accent)
+    return art
+
+
 def checker_pillar(pal: Palette, cols: int = 1, rows: int = 4) -> Canvas:
     art = _canvas(cols, rows)
     w, h = cols * TILE, rows * TILE
@@ -1283,6 +1437,53 @@ def decal(base: Canvas, motif: str, color: RGB, second: RGB | None = None,
     elif motif == "fallen_star":
         art.blob(cx, cy, 2.6, color)
         art.line(cx - 4, cy + 4, cx, cy, other)
+
+    # --- the grove's other three channels ------------------------------------
+    elif motif == "creeper":
+        # a runner crossing the tile with leaves paired off it, so that a floor
+        # scattered with these reads as one plant rather than many marks
+        art.line(0, 11, 15, 4, other)
+        for x, y in ((3, 9), (7, 7), (11, 5)):
+            art.blob(x, y - 2, 1.8, color)
+            art.blob(x + 1, y + 2, 1.8, color)
+    elif motif == "seedhead":
+        art.vline(cx, cy - 1, TILE - 2, other)
+        for angle in range(0, 360, 45):
+            x = cx + int(3.4 * math.cos(math.radians(angle)))
+            y = cy - 2 + int(3.4 * math.sin(math.radians(angle)))
+            art.dot(x, y, color)
+        art.blob(cx, cy - 2, 1.4, warmer(color, 0.4))
+    elif motif == "windfall":
+        art.ellipse(cx - 3, cy + 2, 2.4, 2.0, color)
+        art.ellipse(cx + 2, cy + 3, 2.0, 1.6, other)
+        art.dot(cx - 3, cy, other)
+    elif motif == "ashfall":
+        for x, y in ((3, 4), (9, 3), (6, 9), (12, 8), (4, 12), (11, 13)):
+            art.dot(x, y, color)
+            art.dot(x + 1, y + 1, other)
+    elif motif == "chalkline":
+        # a surveyor's mark: something was measured here and never dug
+        art.line(2, 13, 13, 2, other)
+        art.line(2, 13, 6, 12, other)
+        art.line(13, 2, 9, 3, other)
+        art.dot(cx, cy, color)
+    elif motif == "tapeloop":
+        art.ellipse(cx - 2, cy, 3.2, 3.2, other, filled=False)
+        art.ellipse(cx + 3, cy + 1, 2.2, 2.2, other, filled=False)
+        art.line(cx - 2, cy - 3, cx + 3, cy - 2, color)
+    elif motif == "colourbar":
+        for index, x in enumerate(range(3, 14, 2)):
+            art.rect(x, 5, 2, 7, color if index % 2 else other)
+    elif motif == "cornerpip":
+        # the registration mark in the corner of a test card
+        art.line(3, 3, 7, 3, color)
+        art.line(3, 3, 3, 7, color)
+        art.line(12, 12, 8, 12, color)
+        art.line(12, 12, 12, 8, color)
+    elif motif == "tone":
+        art.ellipse(cx, cy, 5, 5, other, filled=False)
+        art.ellipse(cx, cy, 2.6, 2.6, color, filled=False)
+        art.dot(cx, cy, color)
     return art
 
 
@@ -1292,16 +1493,19 @@ def decal(base: Canvas, motif: str, color: RGB, second: RGB | None = None,
 # looking at whenever they cannot go somewhere, which is most of the time.
 
 def wall_band(pal: Palette, motif: str, *, face: bool = False,
-              accent: RGB | None = None) -> Canvas:
+              accent: RGB | None = None, base: RGB | None = None,
+              light: RGB | None = None, dark: RGB | None = None) -> Canvas:
     """One tile of boundary.
 
     ``face`` draws the lit front edge used where a wall meets walkable floor,
     which is what turns a flat band of colour into something the player reads
     as standing in front of them.
     """
-    base = pal.form
-    light = pal.form_light
-    dark = pal.form_dark
+    # Overridable, because a world's boundary is not always made of the same
+    # material as its props — a forest wall is canopy, not trunk.
+    base = base or pal.form
+    light = light or pal.form_light
+    dark = dark or pal.form_dark
     ink = accent or pal.accent
     art = Canvas(TILE, TILE, base)
 
@@ -1331,9 +1535,17 @@ def wall_band(pal: Palette, motif: str, *, face: bool = False,
             art.hline(row, 0, TILE - 1, tone)
             art.hline(row + 1, 0, TILE - 1, blend(tone, dark, 0.3))
     elif motif == "trunks":
-        for ox in range(0, TILE, 4):
-            art.rect(ox, 0, 3, TILE, base if (ox // 4) % 2 else light)
-            art.vline(ox, 0, TILE - 1, dark)
+        # Overlapping canopy, not stacked timber: this is a solid mass of
+        # leaves seen from above, and it has to read as impenetrable rather
+        # than as a wall built out of logs.
+        art.px[:, :] = dark
+        for ox, oy, r in ((4, 4, 5.5), (12, 3, 4.8), (3, 12, 4.6),
+                          (11, 12, 5.2), (8, 8, 4.4), (15, 8, 4.0),
+                          (0, 8, 4.0), (8, 0, 4.0), (8, 15, 4.0)):
+            art.blob(ox, oy, r, base)
+            art.blob(ox - 1, oy - 1, r * 0.55, light)
+        for ox, oy in ((6, 6), (13, 5), (5, 13)):
+            art.dot(ox, oy, cooler(dark, 0.3))
     elif motif == "fingers":
         for ox in range(0, TILE, 5):
             art.round_rect(ox, 0, 4, TILE, 2, light)
@@ -1374,6 +1586,50 @@ def wall_band(pal: Palette, motif: str, *, face: bool = False,
         art.round_rect(3, 2, 10, 13, 4, base)
         art.round_rect(5, 4, 6, 11, 3, light)
         art.dot(11, 9, ink)
+    elif motif == "thicket":
+        # The grove's canopy, but grown shut.  Same overlapping mass as
+        # "trunks" and then filled in again at a second, finer scale, so that
+        # the gaps the eye reads as depth in the grove are not there any more.
+        art.px[:, :] = dark
+        for ox, oy, r in ((4, 4, 6.2), (12, 3, 5.6), (3, 12, 5.4),
+                          (11, 12, 6.0), (8, 8, 5.4), (15, 8, 4.8),
+                          (0, 8, 4.8), (8, 0, 4.8), (8, 15, 4.8)):
+            art.blob(ox, oy, r, base)
+            art.blob(ox - 1, oy - 1, r * 0.5, light)
+        for ox, oy in ((2, 6), (7, 2), (13, 9), (6, 13), (11, 6)):
+            art.blob(ox, oy, 2.2, warmer(light, 0.25))
+            art.dot(ox, oy, ink)
+        # runners crossing the whole tile, which is what makes it read as
+        # tangled rather than merely leafy
+        art.line(0, 13, 15, 2, blend(dark, base, 0.4))
+        art.line(1, 1, 14, 15, blend(dark, base, 0.4))
+    elif motif == "bare":
+        # The same canopy with the leaves gone: nothing but the branch
+        # structure that was holding them up, and daylight behind it.
+        art.px[:, :] = light
+        for x0, y0, x1, y1 in ((8, 16, 8, 7), (8, 10, 2, 3), (8, 10, 14, 4),
+                               (8, 7, 5, 0), (8, 7, 12, 1), (4, 6, 0, 2),
+                               (12, 5, 16, 1)):
+            art.line(x0, y0, x1, y1, dark)
+        for x0, y0, x1, y1 in ((6, 12, 3, 9), (10, 11, 13, 8), (9, 5, 11, 2)):
+            art.line(x0, y0, x1, y1, blend(dark, light, 0.35))
+        art.rect(7, 10, 3, 6, base)
+    elif motif == "bars":
+        # Where the picture stops carrying the town.  Almost entirely black —
+        # the roads on this channel are full-brightness colour bars, and a
+        # boundary that shouts louder than the streets turns the whole map
+        # into noise.  What is left of the bars is a narrow strip along the
+        # bottom edge, the way a test card runs out at the frame.
+        art.px[:, :] = pal.void
+        art.dither(blend(pal.void, dark, 0.5), 0.35, BAYER8)
+        widths = (3, 2, 3, 2, 3, 3)
+        tones = (ink, blend(ink, base, 0.5), base, dark,
+                 blend(base, dark, 0.5), light)
+        x = 0
+        for width, tone in zip(widths, tones):
+            art.rect(x, TILE - 4, width, 3, blend(tone, pal.void, 0.45))
+            x += width
+        art.hline(TILE - 5, 0, TILE - 1, blend(base, pal.void, 0.5))
     else:
         art.dither(light, 0.4, BAYER8)
 

@@ -16,15 +16,18 @@ Common rules, applied everywhere:
 
 from __future__ import annotations
 
+import math
 import random
+import zlib
 from dataclasses import dataclass, field
 
 from ..art.chipsets import ChipsetBuild
 from ..art.sheets import BUILDERS
+from .. import maps
 from ..maps import SCROLL_BOTH, SCROLL_NONE, Map, MapInfo
 from . import gen, layout
 from .gen import MazeSpec, Placer
-from .layout import Field, Zone, repair_connectivity
+from .layout import FLOOR_ALT, Field, Zone, repair_connectivity, solid_ids
 from .rooms import Furnisher, Room, avenue, back_wall, corners, facing_pair, ring, spiral_out
 
 
@@ -47,6 +50,15 @@ class World:
     npcs: list[str] = field(default_factory=list)
     plan: object | None = None    # the carved layout, for events
     rooms: list = field(default_factory=list)
+    # What every shared decoration pass seeds itself from.  Normally the key,
+    # but the grove's four channels all seed from ``faces`` so that the wash,
+    # the carpets, the landmarks and the density fill land on exactly the same
+    # tiles on all four — they are one place received four ways, and a carpet
+    # that moved when you tuned would give that away instantly.
+    seed_key: str = ""
+
+    def __post_init__(self) -> None:
+        self.seed_key = self.seed_key or self.key
 
     def spot(self, rng: random.Random, **kwargs) -> tuple[int, int]:
         return gen.free_spot(self.map, self.placer, rng, **kwargs)
@@ -71,6 +83,11 @@ TINTS: dict[str, tuple[int, int, int, int]] = {
     "neon": (96, 100, 118, 128),         # electric
     "umbrellas": (94, 102, 106, 92),     # damp
     "stars": (90, 94, 122, 96),          # deep blue
+    # The grove's other three channels.  Tint is the loudest thing the engine
+    # can say, so it says it first: growth, failure, and no picture at all.
+    "faces2": (86, 128, 84, 138),        # everything alive, saturated hard
+    "faces3": (96, 96, 100, 34),         # the colour going out of it
+    "faces4": (128, 78, 74, 88),         # test card
 }
 
 # The screen overlay each world wears, and how strongly.  Transparency is
@@ -90,6 +107,12 @@ OVERLAYS: dict[str, tuple[str, int]] = {
     "neon": ("Scanline", 74),
     "umbrellas": ("HazePink", 92),
     "stars": ("Dust", 80),
+    "faces2": ("HazeGold", 80),
+    "faces3": ("Grain", 72),
+    # A dead channel is noisy, but the noise cannot be so heavy that the town
+    # under it stops being findable — the whole point of this reception is
+    # that it is the most *legible* the street plan ever gets.
+    "faces4": ("StaticB", 76),
 }
 
 MUSIC: dict[str, str] = {
@@ -97,6 +120,7 @@ MUSIC: dict[str, str] = {
     "blocks": "Blocks", "stairs": "Stairs", "sand": "Sand", "faces": "Faces",
     "hands": "Hands", "checker": "Checker", "toys": "Toys", "neon": "Neon",
     "umbrellas": "Umbrellas", "stars": "Stars",
+    "faces2": "Faces", "faces3": "Deep", "faces4": "Wrong",
 }
 
 TITLES: dict[str, str] = {
@@ -114,13 +138,43 @@ TITLES: dict[str, str] = {
     "neon": "scrawl",
     "umbrellas": "no rain",
     "stars": "the shallows",
+    "faces2": "overgrown",
+    "faces3": "off-colour",
+    "faces4": "no signal",
+}
+
+# How many residents each world has.  182 in total, and deliberately uneven:
+# density is a statement about a place, not a budget to be spread evenly.
+# Two dreams have nobody at all — the stairwell and the field of hands are
+# meant to read as *emptied*, not as unfinished — and the room is yours.
+POPULATION: dict[str, int] = {
+    "room": 0, "nexus": 3,
+    "pink": 20, "numbers": 20, "blocks": 16, "stairs": 0, "sand": 15,
+    "faces": 19, "hands": 0, "checker": 17, "toys": 20, "neon": 20,
+    "umbrellas": 16, "stars": 16,
 }
 
 # Which door in the nexus leads where, in the order they stand.
 DREAM_ORDER = ["pink", "numbers", "blocks", "stairs", "sand", "faces", "hands",
                "checker", "toys", "neon", "umbrellas", "stars"]
 
-WORLD_ORDER = ["room", "nexus", *DREAM_ORDER]
+# The stairwell is five floors deep.  These are *layers*, not subworlds: the
+# same world continuing downward, sharing its chipset, cast and music family,
+# and reached only by falling in the right order.  Each is worse than the one
+# above it.
+STAIR_FLOORS = ["stairs2", "stairs3", "stairs4", "stairs5"]
+
+# The grove is one place received on four channels.  Same geometry, same
+# streets, same buildings — different light, different residents, different
+# things lying about.  Which one you are watching depends on the direction you
+# walked when a telephone rang.
+FACE_CHANNELS = ["faces", "faces2", "faces3", "faces4"]
+
+WORLD_ORDER = ["room", "nexus", *DREAM_ORDER, *STAIR_FLOORS,
+               *FACE_CHANNELS[1:]]
+
+# How far down each floor is, which drives everything that gets worse.
+DEPTH = {"stairs": 0, "stairs2": 1, "stairs3": 2, "stairs4": 3, "stairs5": 4}
 
 
 def _new(key: str, map_id: int, width: int, height: int, *,
@@ -136,39 +190,59 @@ def _new(key: str, map_id: int, width: int, height: int, *,
                   music=MUSIC.get(key, "(OFF)"), spawn=(width // 2, height // 2),
                   placer=Placer(width, height), tint=TINTS[key],
                   overlay=overlay, overlay_opacity=opacity)
-    return world, build, random.Random(hash(key) & 0xFFFF)
+    # crc32, not hash(): Python randomises string hashing per process, so
+    # hash() would generate a different world on every single build and
+    # nothing could be validated or reproduced.
+    return world, build, random.Random(zlib.crc32(key.encode()))
 
 
 # --- the two places that are not dreams --------------------------------------
 
 def build_room(map_id: int) -> World:
-    """A small room with one bed, one door and one window.  Does not loop."""
+    """A small room with one bed, one door and one window.  Does not loop.
+
+    Four walls, not one.  A room with a single back wall gives furniture only
+    one place to stand, and everything lines up along it like a showroom — so
+    the near and side walls are real, and the furniture is grouped the way a
+    person's things actually collect: the sleeping corner on one side, the
+    everything-else corner on the other, and the middle left alone.
+    """
     world, cs, rng = _new("room", map_id, 21, 17, loop=False)
     m, t = world.map, cs.tiles
 
     m.fill_rect(0, 0, m.width, m.height, t["ground"])
-    m.fill_rect(2, 8, 8, 6, t["rug"])
-    # walls around the edge, three tiles deep at the top so the room has a back
+
+    # the back wall, three tiles deep, and the other three one tile deep
     for x in range(m.width):
         gen.stamp(m, cs.obj("wall"), x, 0)
-    for y in range(m.height):
-        m.set_lower(0, y, t["void"])
-        m.set_lower(m.width - 1, y, t["void"])
+    for y in range(3, m.height):
+        m.set_lower(0, y, t["skirt"])
+        m.set_lower(m.width - 1, y, t["skirt"])
     for x in range(m.width):
-        m.set_lower(x, m.height - 1, t["void"])
+        m.set_lower(x, m.height - 1, t["skirt"])
 
-    gen.stamp(m, cs.obj("bed"), 3, 3)
-    gen.stamp(m, cs.obj("desk"), 13, 4)
-    gen.stamp(m, cs.obj("wardrobe"), 17, 3)
-    gen.stamp(m, cs.obj("television"), 8, 3)
-    gen.stamp(m, cs.obj("mirror"), 11, 3)
-    gen.stamp(m, cs.obj("window"), 6, 1)
-    m.set_upper(10, 1, t["lamp"])
+    # -- the sleeping corner, left
+    gen.stamp(m, cs.obj("bed"), 1, 3)
+    gen.stamp(m, cs.obj("television"), 1, 11)
+
+    # -- the rest of a life, right.  Spread down the wall rather than lined up
+    # along the back one, so crossing the room passes each of them in turn.
+    gen.stamp(m, cs.obj("wardrobe"), 18, 3)
+    gen.stamp(m, cs.obj("desk"), 18, 8)
+    gen.stamp(m, cs.obj("mirror"), 18, 12)
+
+    # -- the back wall itself: the door you cannot use, and the window
+    gen.stamp(m, cs.obj("door"), 9, 0)
+    gen.stamp(m, cs.obj("window"), 5, 1)
+    m.set_upper(14, 1, t["lamp"])
+
+    # The rug sits in front of the television, not filling a corner.
+    m.fill_rect(5, 9, 6, 4, t["rug"])
 
     world.landmarks = {
-        "bed": [(3, 3)], "desk": [(13, 4)], "wardrobe": [(17, 3)],
-        "television": [(8, 3)], "mirror": [(11, 3)], "window": [(6, 1)],
-        "door": [(10, 15)],
+        "bed": [(1, 3)], "desk": [(18, 8)], "wardrobe": [(18, 3)],
+        "television": [(1, 11)], "mirror": [(18, 12)], "window": [(5, 1)],
+        "door": [(9, 0)],
     }
     world.spawn = (10, 11)
     world.npcs = []
@@ -206,7 +280,11 @@ def build_nexus(map_id: int) -> World:
         "mirror": [(m.width // 2 - 1, 2)],
         "bench": [(m.width // 2 - 1, m.height - 6)],
     }
-    world.spawn = (m.width // 2, m.height // 2)
+    # Arriving in the dead centre of the ring shows nothing at all — the doors
+    # are eleven tiles out and the screen is fifteen tall.  Standing in front
+    # of the first one instead means the hub opens on a door, and the ring
+    # curves away to either side of it.
+    world.spawn = (doors[0][0] + 1, doors[0][1] + 3)
     world.npcs = ["keeper", "sleeper", "cloud_ladder"]
     return world
 
@@ -230,11 +308,21 @@ def build_pink(map_id: int) -> World:
     # feel endless rather than merely large.
     rooms = layout.warren(fld, rng, halls=14, cells_per_hall=5,
                           cell_size=(13, 11), hall_width=3)
+    # Second constraint: compression.  Narrow halls open without warning into
+    # something stadium-sized for one screen, then close again.
+    blowouts = layout.compress(fld, rng, rooms, blowouts=5, size=(34, 28))
+    rooms += blowouts
     hall_start = (rooms[0].cx, rooms[0].cy)
-    fld.release_zone_interiors()
+    # Rooms embedded in the brick that can be seen and never entered.
+    sealed = layout.glimpsed_rooms(fld, rng, count=16, size=(9, 7))
+    fld.ensure_connected()
+    fld.protect_chokepoints()
     fld.build_walls(3)
+    layout.seal_off(fld, sealed, thickness=2)
     layout.paint(m, fld, t, rng=rng)
     layout.shade_walls(m, fld, t)
+    for zone in sealed:
+        layout.carpet(m, fld, zone, t, rng, "full")
 
     # Each chamber gets one thing in the middle, and nothing else.
     for index, zone in enumerate(rooms):
@@ -268,14 +356,20 @@ def build_numbers(map_id: int) -> World:
 
     shelves = layout.terraces(fld, rng, count=22, size=(24, 15),
                               corridor_width=3)
-    fld.release_zone_interiors()
+    fld.ensure_connected()
+    fld.protect_chokepoints()
     fld.build_walls(3)
     layout.paint(m, fld, t, rng=rng)
     layout.shade_walls(m, fld, t)
 
     digits = [cs.obj(f"digit_{d}") for d in (0, 1, 3, 5, 7, 9)]
     signs = [cs.obj(f"sign_{k}") for k in ("plus", "minus", "equals")]
+    # Second constraint: every terrace is made of a different material.  The
+    # shape repeats; the substance never does, so crossing one is an event.
+    materials = ["full", "checker", "lattice", "rings", "stripe", "corners",
+                 "cross", "border"]
     for index, zone in enumerate(shelves):
+        layout.carpet(m, fld, zone, t, rng, materials[index % len(materials)])
         run = rng.randint(2, 3)
         base_x = zone.cx - (run * 4) // 2
         base_y = zone.cy - 3
@@ -313,22 +407,35 @@ def build_blocks(map_id: int) -> World:
     # out how to get there.
     yards = layout.platforms(fld, rng, count=28, size=(15, 13), bridge=3,
                              shape="rect")
-    fld.release_zone_interiors()
+    # Second constraint: no two slabs share a geometry, so the world reads as
+    # twenty-eight decisions rather than one rule applied twenty-eight times.
+    layout.vary_zones(yards, rng)
+    for zone in yards:
+        fld.carve(zone)
+    fld.ensure_connected()
+    fld.protect_chokepoints()
     fld.build_walls(3)
     layout.paint(m, fld, t, rng=rng)
     layout.shade_walls(m, fld, t)
 
     blocks = [cs.obj(f"block_{i}") for i in range(4)]
+    # Scale refuses to settle: some yards are furnished as toy rooms, some as
+    # a single enormous object, some are left almost bare.
     for index, zone in enumerate(yards):
+        layout.carpet(m, fld, zone, t, rng,
+                      ("full", "checker", "rings", "lattice",
+                       "border")[index % 5])
         # a tower in the middle of the yard, and small blocks around the edge
         stack = rng.randint(1, 3)
         for level in range(stack):
             gen.stamp(m, blocks[rng.randrange(4)], zone.cx - 1,
                       zone.cy - 1 + level * 3)
-        for spot in layout.zone_spots(fld, zone, rng, 3, w=1, h=1, pad=2):
+        for spot in layout.zone_spots(fld, zone, rng, 5, w=1, h=1, pad=1):
             gen.stamp(m, cs.obj("block_tiny"), *spot)
-        for spot in layout.zone_spots(fld, zone, rng, 1, w=2, h=2, pad=2):
+        for spot in layout.zone_spots(fld, zone, rng, 2, w=2, h=2, pad=1):
             gen.stamp(m, cs.obj("ball"), *spot)
+        layout.glow_floor(m, fld, zone, t, f"anim_{index % 3}",
+                          ring(zone, 5, inset=3))
 
     big = yards[len(yards) // 2]
     gen.stamp(m, cs.obj("block_huge"), big.cx - 2, big.cy - 2)
@@ -350,18 +457,34 @@ def build_stairs(map_id: int) -> World:
     rule       everything not stone is a drop, and the drop has no bottom
     """
     world, cs, rng = _new("stairs", map_id, 148, 134)
+    _stairs_layout(world, cs, rng)
+    return world
+
+
+def _stairs_layout(world: World, cs, rng: random.Random) -> None:
+    """The stairwell's geometry, shared by all five of its floors.
+
+    Each floor re-runs this against its own size and seed, so the floors are
+    genuinely different rooms rather than one room recoloured — but they are
+    unmistakably the same *kind* of room, which is what makes going down feel
+    like going further rather than going elsewhere.
+    """
     m, t = world.map, cs.tiles
     fld = Field(m.width, m.height)
 
-    landings = layout.ring_world(fld, rng, rooms=11, radius=52, size=(15, 12),
+    span = min(m.width, m.height)
+    landings = layout.ring_world(fld, rng, rooms=11,
+                                 radius=span * 52 // 134, size=(15, 12),
                                  shape="diamond", corridor_width=3)
-    landings += layout.ring_world(fld, rng, rooms=7, radius=27, size=(13, 10),
+    landings += layout.ring_world(fld, rng, rooms=7,
+                                  radius=span * 27 // 134, size=(13, 10),
                                   shape="diamond", corridor_width=3)
     middle = fld.carve(Zone("middle", m.width // 2, m.height // 2, 17, 13,
                             "round"))
     for zone in landings[::2]:
         fld.corridor((middle.cx, middle.cy), (zone.cx, zone.cy), width=3)
-    fld.release_zone_interiors()
+    fld.ensure_connected()
+    fld.protect_chokepoints()
     fld.build_walls(2)
     layout.paint(m, fld, t, rng=rng)
     layout.shade_walls(m, fld, t)
@@ -378,7 +501,6 @@ def build_stairs(map_id: int) -> World:
                        "middle": [(middle.cx, middle.cy)]}
     world.spawn = (landings[0].cx, landings[0].cy)
     world.npcs = ["climber", "long_bird"]
-    return world
 
 
 def build_sand(map_id: int) -> World:
@@ -397,19 +519,57 @@ def build_sand(map_id: int) -> World:
     # far distance and never come near you, which is the whole feeling.
     halls = layout.great_hall(fld, rng, alcoves=14, fill=0.74)
     hall, side = halls[0], halls[1:]
-    fld.release_zone_interiors()
+    # Second constraint: the hall is divided into districts internally, so the
+    # space changes without the player ever passing through a door.
+    districts = layout.regions(fld, rng, hall, count=8, size=(28, 22))
+    fld.ensure_connected()
+    fld.protect_chokepoints()
     fld.build_walls(3)
     layout.paint(m, fld, t, rng=rng, decal_chance=0.004)
     layout.shade_walls(m, fld, t)
 
-    # Four things in a hall the size of a town, placed as far apart as they go.
-    gen.stamp_centered(m, cs.obj("obelisk"), hall.cx, hall.cy)
-    for index, zone in enumerate(side):
-        obj = ("structure", "dead_tree", "post", "obelisk")[index % 4]
-        gen.stamp_centered(m, cs.obj(obj), zone.cx, zone.cy)
+    # Each district is a *place*, not a tint.  A room this size with nothing
+    # in it is a wasteland; the player never leaves the hall, so the hall has
+    # to keep changing under them.
+    district_styles = ["full", "lattice", "rings", "checker", "stripe",
+                       "corners", "cross", "border"]
+    marks = [k for k in cs.objects if k.startswith("mark_")]
+    props = ["structure", "obelisk", "dead_tree", "post"]
+    from .rooms import ring as _ring, avenue as _avenue, corners as _corners
+    for index, region in enumerate(districts):
+        layout.carpet(m, fld, region, t, rng,
+                      district_styles[index % len(district_styles)])
+        # a landmark anchors every other district
+        if marks and index % 2 == 0:
+            grid = cs.obj(marks[(index // 2) % len(marks)])
+            gx, gy = region.cx - grid.cols // 2, region.cy - grid.rows // 2
+            if fld.open_space(gx, gy, grid.cols, grid.rows, 1):
+                gen.stamp(m, grid, gx, gy)
+        # and every district is populated, in its own arrangement
+        arrangement = (_ring(region, 6, inset=5) if index % 3 == 0 else
+                       _avenue(region, 3, spacing=6) if index % 3 == 1 else
+                       _corners(region, 5))
+        for slot, (px, py) in enumerate(arrangement):
+            grid = cs.obj(props[(index + slot) % len(props)])
+            if fld.open_space(px, py, grid.cols, grid.rows, 1):
+                gen.stamp(m, grid, px, py)
+        layout.glow_floor(m, fld, region, t, f"anim_{index % 3}",
+                          _ring(region, 5, inset=3))
+
+    # Things standing in the open between the districts, so the walk across
+    # the hall is never empty either.
+    for step in range(26):
+        angle = step * 6.28318 / 26
+        radius = 0.22 + (step % 4) * 0.13
+        px = int(hall.cx + math.cos(angle) * hall.w * 0.5 * radius)
+        py = int(hall.cy + math.sin(angle) * hall.h * 0.5 * radius)
+        grid = cs.obj(props[step % len(props)])
+        if fld.open_space(px, py, grid.cols, grid.rows, 2):
+            gen.stamp(m, grid, px, py)
 
     world.plan = fld
     world.landmarks = {"hall": [(hall.cx, hall.cy)],
+                       "districts": [(z.cx, z.cy) for z in districts],
                        "alcoves": [(z.cx, z.cy) for z in side]}
     world.spawn = (hall.cx, hall.cy + 14)
     world.npcs = ["waiting_one", "sand_walker"]
@@ -417,86 +577,414 @@ def build_sand(map_id: int) -> World:
 
 
 def build_faces(map_id: int) -> World:
-    """THE GROVE.
+    """THE GREEN.
 
-    theme      a forest planted on a grid by something that had seen a diagram
-    feeling    being watched politely
-    layout     clearings cut into a solid wall of trunks
-    rule       the trees are the boundary; the clearings are the only space
+    theme      a town the forest grew through, without anyone switching it off
+    feeling    walking home down a street that stopped being a street
+    layout     a road grid, buried in solid green mass, the junctions surviving
+    rule       the infrastructure is still running and nothing has been moved
     """
-    world, cs, rng = _new("faces", map_id, 144, 132)
+    world, cs, _ = _new("faces", map_id, 144, 132)
+    _faces_layout(world, cs)
+    _faces_dress(world, cs, 0)
+    return world
+
+
+def _faces_layout(world: World, cs) -> None:
+    """The grove's street plan, shared by all four of its channels.
+
+    Unlike the stairwell — whose floors are deliberately *different* rooms of
+    the same kind — every channel of the grove is the same town down to the
+    tile, so this seeds itself from a fixed name rather than from the world's
+    own key.  Tuning the receiver must never move a kerb.  If it did, the
+    player would read the channels as four maps instead of one place, and the
+    entire mechanic would collapse into a set of teleports.
+    """
+    rng = random.Random(zlib.crc32(b"faces"))
     m, t = world.map, cs.tiles
     fld = Field(m.width, m.height)
 
-    # Negative space: the world is a solid block of forest, and the playable
-    # part is what has been worn away.  No sightline is ever long.
-    glades = layout.carved_mass(fld, rng, walks=16, length=80, width=4,
-                                clearings=22, clearing_size=(15, 13))
-    fld.release_zone_interiors()
-    fld.build_walls(4)
+    # The street plan comes first: this was a town before it was anything else,
+    # and the roads are what the forest had to grow around.
+    avenues_x = [18, 52, 90, 124]
+    avenues_y = [16, 50, 84, 116]
+    for x in avenues_x:
+        fld.long_hall(x, 0, m.height, vertical=True, width=5)
+    for y in avenues_y:
+        fld.long_hall(0, y, m.width, vertical=False, width=5)
+
+    # Junctions open out into squares; the forest took the blocks between them.
+    junctions = []
+    for x in avenues_x:
+        for y in avenues_y:
+            junctions.append(fld.carve(Zone(f"junction_{x}_{y}", x, y,
+                                            rng.randint(15, 23),
+                                            rng.randint(13, 19),
+                                            rng.choice(("rect", "octagon")))))
+    # and a few clearings where the trees won outright
+    glades = []
+    for index in range(10):
+        cx, cy = rng.randrange(m.width), rng.randrange(m.height)
+        zone = fld.carve(Zone(f"glade{index}", cx, cy, rng.randint(13, 21),
+                              rng.randint(11, 17), "round"))
+        fld.corridor((zone.cx, zone.cy),
+                     (avenues_x[index % 4], avenues_y[(index // 2) % 4]),
+                     width=3)
+        glades.append(zone)
+
+    # Five yards buried in the green mass, each with a seam of wall running
+    # from it out to the nearest street.  On four channels out of four that
+    # seam is solid; on one it is not.  Nothing about them differs between the
+    # channels — the pocket, the seam and the sign at its mouth are cut here,
+    # once, and every channel receives exactly the same five of them.
+    pockets = _faces_pockets(fld, avenues_x, avenues_y)
+
+    fld.ensure_connected()
+    fld.protect_chokepoints()
+    fld.build_walls(6)          # the green is a solid mass, not a treeline
+    layout.seal_off(fld, pockets, thickness=3)
+    # Seams are cut *after* the walls, not before: the sealing pass and the
+    # boundary pass both add wood, and a seam measured against the field as it
+    # was mid-carve stops several tiles short of daylight — which reads, from
+    # inside the game, as a channel that simply does not open its yard.
+    seams = _faces_seams(fld, pockets, avenues_y)
     layout.paint(m, fld, t, rng=rng)
     layout.shade_walls(m, fld, t)
+    for zone in pockets:
+        layout.carpet(m, fld, zone, t, rng, "full")
 
-    # trees stand *in front of* the wall of trunks, in a ring inside each glade
-    import math as _m
-    for zone in glades:
-        for step in range(8):
-            angle = step * _m.tau / 8
-            x = int(zone.cx + _m.cos(angle) * (zone.w / 2 - 3)) - 1
-            y = int(zone.cy + _m.sin(angle) * (zone.h / 2 - 3)) - 2
-            if fld.open_space(x, y, 3, 4, 0):
-                gen.stamp(m, cs.obj("tree" if step % 3 else "tree_plain"), x, y)
-        for spot in layout.zone_spots(fld, zone, rng, 2, w=2, h=2, pad=1):
-            gen.stamp(m, cs.obj("mushroom"), *spot)
-        gen.stamp_centered(m, cs.obj("stump"), zone.cx, zone.cy)
+    # Lay the actual road surface back over the avenues, lane markings and all.
+    for x in avenues_x:
+        for y in range(m.height):
+            for o in range(-2, 3):
+                if fld.is_floor(x + o, y):
+                    m.set_lower(x + o, y, t["kerb"] if abs(o) == 2 else
+                                (t["road_line"] if o == 0 and y % 4 < 2
+                                 else t["road"]))
+    for y in avenues_y:
+        for x in range(m.width):
+            for o in range(-2, 3):
+                if fld.is_floor(x, y + o):
+                    m.set_lower(x, y + o, t["kerb"] if abs(o) == 2 else
+                                (t["road_line"] if o == 0 and x % 4 < 2
+                                 else t["road"]))
+
+    fur = Furnisher(m, fld, cs, rng)
+    # Junctions get the municipal furniture: lights on every corner, a shelter,
+    # a phone box still lit, a car nobody came back for.
+    street = ["traffic_light", "shelter", "phone_box", "car", "vending",
+              "road_sign"]
+    for index, zone in enumerate(junctions):
+        layout.carpet(m, fld, zone, t, rng, "full",
+                      patterns=["pattern_0", "pattern_1"])
+        # The lights stand at the four corners of the crossing, three tiles out
+        # on both axes, which is the first tile clear of both carriageways —
+        # the carriageway runs from -2 to +2 either side of an avenue line, and
+        # a signal head planted in the middle of the road is the one thing in
+        # this world that would read as a mistake rather than as a place.
+        # Anchored by the foot of the post, not by its middle: a signal head
+        # is four tiles tall, and centring it on a corner three tiles out from
+        # the crossing hangs its base back over the carriageway — which is how
+        # half of them ended up standing in the road.
+        post = cs.obj("traffic_light").rows
+        for dx, top in ((-3, zone.cy - 3 - post), (3, zone.cy - 3 - post),
+                        (-3, zone.cy + 3), (3, zone.cy + 3)):
+            _street_furniture(fur, m, t, "traffic_light", zone.cx + dx, top,
+                              pad=0, centred=False)
+        for slot, (px, py) in enumerate(ring(zone, 4, inset=6)):
+            _street_furniture(fur, m, t, street[(index + slot) % len(street)],
+                              px, py, pad=1)
+        # a tree straight through the middle of the junction
+        fur.put("tree", zone.cx, zone.cy, pad=1)
+
+    # The glades are what the town looks like once the road has gone.
+    for index, zone in enumerate(glades):
+        layout.carpet(m, fld, zone, t, rng, "rings")
+        for px, py in ring(zone, 6, inset=4):
+            fur.put("tree" if (px + py) % 3 else "tree_plain", px, py, pad=1)
+        fur.put("stump", zone.cx, zone.cy, pad=1)
+        layout.glow_floor(m, fld, zone, t, "anim_0", ring(zone, 4, inset=2))
 
     world.plan = fld
-    world.landmarks = {"glades": [(z.cx, z.cy) for z in glades]}
-    world.spawn = (glades[0].cx, glades[0].cy + 4)
+    world.landmarks = {"junctions": [(z.cx, z.cy) for z in junctions],
+                       "glades": [(z.cx, z.cy) for z in glades],
+                       "pockets": [(z.cx, z.cy) for z in pockets],
+                       "mouths": [seam[-1] for seam in seams]}
+    for index, seam in enumerate(seams):
+        world.landmarks[f"seam{index}"] = seam
+    world.spawn = (avenues_x[0], avenues_y[0])
     world.npcs = ["gardener", "seedling"]
-    return world
+    world.landmarks["avenues"] = [(x, y) for x in avenues_x for y in avenues_y]
+
+
+# The five yards, given as (block column, block row, which channel opens them).
+# They are spread to the four corners of the street grid so that no two are on
+# the same walk, and the compound — which is the last one, and the only one
+# whose seam opens on a channel that already has a pocket — is diagonally
+# opposite the exchange, so that finishing the loop is a walk across the whole
+# town rather than a step to one side.
+FACE_POCKETS: tuple[tuple[int, int, int], ...] = (
+    (0, 0, 0),      # the exchange   — the grove
+    (2, 1, 1),      # the nursery    — overgrown
+    (1, 2, 2),      # the substation — off-colour
+    (3, 0, 3),      # the studio     — no signal
+    (2, 2, 0),      # the compound   — the grove, behind a gate
+)
+FACE_POCKET_NAMES = ("exchange", "nursery", "substation", "studio", "compound")
+
+
+def _street_furniture(fur, m, t: dict, name: str, x: int, y: int, *,
+                      pad: int = 1, centred: bool = True) -> bool:
+    """Put a piece of street furniture down, but never in the road.
+
+    ``Furnisher`` already refuses anything that would block a route, which is
+    a question about the *layout*.  This is a question about the *fiction*: a
+    bus shelter is allowed to stand on grass, on a kerb or on paving, and is
+    not allowed to stand on the carriageway, and nothing about passability can
+    tell those apart because a road is as walkable as a verge.
+    """
+    grid = fur.cs.obj(name)
+    ox = x - grid.cols // 2 if centred else x
+    oy = y - grid.rows // 2 if centred else y
+    tarmac = {t[k] for k in ("road", "road_line") if k in t}
+    for row in range(grid.rows):
+        for col in range(grid.cols):
+            if m.get_lower(ox + col, oy + row) in tarmac:
+                return False
+    return fur.put(name, x, y, pad=pad, centred=centred)
+
+
+def _faces_dress(world: World, cs, channel: int) -> None:
+    """What one reception does to the town, after the town has been built.
+
+    Three jobs, in the order they matter.  The seams first, because they are
+    the mechanic: the yard this channel opens gets a floor laid through the
+    green, and the other four get a run of the *second* wall pattern instead,
+    so that a closed seam is a visible scar and not an absence.  Then the
+    surface, which is how the channel reads before the player has understood
+    anything.  Then the props that only this reception carries.
+    """
+    m, t, fld = world.map, cs.tiles, world.plan
+    rng = random.Random(zlib.crc32(f"faces:dress:{channel}".encode()))
+    floor = {0: "paving", 1: "moss", 2: "ash", 3: "dead"}[channel]
+
+    for index, (_bx, _by, opens) in enumerate(FACE_POCKETS):
+        seam = world.landmarks.get(f"seam{index}", [])
+        for x, y in seam:
+            if fld is not None and fld.is_floor(x, y):
+                continue        # the mouth is already street; leave it alone
+            if opens == channel:
+                m.set_lower(x, y, t[floor])
+                m.set_upper(x, y, 0)
+            else:
+                m.set_lower(x, y, t["wall_alt_face" if (x + y) % 5 else
+                                    "wall_alt"])
+
+    if channel == 0 or fld is None:
+        return      # the grove is the signal.  Nothing is done to it.
+
+    # The surface.  A fraction of the world, chosen the same way on every
+    # channel, is replaced with the one tile that only this channel has — moss
+    # eating the road, ash lying on the grass, or a hole where the picture has
+    # stopped carrying anything at all.
+    # Ground only.  The first version of this ate the roads too, and the
+    # result was a town whose street plan you could not find: on overgrown the
+    # asphalt went the same green as the verge, and on no signal the bars and
+    # the crosshatch cancelled each other out.  The road art already carries
+    # each channel's condition — worn markings, clean concrete, colour bars —
+    # so the surface pass stays off it.  What the growth, the ash and the
+    # holes are allowed to take is the ground between the streets, which is
+    # the part that was never anybody's responsibility.
+    bare = {t[k] for k in ("ground", "ground_b", "path") if k in t}
+    target = {1: 0.22, 2: 0.18, 3: 0.14}[channel]
+    for y in range(m.height):
+        for x in range(m.width):
+            if m.get_lower(x, y) in bare and rng.random() < target:
+                m.set_lower(x, y, t[floor])
+
+    # The props.  Each channel's are unwelcome in a different way: growth that
+    # is in the road, hardware that was always there and could not be seen, or
+    # the two objects that are only possible once the picture has given up.
+    fur = Furnisher(m, fld, cs, rng)
+    props = {1: ("bramble", "hive", "bush", "mushroom"),
+             2: ("aerial", "meter", "mushroom", "bush"),
+             3: ("tone_pillar", "caption", "bush", "mushroom")}[channel]
+    for index, (jx, jy) in enumerate(world.landmarks.get("junctions", [])):
+        for slot, (px, py) in enumerate(ring(Zone("j", jx, jy, 19, 15, "rect"),
+                                             3, inset=3)):
+            _street_furniture(fur, m, t, props[(index + slot) % len(props)],
+                              px, py, pad=1)
+    for index, (gx, gy) in enumerate(world.landmarks.get("glades", [])):
+        for slot, (px, py) in enumerate(ring(Zone("g", gx, gy, 15, 13, "round"),
+                                             4, inset=3)):
+            _street_furniture(fur, m, t,
+                              props[(index + slot + 1) % len(props)], px, py,
+                              pad=1)
+
+
+def _faces_pockets(fld, avenues_x: list[int], avenues_y: list[int]) -> list:
+    """Cut the five yards into the middle of five blocks of the green."""
+    pockets = []
+    for index, (bx, by, _channel) in enumerate(FACE_POCKETS):
+        # the middle of the block bounded by two avenues, wrapped
+        x0, x1 = avenues_x[bx], avenues_x[(bx + 1) % len(avenues_x)]
+        y0, y1 = avenues_y[by], avenues_y[(by + 1) % len(avenues_y)]
+        cx = (x0 + (x1 - x0) % fld.w // 2) % fld.w
+        cy = (y0 + (y1 - y0) % fld.h // 2) % fld.h
+        zone = Zone(FACE_POCKET_NAMES[index], cx, cy, 11, 9, "rect")
+        for dy in range(-zone.h // 2, zone.h // 2 + 1):
+            for dx in range(-zone.w // 2, zone.w // 2 + 1):
+                fld.set(cx + dx, cy + dy, FLOOR_ALT)
+        zone.shape = "rect"
+        zone.name = f"{FACE_POCKET_NAMES[index]}|{y0}|{y1}"
+        pockets.append(zone)
+    return pockets
+
+
+def _faces_seams(fld, pockets: list, avenues_y: list[int]
+                 ) -> list[list[tuple[int, int]]]:
+    """The one-tile runs of wall that might, on one channel, be a way in.
+
+    A seam stays wall in the field, so every shared pass in the build —
+    connectivity repair, density fill, carpeting — treats it as solid and
+    leaves it alone; only the tiles written into the map differ per channel,
+    which is the whole trick.  The player is never walking through a door that
+    appeared.  They are walking through the part of the wood that this
+    reception does not render as wood.
+
+    Each one runs straight out of its yard toward whichever avenue is nearer
+    and stops on the first cell of real street, so the last tile in the list
+    is where a person walking down that street is standing when they look at
+    it — which is exactly where the sign goes.
+    """
+    seams = []
+    for zone in pockets:
+        _name, y0, y1 = zone.name.split("|")
+        up = (zone.cy - int(y0)) % fld.h
+        down = (int(y1) - zone.cy) % fld.h
+        step = -1 if up <= down else 1
+        run: list[tuple[int, int]] = []
+        for offset in range(zone.h // 2 + 1, min(up, down) + 8):
+            cell = (zone.cx % fld.w, (zone.cy + step * offset) % fld.h)
+            run.append(cell)
+            if fld.is_floor(*cell):
+                break
+        seams.append(run)
+    return seams
 
 
 def build_hands(map_id: int) -> World:
     """THE FIELD.
 
-    theme      a monument nobody comes to, repeated until it is a landscape
-    feeling    standing in a graveyard for something that was never alive
-    layout     one long avenue with chambers off it, hands lining every wall
-    rule       the hands are planted in rows, and the rows are the architecture
+    theme      a procession nobody is walking, to somewhere nobody named
+    feeling    trespassing on a rite that has been going on without you
+    layout     one enormous avenue; ten courts opening off it, all different
+    rule       the courts interrupt the procession, and no two interrupt it
+               in the same way — one is empty, one is drowned, one is another
+               avenue, one is nothing but doors
     """
     world, cs, rng = _new("hands", map_id, 150, 128)
     m, t = world.map, cs.tiles
     fld = Field(m.width, m.height)
 
-    avenue = fld.carve(Zone("avenue", m.width // 2, m.height // 2, 138, 15,
-                            "rect"))
+    avenue_zone = fld.carve(Zone("avenue", m.width // 2, m.height // 2, 138, 17,
+                                 "rect"))
+    # Ten courts, each with its own shape, size and reason to exist.  The
+    # variety *is* the world; ten identical diamonds was the old failure.
+    court_plan = [
+        ("circle", "round", 25, 23), ("sunken", "rect", 19, 17),
+        ("raised", "octagon", 23, 19), ("inner_avenue", "rect", 33, 11),
+        ("benches", "diamond", 19, 17), ("water", "round", 27, 21),
+        ("doors", "rect", 21, 15), ("empty", "octagon", 29, 25),
+        ("dense", "round", 21, 19), ("narrow", "rect", 13, 27),
+    ]
     courts = []
-    for index in range(10):
-        cx = 12 + index * 14
-        cy = m.height // 2 + (22 if index % 2 else -22)
-        zone = fld.carve(Zone(f"court{index}", cx, cy, 20, 17, "diamond"))
+    for index, (name, shape, cw, ch) in enumerate(court_plan):
+        cx = 14 + index * 14
+        cy = m.height // 2 + (26 if index % 2 else -26)
+        zone = fld.carve(Zone(name, cx, cy, cw, ch, shape))
         fld.corridor((cx, m.height // 2), (cx, cy), width=3, bend="vh")
-        courts.append(zone)
-    fld.release_zone_interiors()
-    fld.build_walls(3)
+        courts.append((name, zone))
+    fld.ensure_connected()
+    fld.protect_chokepoints()
+    fld.build_walls(4)
     layout.paint(m, fld, t, rng=rng)
     layout.shade_walls(m, fld, t)
 
-    # hands in two rows down the avenue, facing each other
-    for x in range(8, m.width - 8, 8):
-        for y in (avenue.cy - 5, avenue.cy + 2):
+    fur = Furnisher(m, fld, cs, rng)
+    # The avenue itself: two rows of hands facing each other the whole way,
+    # so walking it always feels like passing between something.
+    layout.carpet(m, fld, avenue_zone, t, rng, "stripe")
+    for x in range(8, m.width - 8, 9):
+        for y, pose in ((avenue_zone.cy - 6, "hand_up"),
+                        (avenue_zone.cy + 3, "hand_reach")):
             if fld.open_space(x, y, 3, 4, 0):
-                gen.stamp(m, cs.obj("hand_up" if y < avenue.cy else
-                                    "hand_reach"), x, y)
-    for zone in courts:
-        gen.stamp_centered(m, cs.obj("plinth"), zone.cx, zone.cy)
-        gen.stamp(m, cs.obj("hand_broken"), zone.cx - 1, zone.cy - 5)
+                gen.stamp(m, cs.obj(pose), x, y)
+    layout.glow_floor(m, fld, avenue_zone, t, "anim_0",
+                      [(x, avenue_zone.cy) for x in range(6, m.width, 13)])
+
+    marks = [k for k in cs.objects if k.startswith("mark_")]
+    for index, (name, zone) in enumerate(courts):
+        if name == "circle":
+            layout.carpet(m, fld, zone, t, rng, "rings")
+            if marks:
+                grid = cs.obj(marks[1 % len(marks)])       # the ring of hands
+                gen.stamp(m, grid, zone.cx - grid.cols // 2,
+                          zone.cy - grid.rows // 2)
+        elif name == "sunken":
+            # a darker floor, so it reads as being below the avenue
+            for dy in range(-zone.h // 2, zone.h // 2 + 1):
+                for dx in range(-zone.w // 2, zone.w // 2 + 1):
+                    if fld.is_floor(zone.cx + dx, zone.cy + dy):
+                        m.set_lower(zone.cx + dx, zone.cy + dy, t["ground_b"])
+            layout.carpet(m, fld, zone, t, rng, "checker")
+            fur.put("hand_broken", zone.cx, zone.cy, pad=1)
+        elif name == "raised":
+            layout.carpet(m, fld, zone, t, rng, "full")
+            fur.put("plinth", zone.cx, zone.cy, pad=1)
+            for px, py in ring(zone, 6, inset=4):
+                fur.put("hand_up", px, py, pad=1)
+        elif name == "inner_avenue":
+            # a court containing another avenue, at a quarter of the scale
+            layout.carpet(m, fld, zone, t, rng, "stripe")
+            for x in range(zone.cx - 13, zone.cx + 14, 5):
+                fur.put("hand_up", x, zone.cy - 3, pad=0)
+                fur.put("hand_reach", x, zone.cy + 3, pad=0)
+        elif name == "benches":
+            layout.carpet(m, fld, zone, t, rng, "lattice")
+            for px, py in avenue(zone, 3, spacing=5):
+                fur.put("plinth", px, py, pad=1)
+        elif name == "water":
+            for dy in range(-zone.h // 2, zone.h // 2 + 1):
+                for dx in range(-zone.w // 2, zone.w // 2 + 1):
+                    if fld.is_floor(zone.cx + dx, zone.cy + dy):
+                        m.set_lower(zone.cx + dx, zone.cy + dy, t["anim_1"])
+            fur.put("hand_reach", zone.cx, zone.cy, pad=1)
+        elif name == "doors":
+            layout.carpet(m, fld, zone, t, rng, "full")
+            if len(marks) > 2:
+                grid = cs.obj(marks[2])                    # the hand and door
+                gen.stamp(m, grid, zone.cx - grid.cols // 2,
+                          zone.cy - grid.rows // 2)
+        elif name == "empty":
+            # deliberately almost nothing, and the largest court of the ten
+            layout.carpet(m, fld, zone, t, rng, "border")
+        elif name == "dense":
+            layout.carpet(m, fld, zone, t, rng, "full")
+            for px, py in ring(zone, 8, inset=3) + corners(zone, 4):
+                fur.put("hand_up" if (px + py) % 2 else "hand_broken", px, py,
+                        pad=0)
+        else:   # narrow: a slot too tight for the procession to turn round in
+            layout.carpet(m, fld, zone, t, rng, "cross")
+            for px, py in avenue(zone, 2, spacing=6):
+                fur.put("hand_reach", px, py, pad=0)
+        layout.glow_floor(m, fld, zone, t, f"anim_{index % 3}",
+                          ring(zone, 4, inset=3))
 
     world.plan = fld
-    world.landmarks = {"avenue": [(avenue.cx, avenue.cy)],
-                       "courts": [(z.cx, z.cy) for z in courts]}
-    world.spawn = (avenue.cx, avenue.cy)
+    world.landmarks = {"avenue": [(avenue_zone.cx, avenue_zone.cy)],
+                       "courts": [(z.cx, z.cy) for _, z in courts]}
+    world.spawn = (avenue_zone.cx, avenue_zone.cy)
     world.npcs = ["walking_hand", "ring_keeper"]
     return world
 
@@ -517,7 +1005,8 @@ def build_checker(map_id: int) -> World:
     # repetition is the effect: after a while you stop trusting that you moved.
     rooms = layout.strict_grid(fld, rng, cols=6, rows=5, size=(15, 13),
                                corridor_width=3)
-    fld.release_zone_interiors()
+    fld.ensure_connected()
+    fld.protect_chokepoints()
     fld.build_walls(3)
     layout.paint(m, fld, t, rng=rng)
     layout.shade_walls(m, fld, t)
@@ -561,7 +1050,8 @@ def build_toys(map_id: int) -> World:
     # Streets between stacks taller than you are.  The floor is continuous and
     # the masses make the shape, so the gaps read as alleys in a toy city.
     pits = layout.canyons(fld, rng, blocks=32, block_size=(13, 11), margin=5)
-    fld.release_zone_interiors()
+    fld.ensure_connected()
+    fld.protect_chokepoints()
     fld.build_walls(4)
     layout.paint(m, fld, t, rng=rng)
     layout.shade_walls(m, fld, t)
@@ -582,7 +1072,9 @@ def build_toys(map_id: int) -> World:
 
     world.plan = fld
     world.landmarks = {"pits": [(z.cx, z.cy) for z in pits]}
-    world.spawn = (pits[0].cx, pits[0].cy + 4)
+    # The avenue that canyons() drives through the district is guaranteed
+    # walkable; a "street" zone centre may be sitting inside a toy block.
+    world.spawn = (m.width // 2, m.height // 2 - 1)
     world.npcs = ["wind_up", "cone"]
     return world
 
@@ -607,7 +1099,8 @@ def build_neon(map_id: int) -> World:
                            "round"))
     for zone in zones[:6]:
         fld.corridor((plaza.cx, plaza.cy), (zone.cx, zone.cy), width=3)
-    fld.release_zone_interiors()
+    fld.ensure_connected()
+    fld.protect_chokepoints()
     fld.build_walls(3)
     layout.paint(m, fld, t, rng=rng)
     layout.shade_walls(m, fld, t)
@@ -692,17 +1185,24 @@ def build_umbrellas(map_id: int) -> World:
 
     groves = layout.clusters(fld, rng, count=22, blobs=6, radius=(7, 11),
                              thread=2)
-    fld.release_zone_interiors()
+    fld.ensure_connected()
+    fld.protect_chokepoints()
     fld.build_walls(3)
     layout.paint(m, fld, t, rng=rng)
     layout.shade_walls(m, fld, t)
 
     canopies = [cs.obj(f"umbrella_{i}") for i in range(3)]
+    fur = Furnisher(m, fld, cs, rng)
     for index, zone in enumerate(groves):
-        for spot in layout.zone_spots(fld, zone, rng, 5, w=3, h=4, pad=1):
+        layout.carpet(m, fld, zone, t, rng,
+                      ("rings", "full", "lattice", "checker")[index % 4])
+        for spot in layout.zone_spots(fld, zone, rng, 7, w=3, h=4, pad=1):
             gen.stamp(m, canopies[rng.randrange(3)], *spot)
-        for spot in layout.zone_spots(fld, zone, rng, 2, w=1, h=3, pad=1):
+        for spot in layout.zone_spots(fld, zone, rng, 3, w=1, h=3, pad=1):
             gen.stamp(m, cs.obj("umbrella_shut"), *spot)
+        # water standing in the canopies that fell over, and never evaporating
+        layout.glow_floor(m, fld, zone, t, "flow", ring(zone, 6, inset=4))
+        fur.put("mushroom", zone.cx, zone.cy, pad=1)
 
     world.plan = fld
     world.landmarks = {"groves": [(z.cx, z.cy) for z in groves]}
@@ -724,16 +1224,25 @@ def build_stars(map_id: int) -> World:
     fld = Field(m.width, m.height)
 
     islands = layout.archipelago(fld, rng, islands=24, size=(15, 12), pier=3)
+    # Second constraint: the islands are not variations on an island.  Each is
+    # a different kind of place that happens to be surrounded by water.
+    layout.vary_zones(islands, rng)
+    for zone in islands:
+        fld.carve(zone)
     centre = fld.carve(Zone("centre", m.width // 2, m.height // 2, 21, 15,
                             "round"))
     for zone in islands[::2]:
         fld.corridor((centre.cx, centre.cy), (zone.cx, zone.cy), width=3)
-    fld.release_zone_interiors()
+    fld.ensure_connected()
+    fld.protect_chokepoints()
     fld.build_walls(2)
     layout.paint(m, fld, t, rng=rng)
     layout.shade_walls(m, fld, t)
 
     for index, zone in enumerate(islands):
+        layout.carpet(m, fld, zone, t, rng,
+                      ("rings", "full", "lattice", "corners")[index % 4])
+        layout.glow_floor(m, fld, zone, t, "flow", ring(zone, 5, inset=3))
         gen.stamp(m, cs.obj("pier"), zone.cx - 2, zone.cy + 3)
         if index % 2 == 0:
             gen.stamp(m, cs.obj("lamp"), zone.cx + 5, zone.cy - 3)
@@ -751,12 +1260,63 @@ def build_stars(map_id: int) -> World:
     return world
 
 
+def _stair_floor(depth: int):
+    """A deeper floor of the stairwell.
+
+    The geometry is regenerated from its own seed, so the floors are not the
+    same room repainted — they are different rooms that share a chipset.  What
+    they share deliberately is everything that makes them recognisable: the
+    same tiles, the same residents, the same music family.  What changes is
+    the condition of all three.
+    """
+    def build(map_id: int) -> World:
+        world, cs, rng = _new("stairs", map_id, 148 - depth * 4,
+                              134 - depth * 4)
+        world.key = f"stairs{depth + 1}"
+        world.title = ("up", "further up", "further", "up and up",
+                       "the top")[depth]
+        # the light fails by degrees, and the film thickens with it
+        r, g, b, sat = TINTS["stairs"]
+        world.tint = (max(30, r - depth * 14), max(30, g - depth * 16),
+                      max(40, b - depth * 8), max(18, sat - depth * 17))
+        world.overlay = ("VignetteSoft", "Vignette", "Grain",
+                         "StaticB", "Static")[depth]
+        world.overlay_opacity = max(38, 70 - depth * 8)
+        world.music = ("Stairs", "Stairs", "Deep", "Deep", "Wrong")[depth]
+        _stairs_layout(world, cs, rng)
+        return world
+    return build
+
+
+def _face_channel(channel: int):
+    """One channel of the grove.
+
+    Every channel is generated from the *same* seed at the same size, so the
+    geometry is identical down to the tile: the same roads, the same clearings,
+    the same buildings that should not be in a wood.  Nothing about the place
+    changes when you tune it.  What changes is the light on it, what is living
+    in it, and what has been left lying about — which is the difference
+    between a different map and a different broadcast of one.
+    """
+    def build(map_id: int) -> World:
+        key = FACE_CHANNELS[channel]
+        world, cs, _ = _new(key, map_id, 144, 132)
+        world.seed_key = "faces"
+        _faces_layout(world, cs)
+        _faces_dress(world, cs, channel)
+        return world
+    return build
+
+
 BUILD = {
     "room": build_room, "nexus": build_nexus, "pink": build_pink,
     "numbers": build_numbers, "blocks": build_blocks, "stairs": build_stairs,
     "sand": build_sand, "faces": build_faces, "hands": build_hands,
     "checker": build_checker, "toys": build_toys, "neon": build_neon,
     "umbrellas": build_umbrellas, "stars": build_stars,
+    **{key: _stair_floor(DEPTH[key]) for key in STAIR_FLOORS},
+    **{key: _face_channel(i)
+       for i, key in enumerate(FACE_CHANNELS) if i},
 }
 
 
@@ -764,17 +1324,33 @@ BUILD = {
 # Sand stays nearly bare because its emptiness *is* the content; the nursery
 # and the toy box are busy because a child decorated them.
 CARPETS: dict[str, list[str]] = {
-    "pink": ["border", "lattice", "rings", "border", "cross"],
-    "numbers": ["lattice", "border", "stripe", "checker"],
-    "blocks": ["checker", "full", "corners", "border", "rings"],
-    "stairs": ["stripe", "border", "lattice"],
-    "sand": ["corners", "border"],
-    "faces": ["rings", "corners", "border", "lattice"],
-    "hands": ["rings", "border", "cross"],
-    "checker": ["checker", "full", "border", "lattice"],
-    "toys": ["full", "checker", "corners", "rings", "border"],
-    "umbrellas": ["rings", "lattice", "border", "corners"],
-    "stars": ["rings", "corners", "border"],
+    "pink": ["full", "lattice", "rings", "checker", "cross"],
+    "numbers": ["full", "lattice", "stripe", "checker", "rings"],
+    "blocks": ["checker", "full", "rings", "lattice", "cross"],
+    "stairs": ["stripe", "full", "lattice", "rings"],
+    "sand": ["full", "rings", "lattice", "checker"],
+    "faces": ["rings", "full", "lattice", "checker"],
+    "hands": ["rings", "full", "cross", "lattice"],
+    "checker": ["checker", "full", "lattice", "rings"],
+    "toys": ["full", "checker", "rings", "lattice"],
+    "umbrellas": ["rings", "lattice", "full", "checker"],
+    "stars": ["rings", "full", "lattice"],
+    # identical arrangements to the grove, so the carpets land on the same
+    # tiles on every channel and only their pattern art differs
+    "faces2": ["rings", "full", "lattice", "checker"],
+    "faces3": ["rings", "full", "lattice", "checker"],
+    "faces4": ["rings", "full", "lattice", "checker"],
+}
+
+# The base flooring laid through every walkable tile of a world, before any
+# room is dressed: (arrangement, period).  A smaller period is denser.
+WASH: dict[str, tuple[str, int]] = {
+    "pink": ("grid", 3), "numbers": ("diagonal", 3), "blocks": ("grid", 2),
+    "stairs": ("rows", 2), "sand": ("scatter", 5), "faces": ("scatter", 4),
+    "hands": ("diagonal", 4), "checker": ("grid", 2), "toys": ("grid", 3),
+    "umbrellas": ("diagonal", 3), "stars": ("scatter", 4),
+    "faces2": ("scatter", 4), "faces3": ("scatter", 4),
+    "faces4": ("scatter", 4),
 }
 
 # Where the animated tiles go, and how many, per world.
@@ -783,7 +1359,199 @@ GLOW: dict[str, tuple[str, int]] = {
     "stairs": ("flow", 8), "sand": ("anim_0", 2), "faces": ("anim_0", 6),
     "hands": ("anim_0", 4), "checker": ("anim_1", 6), "toys": ("anim_0", 6),
     "umbrellas": ("flow", 7), "stars": ("flow", 10),
+    "faces2": ("anim_0", 6), "faces3": ("anim_0", 6), "faces4": ("anim_0", 6),
 }
+
+
+def enforce_density(world: World) -> int:
+    """Make sure no room is left as a wasteland.
+
+    A large empty space is not atmosphere, it is an unfinished room.  This
+    measures how much of each zone still shows bare ground and, where a zone
+    is under-furnished for its size, adds more of that world's own props in a
+    deliberate arrangement until it is not.  Corridors and their shoulders are
+    still off limits, so filling can never block a route.
+    """
+    fld = world.plan
+    if fld is None:
+        return 0
+    m, cs = world.map, world.chipset
+    rng = random.Random(zlib.crc32(world.seed_key.encode()) ^ 0xF111)
+    bare = {cs.tiles[k] for k in ("ground", "ground_b", "path")
+            if k in cs.tiles}
+    props = [k for k, g in cs.objects.items()
+             if not k.startswith(("mural_", "mark_")) and g.cols <= 4
+             and g.rows <= 5 and k != "door"]
+    if not props:
+        return 0
+    from .rooms import Furnisher, ring, avenue, corners, back_wall
+    fur = Furnisher(m, fld, cs, rng)
+    added = 0
+
+    for zone in fld.zones:
+        area = zone.w * zone.h
+        if area < 200:
+            continue
+        # how much of this room is still nothing at all?
+        empty = 0
+        for dy in range(-zone.h // 2, zone.h // 2 + 1):
+            for dx in range(-zone.w // 2, zone.w // 2 + 1):
+                if (fld.is_floor(zone.cx + dx, zone.cy + dy)
+                        and m.get_lower(zone.cx + dx, zone.cy + dy) in bare):
+                    empty += 1
+        if empty < area * 0.45:
+            continue          # already furnished enough
+        wanted = max(4, area // 90)
+        spots = (ring(zone, wanted, inset=4) +
+                 corners(zone, 5) +
+                 avenue(zone, max(2, wanted // 3), spacing=6))
+        for slot, (px, py) in enumerate(spots):
+            if fur.put(props[(slot + zone.cx) % len(props)], px, py, pad=1):
+                added += 1
+    return added
+
+
+def snap_spawn(world: World) -> None:
+    """Move the arrival point onto ground the player can actually stand on.
+
+    A builder picks a spawn from its own geometry — the centre of a terrace,
+    the middle of an avenue — and decoration or a stepped zone shape can end
+    up putting a wall there.  The player then arrives inside solid rock and
+    the entire world reads as unreachable.  Search outward for real floor.
+    """
+    fld = world.plan
+    if fld is None:
+        return
+    solid = solid_ids(world.chipset)
+    m = world.map
+    sx, sy = world.spawn
+
+    def standable(x: int, y: int) -> bool:
+        return (fld.is_floor(x, y)
+                and (x % m.width, y % m.height) not in fld.sealed
+                and m.get_lower(x, y) not in solid
+                and m.get_upper(x, y) not in solid)
+
+    if standable(sx, sy):
+        return
+    for radius in range(1, max(m.width, m.height) // 2):
+        for dy in range(-radius, radius + 1):
+            for dx in range(-radius, radius + 1):
+                if max(abs(dx), abs(dy)) != radius:
+                    continue
+                if standable(sx + dx, sy + dy):
+                    world.spawn = ((sx + dx) % m.width, (sy + dy) % m.height)
+                    return
+
+
+def place_door(world: World) -> None:
+    """Stand one door in the world, at the point the player arrives.
+
+    Every world has exactly one, and it is the same door in both directions:
+    you come out of it and you go back through it.  Nothing else in a dream is
+    an exit, so the way home is a place you have to find your way back to
+    rather than a menu command — and the first thing you see on arriving is
+    the thing you will eventually be looking for.
+
+    The landing around it is cleared to bare floor so the door reads as
+    deliberate rather than as something that grew there, and so a 2x3 solid
+    object dropped into a generated layout cannot wall anything off.
+    """
+    if "door" not in world.chipset.objects:
+        return
+    m, fld = world.map, world.plan
+    grid = world.chipset.obj("door")
+    solid = solid_ids(world.chipset)
+
+    def standable(x: int, y: int) -> bool:
+        return (m.get_lower(x, y) not in solid
+                and m.get_upper(x, y) not in solid)
+
+    def fits(sx: int, sy: int) -> bool:
+        """Is there already room here, without moving anything?"""
+        # somewhere to stand, and somewhere to stand aside
+        if not all(standable(sx + dx, sy) for dx in (-1, 0, 1)):
+            return False
+        for row in range(grid.rows):
+            for col in range(grid.cols):
+                x, y = sx - 1 + col, sy - grid.rows + row
+                # the door's own space must be empty, and it must be standing
+                # on floor rather than embedded in a wall or hanging over void
+                if m.get_upper(x, y) != maps.EMPTY_UPPER:
+                    return False
+                if m.get_lower(x, y) in solid:
+                    return False
+                if fld is not None and fld.is_protected(x, y):
+                    return False      # never block a corridor with a door
+        return True
+
+    sx, sy = world.spawn
+    if not fits(sx, sy):
+        # Look for a spot that already works.  The door does not get to clear
+        # the ground it stands on — an object that bulldozes a rectangle of
+        # plain floor out of a patterned world is exactly the thing this
+        # project keeps having to un-learn.
+        found = None
+        for radius in range(1, 40):
+            for dy in range(-radius, radius + 1):
+                for dx in range(-radius, radius + 1):
+                    if max(abs(dx), abs(dy)) != radius:
+                        continue
+                    if fits(sx + dx, sy + dy):
+                        found = ((sx + dx) % m.width, (sy + dy) % m.height)
+                        break
+                if found:
+                    break
+            if found:
+                break
+        if found is None:
+            return
+        world.spawn = found
+        sx, sy = found
+
+    # the door stands with its base one tile above the arrival point
+    dx, dy = sx - 1, sy - grid.rows
+    gen.stamp(m, grid, dx, dy)
+    # The door is solid, and the connectivity repair deletes solid things
+    # standing on cells the layout calls floor — which is how the first version
+    # of this ended up placing fourteen doors and shipping none of them.  A
+    # door is a wall you can talk to, so the layout has to be told that.
+    if fld is not None:
+        for y in range(dy, dy + grid.rows):
+            for x in range(dx, dx + grid.cols):
+                fld.set(x % m.width, y % m.height, layout.WALL)
+    world.landmarks["door"] = [(dx % m.width, dy % m.height)]
+    # the tile you talk to it from is the one you are standing on
+    world.landmarks["door_face"] = [((dx + 1) % m.width, (dy + grid.rows - 1) % m.height)]
+
+
+def place_landmarks(world: World) -> None:
+    """Drop each world's unique structures into its biggest rooms.
+
+    Landmarks go where there is space for them and never near a corridor, and
+    each one is used once — a landmark you meet twice is scenery.
+    """
+    fld = world.plan
+    if fld is None:
+        return
+    marks = [k for k in world.chipset.objects if k.startswith("mark_")]
+    if not marks:
+        return
+    m = world.map
+    # biggest rooms first: a landmark needs room to be looked at
+    zones = sorted(fld.zones, key=lambda z: z.w * z.h, reverse=True)
+    used = 0
+    for zone in zones:
+        if used >= len(marks):
+            break
+        grid = world.chipset.obj(marks[used])
+        x = zone.cx - grid.cols // 2
+        y = zone.cy - grid.rows // 2
+        if not fld.open_space(x, y, grid.cols, grid.rows, 1):
+            continue
+        gen.stamp(m, grid, x, y)
+        world.landmarks.setdefault("marks", []).append((zone.cx, zone.cy))
+        used += 1
 
 
 def decorate(world: World) -> None:
@@ -797,7 +1565,11 @@ def decorate(world: World) -> None:
     if fld is None or world.key not in CARPETS:
         return
     m, t = world.map, world.chipset.tiles
-    rng = random.Random(hash(world.key) & 0xFFFF)
+    rng = random.Random(zlib.crc32(world.seed_key.encode()) ^ 0x5EED)
+    # Base flooring across the whole world first, so corridors and the space
+    # between rooms are treated too; room carpets then go on top of it.
+    layout.floor_wash(m, fld, t, rng, period=WASH[world.key][1],
+                      style=WASH[world.key][0])
     styles = CARPETS[world.key]
     anim, glow_count = GLOW.get(world.key, ("anim_0", 3))
     murals = [k for k in world.chipset.objects if k.startswith("mural_")]
@@ -821,6 +1593,13 @@ def build_all() -> dict[str, World]:
     for index, key in enumerate(WORLD_ORDER, start=1):
         world = BUILD[key](index)
         decorate(world)
+        place_landmarks(world)
+        enforce_density(world)
+        snap_spawn(world)
+        if key in DREAM_ORDER:
+            # after snap_spawn, so the door goes where the player really lands,
+            # and before the connectivity repair, which gets the last word
+            place_door(world)
         if world.plan is not None:
             # Last line of defence: nothing the decoration pass added is
             # allowed to have cut the world in half.

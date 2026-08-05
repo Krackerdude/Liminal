@@ -201,6 +201,32 @@ SFX: list[Sfx] = [
     Sfx("Vanish", "a soft short descending shimmer, something leaving quietly", 1.8),
     Sfx("Watch",
         "a very quiet low sustained tone that feels like being noticed", 2.5),
+    # the grove's four channels.  The ring is the only instruction the world
+    # ever gives, so it has to be unmistakable and it has to have a direction.
+    Sfx("PhoneFar",
+        "an old payphone ringing somewhere out of sight in a wood, two rings, "
+        "muffled by distance and leaves, damp reverb, no music", 2.6),
+    Sfx("PhoneNear",
+        "an old mechanical payphone bell ringing once, very close, metallic "
+        "and loud in a small glass box", 1.4),
+    Sfx("Coin",
+        "a single coin dropping through a payphone and landing in the metal "
+        "coin return, small hollow clatter", 1.2),
+    Sfx("TapeRoll",
+        "a cassette player starting: mechanism engaging, capstan spinning up, "
+        "tape hiss rising, no music", 2.2),
+    Sfx("Latch",
+        "a small metal inspection hatch unlocking and swinging open, cold "
+        "and mechanical, outdoors", 1.6),
+    Sfx("Filament",
+        "an old street lamp warming on: a mains hum rising, glass ticking as "
+        "the filament heats", 2.4),
+    Sfx("Carrier",
+        "a steady analogue test tone with television static underneath it, "
+        "as heard from outside a building", 3.0),
+    Sfx("Tune",
+        "an analogue television changing channel: a swallow of static, a "
+        "hard click, then the new picture settling", 1.8),
 ]
 
 

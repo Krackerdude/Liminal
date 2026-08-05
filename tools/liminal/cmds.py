@@ -193,6 +193,15 @@ class Script:
                 self.raw(SHOW_MESSAGE_2, [], extra)
         return self
 
+    def msg_value(self, label: str, var_id: int) -> "Script":
+        r"""A message line that prints a variable's current value.
+
+        RPG Maker substitutes ``\v[n]`` at display time, so the number shown
+        is whatever it is when the player reads it rather than whatever it was
+        when the event was written.
+        """
+        return self.msg(f"{label} \\v[{var_id}]")
+
     def msg_options(self, position: int = MSG_BOTTOM, *, fixed: bool = False,
                     transparent: bool = False, dont_hide_hero: bool = False) -> "Script":
         return self.raw(MESSAGE_OPTIONS,
@@ -332,6 +341,23 @@ class Script:
     # -- movement / place ----------------------------------------------------
     def teleport(self, map_id: int, x: int, y: int) -> "Script":
         return self.raw(TELEPORT, [map_id, x, y])
+
+    def store_terrain(self, var_id: int, x_var: int, y_var: int) -> "Script":
+        """Read the terrain id at a position held in two variables.
+
+        Mode 1 means "the coordinates are in variables"; mode 0 would take
+        them as constants, which is useless for following a moving player.
+        """
+        return self.raw(STORE_TERRAIN_ID, [1, x_var, y_var, var_id])
+
+    def teleport_var(self, map_id: int, x_var: int, y_var: int) -> "Script":
+        """Teleport to coordinates held in variables (RPG Maker 2000 form).
+
+        The engine reads the destination from the three variables *starting*
+        at ``map_var``, so they have to be consecutive; this writes the map id
+        into the first of them first.
+        """
+        return self.raw(TELEPORT, [map_id, x_var, y_var, 0, 1])
 
     def memorize_location(self, map_var: int, x_var: int, y_var: int) -> "Script":
         return self.raw(MEMORIZE_LOCATION, [map_var, x_var, y_var])
@@ -486,10 +512,17 @@ class Script:
         Results: 1 down, 2 left, 3 right, 4 up, 5 decision, 6 cancel, 7 shift,
         0 nothing (only possible when ``wait`` is false).
 
-        The ten-parameter form is the RPG Maker 2000 v1.50+ layout, which is
-        the only one with individual direction and shift flags:
-        ``[var, wait, legacy_all_dirs, decision, cancel, shift, down, left,
-        right, up]``.
+        The ten-parameter RPG Maker **2000** v1.50+ layout, which is the only
+        one with individual direction and shift flags::
+
+            [var, wait, legacy_all_directions, decision, cancel,
+             shift, down, left, right, up]
+
+        RPG Maker 2003 uses a longer list with a different order; do not
+        confuse the two.  The engine only reads past parameter four at all if
+        it believes it is running 1.50 or later, which it decides by looking
+        for an MP3 in ``Music/`` — see ``audio/elevenlabs.py``.  On a game it
+        judges to be older, shift is not read and the diary cannot be opened.
         """
         d = 1 if directions else 0
         return self.raw(KEY_INPUT,

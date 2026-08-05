@@ -51,6 +51,86 @@ def veil() -> Canvas:
     return art
 
 
+# --- garnishes ---------------------------------------------------------------
+# The engine can rotate and wave a picture continuously, and it does that on its
+# own clock rather than the interpreter's — so these keep moving while the menu
+# sits blocked waiting for a keypress.  That is the whole trick: everything
+# below is drawn once and animated by the engine forever.
+
+HALO = (150, 122, 168)
+HALO_LIGHT = (214, 184, 216)
+
+
+def halo() -> Canvas:
+    """A slow-turning bloom behind the page.  Soft, petalled, never sharp."""
+    size = 288
+    art = Canvas(size, size, TRANSPARENT)
+    cx = cy = size / 2
+    for petal in range(9):
+        angle = petal * math.tau / 9
+        for step in range(30):
+            t = step / 29
+            radius = 26 + t * 108
+            x = cx + math.cos(angle) * radius
+            y = cy + math.sin(angle) * radius
+            # petals taper and pale as they reach outward
+            art.blob(x, y, 20 * (1 - t) + 4,
+                     blend(HALO, HALO_LIGHT, t * 0.8))
+    art.dither(TRANSPARENT, 0.34, BAYER8)
+    art.blob(cx, cy, 34, blend(HALO_LIGHT, PAPER, 0.4))
+    return art
+
+
+def rings() -> Canvas:
+    """Broken concentric rings, turning the other way from the halo.
+
+    Counter-rotation is what stops two spinning layers from reading as one
+    spinning layer.
+    """
+    size = 256
+    art = Canvas(size, size, TRANSPARENT)
+    cx = cy = size / 2
+    for index, radius in enumerate((58, 82, 104, 122)):
+        gaps = 3 + index
+        color = blend(BORDER_LIGHT, PAPER, index / 5)
+        for step in range(int(radius * 7)):
+            angle = step / (radius * 7) * math.tau
+            # leave a gap in each ring, rotated per ring
+            if (angle + index * 0.7) % (math.tau / gaps) < 0.34:
+                continue
+            art.dot(int(cx + math.cos(angle) * radius),
+                    int(cy + math.sin(angle) * radius), color)
+    return art
+
+
+def motes() -> Canvas:
+    """Drifting specks, shown with the engine's wave effect so they swim."""
+    art = Canvas(SCREEN_W, SCREEN_H, TRANSPARENT)
+    rng = np.random.default_rng(4)
+    for _ in range(110):
+        x = int(rng.integers(4, SCREEN_W - 4))
+        y = int(rng.integers(4, SCREEN_H - 4))
+        size = rng.random()
+        if size > 0.86:
+            art.blob(x, y, 1.8, warmer(PAPER, 0.55))
+        elif size > 0.5:
+            art.dot(x, y, warmer(PAPER, 0.4))
+            art.dot(x + 1, y, blend(PAPER, HALO, 0.4))
+        else:
+            art.dot(x, y, blend(PAPER, HALO_LIGHT, 0.5))
+    return art
+
+
+def bloom() -> Canvas:
+    """A soft light that sits under whichever effect the cursor is over."""
+    art = Canvas(CURSOR + 24, CURSOR + 24, TRANSPARENT)
+    cx = cy = art.w / 2
+    for radius, amount in ((30, 0.14), (23, 0.26), (16, 0.40), (10, 0.58)):
+        art.blob(cx, cy, radius, blend(GOLD, PAPER, 1 - amount))
+    art.dither(TRANSPARENT, 0.42, BAYER8)
+    return art
+
+
 def panel() -> Canvas:
     """The diary page.  Drawn at full size and scaled by the interpreter."""
     art = Canvas(PANEL_W, PANEL_H, TRANSPARENT)
@@ -67,18 +147,34 @@ def panel() -> Canvas:
     return art
 
 
+# The one hard edge in the whole menu.  Everything else is soft and warm, so
+# the border has to be the opposite of that or the page has no shape: near
+# black on the outside, near white on the inside, three pixels apart.
+EDGE_DARK = (28, 20, 36)
+EDGE_LIGHT = (250, 244, 232)
+
+
 def frame() -> Canvas:
-    """The decorative border, animated in separately from the page."""
-    art = Canvas(PANEL_W + 16, PANEL_H + 16, TRANSPARENT)
+    """The decorative border, animated in separately from the page.
+
+    Deliberately the highest-contrast thing on screen.  A dreamlike menu that
+    is soft all the way to its edges reads as a smudge; the eye needs one crisp
+    line to tell it where the page stops.
+    """
+    art = Canvas(PANEL_W + 20, PANEL_H + 20, TRANSPARENT)
     w, h = art.w, art.h
-    art.round_rect(0, 0, w, h, 12, BORDER)
-    art.round_rect(4, 4, w - 8, h - 8, 10, BORDER_LIGHT)
-    art.round_rect(8, 8, w - 16, h - 16, 8, TRANSPARENT)
+    art.round_rect(0, 0, w, h, 13, EDGE_DARK)
+    art.round_rect(2, 2, w - 4, h - 4, 12, BORDER)
+    art.round_rect(5, 5, w - 10, h - 10, 10, EDGE_LIGHT)
+    art.round_rect(7, 7, w - 14, h - 14, 9, BORDER)
+    art.round_rect(9, 9, w - 18, h - 18, 8, EDGE_DARK)
+    art.round_rect(11, 11, w - 22, h - 22, 7, TRANSPARENT)
     # corner studs: the only ornament, four of them
-    for cx, cy in ((8, 8), (w - 9, 8), (8, h - 9), (w - 9, h - 9)):
-        art.blob(cx, cy, 4, GOLD)
-        art.blob(cx - 1, cy - 1, 1.6, warmer(GOLD, 0.5))
-    return outline_in(art, cooler(BORDER, 0.4))
+    for cx, cy in ((10, 10), (w - 11, 10), (10, h - 11), (w - 11, h - 11)):
+        art.blob(cx, cy, 5, EDGE_DARK)
+        art.blob(cx, cy, 3.5, GOLD)
+        art.blob(cx - 1, cy - 1, 1.4, warmer(GOLD, 0.6))
+    return art
 
 
 def glint() -> Canvas:
@@ -314,6 +410,10 @@ def build_menu_art() -> dict[str, Canvas]:
     """Every picture the diary needs, by filename."""
     out: dict[str, Canvas] = {
         "MenuVeil": veil(),
+        "MenuHalo": halo(),
+        "MenuRings": rings(),
+        "MenuMotes": motes(),
+        "MenuBloom": bloom(),
         "MenuPanel": panel(),
         "MenuFrame": frame(),
         "MenuGlint": glint(),

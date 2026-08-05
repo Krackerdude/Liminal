@@ -61,26 +61,37 @@ class Body:
 BOB = (-1, 0, -1)
 
 
-def _legs(cell: Canvas, body: Body, facing: int, frame: int, leg_top: int) -> None:
+def _legs(cell: Canvas, body: Body, facing: int, frame: int, leg_top: int,
+          center: int | None = None) -> None:
     """Legs from the hip down to the floor.
 
     ``leg_top`` is the hip, which rides the bounce with the torso; the feet
     stay planted at :data:`GROUND`, so the legs stretch and compress instead of
     detaching from the body.
+
+    In profile the body is only seven pixels wide, so the legs cannot swing
+    sideways as a whole — doing that walked the near leg clean off the torso
+    and left it hanging in the air beside the figure.  Both legs stay hung
+    from the same hip and only the shin and foot swing, which is also what
+    legs do.
     """
     trousers = body.trousers
     shoe = body.shoe or cooler(body.trousers, 0.30)
-    cx = CELL_W // 2
+    cx = CELL_W // 2 if center is None else center
     leg_h = GROUND - leg_top
     if facing in (LEFT, RIGHT):
         sign = 1 if facing == RIGHT else -1
-        swing = (-3, 0, 3)[frame]
-        near = cx - 2 + swing * sign
-        far = cx - 2 - swing * sign
-        cell.round_rect(far, leg_top, 4, leg_h, 1, cooler(trousers, 0.22))
-        cell.round_rect(far - 1, GROUND - 3, 6, 3, 1, cooler(shoe, 0.2))
-        cell.round_rect(near, leg_top, 4, leg_h, 1, trousers)
-        cell.round_rect(near - 1 if sign > 0 else near - 2, GROUND - 3, 6, 3, 1, shoe)
+        swing = (-2, 0, 2)[frame] * sign
+        hip_x = cx - 2
+        thigh_h = max(3, leg_h - 3)
+        knee = leg_top + thigh_h - 1
+        shin_h = max(2, GROUND - knee - 2)
+        for offset, leg, sole in ((-swing, cooler(trousers, 0.22),
+                                   cooler(shoe, 0.2)),
+                                  (swing, trousers, shoe)):
+            cell.round_rect(hip_x, leg_top, 4, thigh_h, 1, leg)
+            cell.round_rect(hip_x + offset, knee, 4, shin_h, 1, leg)
+            cell.round_rect(hip_x + offset - 1, GROUND - 3, 6, 3, 1, sole)
     else:
         # Front and back: one leg swings forward and lifts, the other plants.
         lift_l = 2 if frame == 0 else 0
@@ -93,33 +104,50 @@ def _legs(cell: Canvas, body: Body, facing: int, frame: int, leg_top: int) -> No
 
 def _carried(cell: Canvas, body: Body, facing: int, frame: int,
              torso_top: int) -> None:
-    """Draw whatever this person is holding, always oversized."""
+    """Draw whatever this person is holding, on the side they are facing.
+
+    Everything below is drawn as if the figure were facing right or forward;
+    a left-facing figure gets the same drawing mirrored.  Without this a
+    character walking left carried their lantern out behind them and the
+    measurer's tape ran off the back of their own head.
+    """
+    if facing == LEFT:
+        held = Canvas(CELL_W, CELL_H, TRANSPARENT)
+        _carried(held, body, RIGHT, frame, torso_top)
+        cell.paste(held.flip_h(), 0, 0, mask=TRANSPARENT)
+        return
     cx = CELL_W // 2
     bob = (0, -1, 0)[frame]
     kind, color = body.carry, body.feature_color
+    # Everything is held at hand height, out to the side, and small enough to
+    # leave the person visible.  These used to be drawn from the top of the
+    # torso *upwards*, which put them squarely over the character's head — the
+    # sprite carrying a block was a block with feet.
+    hand = torso_top + 5 + bob
+    out = cx + 3
     if kind == "block":
-        cell.round_rect(cx - 8, torso_top - 9 + bob, 17, 13, 3, color)
-        cell.round_rect(cx - 8, torso_top - 9 + bob, 17, 4, 3, warmer(color, 0.3))
-        cell.blob(cx, torso_top - 3 + bob, 3, warmer(color, 0.55))
+        cell.round_rect(out, hand - 5, 10, 10, 2, color)
+        cell.round_rect(out, hand - 5, 10, 3, 2, warmer(color, 0.30))
+        cell.blob(out + 5, hand, 2, warmer(color, 0.55))
     elif kind == "can":
-        cell.round_rect(cx - 2, torso_top + 2 + bob, 12, 9, 3, color)
-        cell.rect(cx + 9, torso_top + 1 + bob, 8, 3, color)
-        cell.round_rect(cx + 15, torso_top - 1 + bob, 4, 4, 2, color)
-        cell.rect(cx + 1, torso_top - 1 + bob, 6, 3, cooler(color, 0.25))
+        cell.round_rect(out, hand - 3, 8, 7, 2, color)
+        cell.rect(out + 7, hand - 4, 4, 2, color)
+        cell.rect(out + 1, hand - 5, 4, 2, cooler(color, 0.25))
     elif kind == "ring":
-        cell.ellipse(cx, torso_top + 3 + bob, 10, 10, color, filled=False)
-        cell.ellipse(cx, torso_top + 3 + bob, 9, 9, color, filled=False)
+        cell.ellipse(out + 4, hand, 5, 5, color, filled=False)
+        cell.ellipse(out + 4, hand, 4, 4, color, filled=False)
     elif kind == "lantern":
-        cell.rect(cx + 6, torso_top + 2 + bob, 1, 5, cooler(color, 0.4))
-        cell.round_rect(cx + 3, torso_top + 6 + bob, 8, 9, 3, color)
-        cell.blob(cx + 7, torso_top + 10 + bob, 2.5, (255, 252, 226))
+        cell.rect(out + 3, hand - 5, 1, 4, cooler(color, 0.4))
+        cell.round_rect(out, hand - 1, 7, 7, 2, color)
+        cell.blob(out + 3, hand + 2, 2, (255, 252, 226))
     elif kind == "pole":
-        cell.rect(cx + 6, 2 + bob, 2, GROUND - 4, color)
+        # the one thing allowed to be enormous: it runs off the top of the cell
+        cell.rect(out + 2, 1 + bob, 2, GROUND - 3, color)
     elif kind == "tape":
-        # a tape measure whose tape has gone much too far
-        cell.round_rect(cx - 3, torso_top + 3 + bob, 8, 7, 2, color)
-        cell.rect(cx + 5, torso_top + 5 + bob, CELL_W - cx - 5, 2,
-                  warmer(color, 0.4))
+        # a tape measure whose tape has gone much too far — it leaves the cell,
+        # but at hand height, not across its owner's face
+        cell.round_rect(out, hand - 3, 7, 6, 2, color)
+        cell.rect(out + 7, hand - 1, CELL_W - out - 7, 2, warmer(color, 0.4))
 
 
 def _feature(cell: Canvas, body: Body, facing: int, head_x: int, head_top: int,
@@ -180,7 +208,10 @@ def draw_figure(body: Body, facing: int, frame: int) -> Canvas:
     # the torso and the legs can never come apart.
     bob = BOB[frame]
     hip = GROUND - 7 + bob
-    _legs(cell, body, facing, frame, hip)
+    # Profiles lean a pixel the way they are going; the hips have to lean with
+    # them or the legs hang off the front of the body.
+    lean = 0 if not side else (1 if facing == RIGHT else -1)
+    _legs(cell, body, facing, frame, hip, cx + lean)
 
     # A cell is only 32 pixels tall, so a stretched figure buys its height by
     # shrinking its head and then by giving up whatever is still over budget.
@@ -192,8 +223,6 @@ def draw_figure(body: Body, facing: int, frame: int) -> Canvas:
     # most of what separates a side view from a front view at this size.
     hw = body.head_w if not side else body.head_w - 4
     head_top = torso_top - hh + 1
-    # Profiles sit a pixel forward, so the figure leans the way it is going.
-    lean = 0 if not side else (1 if facing == RIGHT else -1)
     head_x = cx - hw // 2 + lean
 
     # torso: a rounded box; a coat simply makes it reach the floor
@@ -241,9 +270,11 @@ def draw_figure(body: Body, facing: int, frame: int) -> Canvas:
     else:
         cell.round_rect(head_x, head_top, hw, 5, 4, body.hair)
         if side:
-            # hair sweeps to the back of the head, and a small nose breaks the
-            # front edge of the silhouette
-            back = head_x + hw - 3 if facing == RIGHT else head_x
+            # Hair sweeps to the back of the head — the side *away* from the
+            # way they are walking.  This was the wrong way round, so the hair
+            # covered the face and the eye ended up jammed against it instead
+            # of sitting forward where an eye goes.
+            back = head_x if facing == RIGHT else head_x + hw - 3
             cell.round_rect(back, head_top, 3, hh - 3, 1, body.hair)
             nose_x = head_x + hw if facing == RIGHT else head_x - 1
             cell.rect(nose_x, head_top + 7, 1, 2, body.skin)
@@ -257,9 +288,11 @@ def draw_figure(body: Body, facing: int, frame: int) -> Canvas:
             cell.round_rect(cx - 4, eye_y, 2, 3, 1, body.eye)
             cell.round_rect(cx + 2, eye_y, 2, 3, 1, body.eye)
         elif facing == RIGHT:
-            cell.round_rect(head_x + hw - 4, eye_y, 2, 3, 1, body.eye)
+            # forward in the face, not centred in it: a profile's eye sits
+            # near the front of the head, with the hair well behind it
+            cell.round_rect(head_x + hw - 3, eye_y, 2, 3, 1, body.eye)
         else:
-            cell.round_rect(head_x + 2, eye_y, 2, 3, 1, body.eye)
+            cell.round_rect(head_x + 1, eye_y, 2, 3, 1, body.eye)
 
     _feature(cell, body, facing, head_x, head_top, hw, hh)
     if body.carry:

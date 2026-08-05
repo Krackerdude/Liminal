@@ -47,6 +47,7 @@ from ..art.cast import WORLD_CAST
 from . import atmosphere
 from . import systems as sys
 from .cast_lookup import charset_slot
+from .events import gleam
 
 # 0 up, 1 right, 2 down, 3 left — the engine's own order, used for the pan.
 UP, RIGHT, DOWN, LEFT = range(4)
@@ -205,7 +206,7 @@ def _receiver(world) -> None:
     kept.msg("the handset is warm and it has not stopped.")
     world.map.add_event("the phone", (jx + 5) % world.map.width,
                         (jy + 3) % world.map.height, [
-        Page(script=take, trigger=TRIGGER_ACTION, layer=LAYER_SAME),
+        gleam(script=take, trigger=TRIGGER_ACTION),
         Page(script=kept, trigger=TRIGGER_ACTION, layer=LAYER_SAME,
              switch_a=SW_FACE_HEARD),
     ])
@@ -309,7 +310,7 @@ def _yard(world, index: int, spec: dict, rng: random.Random) -> None:
         done.msg("it is open.")
 
         m.add_event(f"{name} lock", x, y, [
-            Page(script=shut, trigger=TRIGGER_ACTION, layer=LAYER_SAME),
+            gleam(script=shut, trigger=TRIGGER_ACTION),
             Page(script=open_it, trigger=TRIGGER_ACTION, layer=LAYER_SAME,
                  switch_a=spec["needs"]),
             Page(script=done, trigger=TRIGGER_ACTION, layer=LAYER_SAME,
@@ -320,7 +321,7 @@ def _yard(world, index: int, spec: dict, rng: random.Random) -> None:
     lore.msg(*_lines(YARD_LORE[name]))
     px, py = _standable(world, x + 3, y - 2)
     m.add_event(f"{name} paper", px, py,
-                [Page(script=lore, trigger=TRIGGER_ACTION, layer=LAYER_SAME)])
+                [gleam(script=lore, trigger=TRIGGER_ACTION)])
 
 
 def _pickup(world, thing: str, x: int, y: int) -> None:
@@ -334,7 +335,7 @@ def _pickup(world, thing: str, x: int, y: int) -> None:
     got.msg(*_lines(YARD_ITEM[thing]))
     got.switch(switch, True)
     m.add_event(f"the {thing}", x, y, [
-        Page(script=got, trigger=TRIGGER_ACTION, layer=LAYER_SAME),
+        gleam(script=got, trigger=TRIGGER_ACTION),
         Page(script=Script(), trigger=TRIGGER_ACTION, switch_a=switch),
     ])
 
@@ -411,7 +412,7 @@ def _signs(world) -> None:
         s.msg(*text)
         m.add_event(f"sign {index}", (mouth[0] + 1) % m.width,
                     mouth[1] % m.height,
-                    [Page(script=s, trigger=TRIGGER_ACTION, layer=LAYER_SAME)])
+                    [gleam(script=s, trigger=TRIGGER_ACTION)])
 
 
 # --- who is here --------------------------------------------------------------
@@ -523,7 +524,7 @@ def _easter(world, rng: random.Random) -> None:
     s.se(sound, volume=52)
     s.msg(*lines)
     m.add_event("only here", (x - 4) % m.width, (y + 3) % m.height,
-                [Page(script=s, trigger=TRIGGER_ACTION, layer=LAYER_SAME)])
+                [gleam(script=s, trigger=TRIGGER_ACTION)])
 
 
 # --- the mast -----------------------------------------------------------------
@@ -591,8 +592,7 @@ def channel_layer_events(world, worlds: dict, rng: random.Random) -> None:
     back.teleport(nexus.map_id, nx + 1, ny + 3)
     back.fade_in(atmosphere.of("nexus").enter)
     world.map.add_event("door", bx % world.map.width, by % world.map.height,
-                        [Page(script=back, trigger=TRIGGER_ACTION,
-                              layer=LAYER_SAME)])
+                        [gleam(script=back, trigger=TRIGGER_ACTION)])
 
 
 def grove_events(world, worlds: dict, rng: random.Random) -> None:

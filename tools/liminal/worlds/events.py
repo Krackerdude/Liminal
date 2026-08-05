@@ -51,6 +51,25 @@ from .worlds import DREAM_ORDER, POPULATION, WORLD_ORDER, World
 # were on the Blank charset, which made every one of them literally invisible.
 _ICON_SHEET, _ICON_SLOT = "Gleam", 0
 
+
+def gleam(**kwargs) -> Page:
+    """A page for something the player can interact with, wearing the gleam.
+
+    Every interactable in the game goes through here.  Two separate mistakes
+    made the gleam invisible in the shipped build and both were "somebody
+    forgot a keyword": the pages that had the charset did not set
+    ``animation_type``, so the sprite never cycled and RPG Maker showed its
+    middle frame forever, and the hand-authored items in the grove, the
+    paintings and the ascent never got the charset at all and stayed on
+    ``Blank``.  Neither is possible now without going out of your way.
+    """
+    kwargs.setdefault("charset", _ICON_SHEET)
+    kwargs.setdefault("charset_index", _ICON_SLOT)
+    kwargs.setdefault("animation_type", ANIM_CONTINUOUS)
+    kwargs.setdefault("move_type", MOVE_STATIONARY)
+    kwargs.setdefault("layer", LAYER_SAME)
+    return Page(**kwargs)
+
 # Each interactable owns a switch for the whole playthrough; this hands them
 # out in order across every world.
 _interact_next = [0]
@@ -598,11 +617,9 @@ def dream_events(world: World, worlds: dict[str, World],
             after.msg(*system.after)
 
             _place_wide(world, f"{system.thing} {n}", ix, iy, [
-                Page(script=touch, trigger=TRIGGER_ACTION,
-                     charset=_ICON_SHEET, charset_index=_ICON_SLOT),
-                Page(script=after, trigger=TRIGGER_ACTION, switch_a=switch,
-                     charset=_ICON_SHEET, charset_index=_ICON_SLOT,
-                     translucent=True),
+                gleam(script=touch, trigger=TRIGGER_ACTION),
+                gleam(script=after, trigger=TRIGGER_ACTION, switch_a=switch,
+                      translucent=True),
             ])
 
             if not live:
@@ -778,7 +795,8 @@ def _numbers_system(world: World, worlds: dict[str, World],
                  "it is showing something different now.")
         _place(world, f"plinth {REG_NAMES[reg]} {n}", *spot(n),
                [Page(script=step, trigger=TRIGGER_ACTION,
-                     charset=_ICON_SHEET, charset_index=_ICON_SLOT)])
+                     charset=_ICON_SHEET, charset_index=_ICON_SLOT,
+                     animation_type=ANIM_CONTINUOUS)])
 
     # -- the readout.  One monument in the world states all six at once, and
     # it is the only place the whole state is legible.
@@ -956,7 +974,8 @@ def _stairs_system(world: World, worlds: dict[str, World],
 
         _place(world, f"edge {n}", *at,
                [Page(script=fall, trigger=TRIGGER_ACTION,
-                     charset=_ICON_SHEET, charset_index=_ICON_SLOT)])
+                     charset=_ICON_SHEET, charset_index=_ICON_SLOT,
+                     animation_type=ANIM_CONTINUOUS)])
 
 
 # --- what the residents say --------------------------------------------------

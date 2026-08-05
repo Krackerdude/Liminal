@@ -654,30 +654,35 @@ def sheet(blocks: Sequence[Canvas]) -> Canvas:
 def gleam_block() -> Canvas:
     """A tiny pulsing shine, for anything the player can interact with.
 
-    Interactables were drawn on the ``Blank`` charset — literally invisible —
-    and the only way to find one was to walk the whole world pressing the
-    action key.  This is the smallest thing that fixes that without turning
-    the sprinkling of secrets into a marked map: a four-pixel cross that
-    breathes between two low-contrast values and vanishes entirely on one
-    frame of the cycle.
+    Two rules learned the hard way, both from this sprite being completely
+    invisible in the shipped game:
 
-    It reads as a glint on something, not as a quest marker.  You have to be
-    looking at that part of the screen to catch it.
+    **No frame may be empty.**  RPG Maker shows a stationary event's *middle*
+    frame, and the first version drew that one as nothing at all — so every
+    interactable in the game rendered as a blank cell, which is exactly the
+    problem the gleam was added to solve.  All three frames now carry the mark
+    and only its brightness changes.
+
+    **The page must animate.**  A charset does not cycle unless the page asks
+    it to; see ``events.gleam_page``.
+
+    It reads as a glint on something rather than a quest marker: a four-pixel
+    cross breathing between two low-contrast values, bright for one frame in
+    three.  You have to be looking at that part of the screen to catch it.
     """
     block = Canvas(CELL_W * FRAMES, CELL_H * 4, TRANSPARENT)
-    faint, lit = (196, 190, 172), (238, 234, 214)
+    # dim, mid, bright — the middle entry is what a still event shows, so it is
+    # the one that has to be legible on its own
+    tones = ((150, 146, 132), (206, 200, 180), (246, 242, 220))
     for facing in range(4):
         for frame in range(FRAMES):
             cell = Canvas(CELL_W, CELL_H, TRANSPARENT)
-            cx, cy = CELL_W // 2, GROUND - 8
-            if frame == 1:
-                # the whole point: one frame in three it is not there at all
-                pass
-            else:
-                tone = lit if frame == 0 else faint
-                cell.rect(cx - 1, cy - 3, 2, 7, tone)
-                cell.rect(cx - 3, cy - 1, 7, 2, tone)
-                if frame == 0:
-                    cell.rect(cx - 1, cy - 1, 2, 2, (255, 252, 240))
+            cx, cy = CELL_W // 2, GROUND - 9
+            tone = tones[frame]
+            reach = 2 + frame
+            cell.rect(cx - 1, cy - reach, 2, reach * 2 + 2, tone)
+            cell.rect(cx - reach, cy - 1, reach * 2 + 2, 2, tone)
+            if frame == 2:
+                cell.rect(cx - 1, cy - 1, 2, 2, (255, 253, 244))
             block.paste(cell, frame * CELL_W, facing * CELL_H)
     return block

@@ -254,10 +254,40 @@ def _ffmpeg(args: list[str]) -> None:
     subprocess.run(["ffmpeg", "-y", "-loglevel", "error", *args], check=True)
 
 
+# Mastering.  The first pass applied a bare volume multiplier and nothing
+# else, and the generator hands back material with a great deal of energy
+# below 80Hz — the result was tracks that measured fine and physically hurt on
+# headphones.  Everything now goes through the same chain:
+#
+#   highpass    everything under 70Hz is rumble this game has no use for, and
+#               it is most of what was making the low end feel "boosted"
+#   lowshelf    a further 4dB off the bottom two octaves, because ambient pads
+#               generated from a text prompt are reliably bass-heavy
+#   loudnorm    one integrated target for every track, so no world is louder
+#               than its neighbour and nothing has to be ridden on the mixer
+#   alimiter    a true-peak ceiling well under full scale, so the quiet game
+#               has headroom and nothing ever clips into the ear
+#
+# Music sits quieter than the effects: it is a bed, not an event.
+MUSIC_LUFS = -20.0
+SFX_LUFS = -16.0
+PEAK = 0.89
+
+
+def _master(gain: float, lufs: float) -> str:
+    return ",".join([
+        f"volume={gain:.3f}",
+        "highpass=f=70:poles=2",
+        "lowshelf=f=160:g=-4",
+        f"loudnorm=I={lufs}:TP=-2.0:LRA=9",
+        f"alimiter=limit={PEAK}:level=disabled",
+    ])
+
+
 def _to_ogg(source: str, target: str, *, quality: int = 2, gain: float = 1.0,
-            mono: bool = False, rate: int = 32000) -> None:
-    filters = [f"volume={gain:.3f}"]
-    args = ["-i", source, "-af", ",".join(filters), "-ar", str(rate)]
+            mono: bool = False, rate: int = 32000,
+            lufs: float = SFX_LUFS) -> None:
+    args = ["-i", source, "-af", _master(gain, lufs), "-ar", str(rate)]
     if mono:
         args += ["-ac", "1"]
     args += ["-c:a", "libvorbis", "-q:a", str(quality), target]
@@ -295,7 +325,7 @@ def _loop_music(source: str, target: str, overlap: float, gain: float) -> None:
                  f"[a][1:a]amix=inputs=2:duration=first:dropout_transition=0,"
                  f"volume=2.0[out]",
                  "-map", "[out]", "-c:a", "pcm_s16le", mixed])
-        _to_ogg(mixed, target, quality=1, gain=gain)
+        _to_ogg(mixed, target, quality=1, gain=gain, lufs=MUSIC_LUFS)
 
 
 def generate_music(spec: Music, out_dir: str, *, force: bool = False) -> str:

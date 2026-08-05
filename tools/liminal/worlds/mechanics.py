@@ -72,7 +72,6 @@ def _stars(s: Script) -> None:
     with s.if_switch(SW_LANTERN_ACTIVE, False):
         with s.if_var(VR_STILL, STILL, 1):
             s.se("WaterDrop", volume=45)
-            s.shake(2, 5, 4, wait=True)
             s.var(VR_STILL, 0)
 
 
@@ -85,9 +84,15 @@ def _pink(s: Script) -> None:
 
 
 def _toys(s: Script) -> None:
-    """The toy city keeps noticing you, and it gets worse the longer you stay."""
+    """The toy city keeps noticing you, and it gets worse the longer you stay.
+
+    It used to say so with a camera shake.  It says so with a sound now: the
+    shake read as the display faulting rather than as the world reacting, and
+    a noise from somewhere behind you does the same job without touching the
+    picture at all.
+    """
     with s.if_var(VR_STEPS, 400, 1):
-        s.shake(2, 4, 2, wait=False)
+        s.se("Watch", volume=26)
 
 
 def _checker(s: Script) -> None:

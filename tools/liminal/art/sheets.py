@@ -23,6 +23,17 @@ from .palette import PALETTES, Palette
 TILE = ct.TILE
 
 
+def _reflection(name: str) -> str:
+    """Which silhouette stands in this world's mirrors.
+
+    Layers reflect whatever their base world reflects — a channel of the grove
+    is still the grove, and a floor of the stairwell is still the stairwell —
+    so the portal art stays consistent across a world's own maps.
+    """
+    base = name.rstrip("012345") or name
+    return ct.REFLECTION.get(base, "door")
+
+
 def _shadows(cb: ChipsetBuilder, pal: Palette) -> None:
     for side in ("top", "left", "right", "bottom"):
         cb.add_upper(f"shadow_{side[0]}", ct.soft_shadow(pal, side))
@@ -250,7 +261,7 @@ def build_room() -> ChipsetBuild:
     cb.add("rug", rug)
 
     cb.add_object("wall", ct.wall_run(pal, height=3, brick=False))
-    cb.add_object("door", ct.door_frame(pal, leaf=pal.form_dark))
+    cb.add_object("door", ct.door_frame(pal, reflect="bed"))
     # The near and side walls, one tile deep, so the room is a room and not a
     # slab of floor with a headboard.  Without these there is only one wall to
     # put anything against, and everything ends up in a row along it.
@@ -298,7 +309,8 @@ def build_nexus() -> ChipsetBuild:
     ground = ct.soft_ground(pal.ground, pal.ground_b, 0.35)
     _basics(cb, pal, ground)
 
-    cb.add_object("door", ct.door_frame(pal, 2, 3, glow=pal.accent))
+    cb.add_object("door", ct.door_frame(pal, 2, 3,
+                                    reflect=_reflection(cb.name)))
     cb.add_object("door_shut", ct.door_frame(pal, 2, 3))
     cb.add_object("lamp", ct.lamp_post(pal, 1, 3), solid="bottom")
     cb.add_object("bench", ct.bench_seat(pal, 3, 2), solid="bottom")
@@ -329,7 +341,8 @@ def build_pink() -> ChipsetBuild:
     cb.add_object("wall", ct.wall_run(pal, height=3, brick=True))
     cb.add_object("wall_short", ct.wall_run(pal, height=2, brick=True))
     # The impossible door: same brick, same pink, no reason for it.
-    cb.add_object("door", ct.door_frame(pal, 2, 3, glow=pal.accent))
+    cb.add_object("door", ct.door_frame(pal, 2, 3,
+                                    reflect=_reflection(cb.name)))
     cb.add_object("arch", ct.brick_arch(pal, 4, 4), solid="bottom2")
     cb.add_object("niche", ct.wall_niche(pal, 2, 3))
 
@@ -363,7 +376,8 @@ def build_numbers() -> ChipsetBuild:
         cb.add_object(f"sign_{kind}", ct.operator_sign(pal, kind, 2, 2),
                       solid="bottom")
     cb.add_object("plinth", ct.number_plinth(pal, 3, 2), solid="all")
-    cb.add_object("door", ct.door_frame(pal, 2, 3, glow=pal.accent))
+    cb.add_object("door", ct.door_frame(pal, 2, 3,
+                                    reflect=_reflection(cb.name)))
     _shadows(cb, pal)
     _landmarks(cb, pal, "numbers")
     _animate(cb, pal, "numbers")
@@ -387,7 +401,8 @@ def build_blocks() -> ChipsetBuild:
     cb.add_object("block_tiny", ct.toy_block(pal, colors[1], 1, 1, mark="dot"))
     cb.add_object("block_huge", ct.toy_block(pal, colors[0], 4, 4, mark="ring"))
     cb.add_object("ball", ct.ball_toy(pal, colors[2], 2, 2), solid="all")
-    cb.add_object("door", ct.door_frame(pal, 2, 3, glow=pal.accent))
+    cb.add_object("door", ct.door_frame(pal, 2, 3,
+                                    reflect=_reflection(cb.name)))
     _shadows(cb, pal)
     _landmarks(cb, pal, "blocks")
     _animate(cb, pal, "blocks")
@@ -422,7 +437,8 @@ def build_stairs() -> ChipsetBuild:
     cb.add_object("landing", ct.stair_landing(pal, 3, 2), solid="none")
     cb.add_object("spiral", ct.spiral_stair(pal, 3, 5), solid="none")
     cb.add_object("stair_broken", ct.broken_stair(pal, 3, 2), solid="none")
-    cb.add_object("door", ct.door_frame(pal, 2, 3, glow=pal.accent))
+    cb.add_object("door", ct.door_frame(pal, 2, 3,
+                                    reflect=_reflection(cb.name)))
     cb.add_object("lamp", ct.lamp_post(pal, 1, 3), solid="bottom")
     _shadows(cb, pal)
     _landmarks(cb, pal, "stairs")
@@ -518,7 +534,8 @@ def build_faces() -> ChipsetBuild:
     cb.add_object("road_sign", lm.road_sign(pal, 2, 3), solid="bottom",
                   upper=True)
 
-    cb.add_object("door", ct.door_frame(pal, 2, 3, glow=pal.accent))
+    cb.add_object("door", ct.door_frame(pal, 2, 3,
+                                    reflect=_reflection(cb.name)))
     _shadows(cb, pal)
     _landmarks(cb, pal, "faces")
     _animate(cb, pal, "faces")
@@ -625,7 +642,8 @@ def build_faces2() -> ChipsetBuild:
     cb.add_object("road_sign", lm.road_sign(pal, 2, 3), solid="bottom",
                   upper=True)
 
-    cb.add_object("door", ct.door_frame(pal, 2, 3, glow=pal.accent))
+    cb.add_object("door", ct.door_frame(pal, 2, 3,
+                                    reflect=_reflection(cb.name)))
     _shadows(cb, pal)
     _landmarks(cb, pal, "faces2")
     _animate(cb, pal, "faces2")
@@ -694,7 +712,8 @@ def build_faces3() -> ChipsetBuild:
     cb.add_object("road_sign", lm.road_sign(pal, 2, 3), solid="bottom",
                   upper=True)
 
-    cb.add_object("door", ct.door_frame(pal, 2, 3, glow=pal.accent))
+    cb.add_object("door", ct.door_frame(pal, 2, 3,
+                                    reflect=_reflection(cb.name)))
     _shadows(cb, pal)
     _landmarks(cb, pal, "faces3")
     _animate(cb, pal, "faces3")
@@ -780,7 +799,8 @@ def build_faces4() -> ChipsetBuild:
     cb.add_object("road_sign", lm.road_sign(pal, 2, 3), solid="bottom",
                   upper=True)
 
-    cb.add_object("door", ct.door_frame(pal, 2, 3, glow=pal.accent))
+    cb.add_object("door", ct.door_frame(pal, 2, 3,
+                                    reflect=_reflection(cb.name)))
     _shadows(cb, pal)
     _landmarks(cb, pal, "faces4")
     _animate(cb, pal, "faces4")
@@ -802,7 +822,8 @@ def build_hands() -> ChipsetBuild:
     cb.add_object("hand_broken", ct.stone_hand(pal, 3, 3, pose="broken"),
                   solid="all")
     cb.add_object("plinth", ct.number_plinth(pal, 3, 2), solid="all")
-    cb.add_object("door", ct.door_frame(pal, 2, 3, glow=pal.accent))
+    cb.add_object("door", ct.door_frame(pal, 2, 3,
+                                    reflect=_reflection(cb.name)))
     _shadows(cb, pal)
     _landmarks(cb, pal, "hands")
     _animate(cb, pal, "hands")
@@ -830,7 +851,8 @@ def build_checker() -> ChipsetBuild:
                   solid="bottom2")
     cb.add_object("pillar", ct.checker_pillar(pal, 1, 4), solid="bottom")
     cb.add_object("fence", ct.picket_fence(pal, 3, 1), solid="all")
-    cb.add_object("door", ct.door_frame(pal, 2, 3, glow=pal.accent))
+    cb.add_object("door", ct.door_frame(pal, 2, 3,
+                                    reflect=_reflection(cb.name)))
     _shadows(cb, pal)
     _landmarks(cb, pal, "checker")
     _animate(cb, pal, "checker")
@@ -855,7 +877,8 @@ def build_toys() -> ChipsetBuild:
     cb.add_object("ball", ct.ball_toy(pal, (232, 130, 132), 2, 2), solid="all")
     cb.add_object("rings", ct.ring_stack(pal, 2, 3), solid="bottom")
     cb.add_object("jack", ct.jack_toy(pal, 2, 2), solid="all")
-    cb.add_object("door", ct.door_frame(pal, 2, 3, glow=pal.accent))
+    cb.add_object("door", ct.door_frame(pal, 2, 3,
+                                    reflect=_reflection(cb.name)))
     _shadows(cb, pal)
     _landmarks(cb, pal, "toys")
     _animate(cb, pal, "toys")
@@ -877,7 +900,8 @@ def build_neon() -> ChipsetBuild:
 
     for kind in ("eye", "spiral", "mouth", "arrow", "star"):
         cb.add_object(f"scrawl_{kind}", ct.scrawl(pal, kind, 4, 4), solid="none")
-    cb.add_object("door", ct.door_frame(pal, 2, 3, glow=pal.accent))
+    cb.add_object("door", ct.door_frame(pal, 2, 3,
+                                    reflect=_reflection(cb.name)))
     _shadows(cb, pal)
     _landmarks(cb, pal, "neon")
     _animate(cb, pal, "neon")
@@ -958,7 +982,8 @@ def _mural_inside(key: str):
                       solid="none", upper=True)
         cb.add_object("post", ct.checker_pillar(pal, 1, 4), solid="all",
                       upper=True)
-        cb.add_object("door", ct.door_frame(pal, 2, 3, glow=pal.accent))
+        cb.add_object("door", ct.door_frame(pal, 2, 3,
+                                    reflect=_reflection(cb.name)))
         _shadows(cb, pal)
         _animate(cb, pal, key)
         _decals(cb, pal, key, ground)
@@ -994,7 +1019,8 @@ def build_umbrellas() -> ChipsetBuild:
     cb.add_object("umbrella_shut", closed, solid="bottom")
     cb.add_object("mushroom", ct.mushroom(pal, (104, 132, 176), 2, 2),
                   solid="bottom")
-    cb.add_object("door", ct.door_frame(pal, 2, 3, glow=pal.accent))
+    cb.add_object("door", ct.door_frame(pal, 2, 3,
+                                    reflect=_reflection(cb.name)))
     _shadows(cb, pal)
     _landmarks(cb, pal, "umbrellas")
     _animate(cb, pal, "umbrellas")
@@ -1084,7 +1110,8 @@ def _plane(key: str):
             counter.rect(x, 13, 8, 8, pal.ground_b)
         outline_in(counter, pal.form_dark)
         cb.add_object("counter", counter, solid="all", upper=True)
-        cb.add_object("door", ct.door_frame(pal, 2, 3, glow=pal.accent))
+        cb.add_object("door", ct.door_frame(pal, 2, 3,
+                                    reflect=_reflection(cb.name)))
         _shadows(cb, pal)
         _animate(cb, pal, key)
         _decals(cb, pal, key, ground)
@@ -1122,7 +1149,8 @@ def build_stars() -> ChipsetBuild:
     deep.mix(pal.void, 0.35)
     cb.add("deep", deep, passable=False, terrain=2)
 
-    cb.add_object("door", ct.door_frame(pal, 2, 3, glow=pal.accent))
+    cb.add_object("door", ct.door_frame(pal, 2, 3,
+                                    reflect=_reflection(cb.name)))
     cb.add_object("lamp", ct.lamp_post(pal, 1, 3), solid="bottom")
     cb.add_object("pole", ct.telephone_pole(pal, 3, 5), solid="bottom")
     cb.add_object("pier", ct.pier(pal, 4, 2), solid="none")

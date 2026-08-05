@@ -649,3 +649,35 @@ def sheet(blocks: Sequence[Canvas]) -> Canvas:
         out.paste(block, (index % 4) * CELL_W * FRAMES,
                   (index // 4) * CELL_H * 4)
     return out
+
+
+def gleam_block() -> Canvas:
+    """A tiny pulsing shine, for anything the player can interact with.
+
+    Interactables were drawn on the ``Blank`` charset — literally invisible —
+    and the only way to find one was to walk the whole world pressing the
+    action key.  This is the smallest thing that fixes that without turning
+    the sprinkling of secrets into a marked map: a four-pixel cross that
+    breathes between two low-contrast values and vanishes entirely on one
+    frame of the cycle.
+
+    It reads as a glint on something, not as a quest marker.  You have to be
+    looking at that part of the screen to catch it.
+    """
+    block = Canvas(CELL_W * FRAMES, CELL_H * 4, TRANSPARENT)
+    faint, lit = (196, 190, 172), (238, 234, 214)
+    for facing in range(4):
+        for frame in range(FRAMES):
+            cell = Canvas(CELL_W, CELL_H, TRANSPARENT)
+            cx, cy = CELL_W // 2, GROUND - 8
+            if frame == 1:
+                # the whole point: one frame in three it is not there at all
+                pass
+            else:
+                tone = lit if frame == 0 else faint
+                cell.rect(cx - 1, cy - 3, 2, 7, tone)
+                cell.rect(cx - 3, cy - 1, 7, 2, tone)
+                if frame == 0:
+                    cell.rect(cx - 1, cy - 1, 2, 2, (255, 252, 240))
+            block.paste(cell, frame * CELL_W, facing * CELL_H)
+    return block

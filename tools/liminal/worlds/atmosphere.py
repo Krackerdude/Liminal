@@ -55,7 +55,11 @@ class Atmosphere:
     leave: int = FADE          # how it comes apart when you go
     film: int = STILL          # what the overlay picture does, forever
     film_power: int = 0
-    shake: tuple[int, int] | None = None      # (strength, speed), continuous
+    # Camera shake is banned from this game.  It was a continuous
+    # (strength, speed) per world and it read as a fault in the display rather
+    # than as atmosphere.  The field is kept so the per-world tables still
+    # parse, and nothing reads it.
+    shake: tuple[int, int] | None = None
     drift: tuple[int, int, int] | None = None  # (direction, distance, speed)
     weather: tuple[int, int] | None = None     # (kind, strength)
     # Which sound each terrain plays underfoot.  Terrain ids come from the

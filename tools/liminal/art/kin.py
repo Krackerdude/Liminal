@@ -3134,3 +3134,59 @@ NEON_EYE = {"lash": draw_lash, "iris": draw_iris}
 NEON_SPIRAL = {"winding": draw_winding, "unplaced": draw_unplaced}
 NEON_MOUTH = {"tooth": draw_tooth, "swallowed": draw_swallowed}
 NEON_STAR = {"point": draw_point, "long_point": draw_long_point}
+
+
+# --- the top of the ascent ---------------------------------------------------
+
+def draw_clerk(cell: Canvas, facing: int, frame: int) -> None:
+    """Behind the counter on the top plane.
+
+    Drawn as a fitting rather than a person: a plain box on a plain post, at
+    counter height, with a face on the front and nothing on the back.  It is
+    the last thing in the ascent that has a face at all, and it only has one
+    because the counter needs somewhere to look out of.
+    """
+    b = _bob(frame)
+    case, light = (206, 206, 202), (248, 248, 246)
+    dark, ink = (118, 122, 124), (78, 82, 84)
+    side = facing in (LEFT, RIGHT)
+    lead = -1 if facing == LEFT else 1
+    top = 8 + b
+    width = 7 if side else 15
+
+    # the post, which stands under the box and is offset from it in profile
+    post = CX - 2 + (3 * lead if side else 0)
+    cell.rect(post, top + 15, 5, GROUND - top - 16, dark)
+    cell.rect(post, top + 15, 2, GROUND - top - 16, case)
+    # the box.  In profile it hangs right off to the leading side, which is
+    # what makes left and right two sprites rather than one drawn twice.
+    box = CX - width // 2 + (4 * lead if side else 0)
+    cell.round_rect(box, top, width, 16, 2, case)
+    cell.rect(box + 1, top + 1, width - 2, 2, light)
+
+    if facing == DOWN:
+        for ex in (CX - 4, CX + 2):
+            cell.rect(ex, top + 5, 3, 3, ink)
+        cell.hline(top + 12, CX - 4, CX + 4, dark)
+        # the slot under the face, which is the whole reason for the face
+        cell.rect(CX - 5, top + 17, 11, 2, ink)
+    elif facing == UP:
+        # From behind it is a blank cabinet: a vent, two hinges, a cable, and
+        # nothing anywhere on it that could be looked at.
+        cell.rect(CX - width // 2, top, width, 16, dark)
+        cell.rect(CX - width // 2 + 1, top + 1, width - 2, 14, case)
+        for row in range(top + 3, top + 13, 3):
+            cell.rect(CX - 4, row, 9, 1, dark)
+        cell.rect(CX - width // 2 + 1, top + 2, 2, 3, dark)
+        cell.rect(CX - width // 2 + 1, top + 10, 2, 3, dark)
+        cell.line(CX + 5, top + 15, CX + 9, GROUND - 3, dark)
+    else:
+        # Edge on, the box is shallow, the face is gone, and the whole
+        # assembly leans off the post the way it is looking.
+        cell.rect(box, top + 2, 2, 12, dark)
+        cell.rect(box + (width - 2 if lead > 0 else 0), top + 2, 2, 12, light)
+        cell.rect(box + (width - 3 if lead > 0 else 1), top + 6, 2, 3, ink)
+        cell.line(post + 2, top + 15, box + width // 2, top + 15, dark)
+
+
+ASCENT_TOP = {"clerk": draw_clerk}

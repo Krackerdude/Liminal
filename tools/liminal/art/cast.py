@@ -308,7 +308,9 @@ BESPOKE: dict[str, dict] = {"pink": kin.PINK, "numbers": kin.NUMBERS,
                             "neon2": kin.NEON_EYE,
                             "neon3": kin.NEON_SPIRAL,
                             "neon4": kin.NEON_MOUTH,
-                            "neon5": kin.NEON_STAR}
+                            "neon5": kin.NEON_STAR,
+                            # the only thing at the top with a face on it
+                            "umbrellas5": kin.ASCENT_TOP}
 
 
 def _sheets() -> dict[str, list[tuple[str, object]]]:

@@ -204,8 +204,9 @@ def _decals(cb: ChipsetBuilder, pal: Palette, world: str, ground: Canvas) -> Non
            "neon": "checker", "scallops": "strata", "starfield": "checker",
            "paper": "strata", "doors": "brick", "thicket": "trunks",
            "bare": "strata", "bars": "checker", "rings": "checker",
-           "coil": "strata", "teeth": "checker",
-           "rays": "starfield"}.get(motif, "brick")
+           "coil": "strata", "teeth": "checker", "rays": "starfield",
+           "cumulus": "scallops", "cornice": "strata", "lockers": "checker",
+           "cards": "grid"}.get(motif, "brick")
     cb.add("wall_alt", ct.wall_band(pal, alt, accent=pal.accent_soft),
            passable=False)
     cb.add("wall_alt_face", ct.wall_band(pal, alt, face=True,
@@ -1001,6 +1002,104 @@ def build_umbrellas() -> ChipsetBuild:
     return _finish(cb, ground)
 
 
+# The four planes above the umbrella forest.  Each is the same construction —
+# a floor, a boundary, and the props that plane happens to be furnished with —
+# and the argument the ascent makes is carried entirely by what happens to
+# those three as you go up: the floor loses its softness, the boundary gets
+# more regular, and the props stop being things and start being fittings.
+ASCENT: dict[str, dict] = {
+    "umbrellas2": dict(wall="cumulus", floor="bloom", edge=6,
+                       props=("umbrella_0", "umbrella_1", "bench", "mushroom"),
+                       decals=(("waterring", "accent"), ("puddle", "accent_soft"),
+                               ("ripple", "form_dark")),
+                       patterns=("bloom", "concentric", "dots"),
+                       glow=("flow", 12)),
+    "umbrellas3": dict(wall="cornice", floor="square_frame", edge=4,
+                       props=("umbrella_0", "column", "bench", "planter"),
+                       decals=(("ring", "form_dark"), ("chalkline", "accent_soft"),
+                               ("puddle", "accent")),
+                       patterns=("square_frame", "grid", "concentric"),
+                       glow=("flow", 9)),
+    "umbrellas4": dict(wall="lockers", floor="grid", edge=2,
+                       props=("column", "cabinet", "bench", "planter"),
+                       decals=(("offsquare", "form_dark"), ("tally", "accent_soft"),
+                               ("chalkline", "accent")),
+                       patterns=("grid", "square_frame", "tick"),
+                       glow=("pulse", 7)),
+    "umbrellas5": dict(wall="cards", floor="tick", edge=1,
+                       props=("cabinet", "counter", "column", "cabinet"),
+                       decals=(("tally", "form_dark"), ("cornerpip", "accent_soft"),
+                               ("offsquare", "accent")),
+                       patterns=("tick", "grid", "stripes"),
+                       glow=("scan", 4)),
+}
+
+
+def _plane(key: str):
+    """One plane of the ascent."""
+    spec = ASCENT[key]
+
+    def build() -> ChipsetBuild:
+        pal = PALETTES[key]
+        cb = ChipsetBuilder(key, pal)
+
+        ground = ct.pattern_tile(pal, spec["floor"],
+                                 blend(pal.form_dark, pal.ground, 0.62),
+                                 pal.ground)
+        ground_b = ct.soft_ground(pal.ground_b, pal.ground, 0.3)
+        _basics(cb, pal, ground, ground_b, world=key)
+
+        # The edge.  On the first plane it is a soft lip you could fall off;
+        # by the last it is a painted line, and there is nothing beyond it.
+        edge = Canvas(TILE, TILE, pal.ground)
+        edge.rect(0, TILE - spec["edge"], TILE, spec["edge"], pal.form_dark)
+        edge.rect(0, TILE - spec["edge"] - 1, TILE, 1, pal.form_light)
+        cb.add("edge", edge)
+        # Water pouring off that edge: the only way down, on every plane.
+        fall = Canvas(TILE, TILE, pal.accent_soft)
+        fall.dither(pal.form_light, 0.45, ct.BAYER8)
+        for column in range(0, TILE, 3):
+            fall.vline(column, 0, TILE - 1, pal.form_light)
+        cb.add("waterfall", fall)
+
+        cb.add_object("umbrella_0", ct.umbrella(pal, pal.accent, 3, 4),
+                      solid="bottom")
+        cb.add_object("umbrella_1", ct.umbrella(pal, pal.accent_soft, 3, 4),
+                      solid="bottom")
+        cb.add_object("mushroom", ct.mushroom(pal, pal.accent_soft, 2, 2),
+                      solid="bottom")
+        cb.add_object("bench", ct.bench_seat(pal, 3, 2), solid="all",
+                      upper=True)
+        cb.add_object("column", ct.checker_pillar(pal, 1, 4), solid="all",
+                      upper=True)
+        cb.add_object("planter", ct.number_plinth(pal, 3, 2), solid="all",
+                      upper=True)
+        cb.add_object("cabinet", ct.wardrobe(pal, 2, 3), solid="all",
+                      upper=True)
+        counter = ct._canvas(4, 2)
+        counter.rect(0, 8, 64, 20, pal.form)
+        counter.rect(0, 8, 64, 3, pal.form_light)
+        counter.rect(0, 25, 64, 3, pal.form_dark)
+        for x in range(4, 62, 12):
+            counter.rect(x, 13, 8, 8, pal.ground_b)
+        outline_in(counter, pal.form_dark)
+        cb.add_object("counter", counter, solid="all", upper=True)
+        cb.add_object("door", ct.door_frame(pal, 2, 3, glow=pal.accent))
+        _shadows(cb, pal)
+        _animate(cb, pal, key)
+        _decals(cb, pal, key, ground)
+        return _finish(cb, ground)
+    return build
+
+
+for _key, _spec in ASCENT.items():
+    WALL_MOTIF[_key] = _spec["wall"]
+    DECALS[_key] = [tuple(pair) for pair in _spec["decals"]]
+    PATTERNS[_key] = list(_spec["patterns"])
+    MURALS[_key] = ["rings"]
+    ANIMATION[_key] = ((_spec["glow"][0], "pulse", "scan"), _spec["glow"])
+
+
 def build_stars() -> ChipsetBuild:
     """An ocean made of stars.  You can walk on some of it."""
     pal = PALETTES["stars"]
@@ -1055,6 +1154,7 @@ BUILDERS: dict[str, Callable[[], ChipsetBuild]] = {
     "faces3": build_faces3,
     "faces4": build_faces4,
     **{key: _mural_inside(key) for key in MURAL_INSIDES},
+    **{key: _plane(key) for key in ASCENT},
 }
 
 

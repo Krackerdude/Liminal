@@ -209,4 +209,40 @@ PALETTES: dict[str, Palette] = {
         accent=(255, 252, 236), accent_soft=(198, 142, 44),
         void=(10, 8, 2),
     ),
+
+    # --- the ascent --------------------------------------------------------
+    #
+    # Four planes above the umbrella forest, and the palette does the whole
+    # argument on its own: the colour drains, the contrast climbs, and the
+    # warm accent that made the first plane feel like an arrival is gone by
+    # the third.  What is left at the top is a very well-lit filing system.
+
+    # The cloud.  Soft, bright, pale, high — and laying it on slightly thick.
+    "umbrellas2": Palette(
+        ground=(232, 236, 242), ground_b=(214, 222, 234),
+        form=(250, 250, 252), form_light=(255, 255, 255), form_dark=(186, 196, 212),
+        accent=(252, 226, 170), accent_soft=(198, 214, 238),
+        void=(246, 248, 252),
+    ),
+    # Ordered, and less kind.  The soft edges have gone square.
+    "umbrellas3": Palette(
+        ground=(214, 218, 220), ground_b=(196, 202, 206),
+        form=(236, 238, 238), form_light=(252, 252, 252), form_dark=(160, 168, 174),
+        accent=(232, 214, 178), accent_soft=(176, 190, 200),
+        void=(228, 232, 234),
+    ),
+    # Uniform.  Everything is the same size as everything else.
+    "umbrellas4": Palette(
+        ground=(196, 198, 196), ground_b=(180, 184, 182),
+        form=(220, 222, 220), form_light=(240, 242, 240), form_dark=(140, 146, 148),
+        accent=(206, 202, 190), accent_soft=(158, 168, 172),
+        void=(206, 208, 206),
+    ),
+    # Administrative, with very good lighting.
+    "umbrellas5": Palette(
+        ground=(176, 178, 174), ground_b=(162, 164, 162),
+        form=(206, 206, 202), form_light=(248, 248, 246), form_dark=(118, 122, 124),
+        accent=(188, 188, 182), accent_soft=(140, 146, 148),
+        void=(184, 186, 184),
+    ),
 }

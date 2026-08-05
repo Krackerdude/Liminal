@@ -37,8 +37,8 @@ from liminal import db, state, validate                          # noqa: E402
 from liminal.art import cast, menu, ui                           # noqa: E402
 from liminal.art.canvas import save_indexed                      # noqa: E402
 from liminal.maps import MapInfo, build_treemap                  # noqa: E402
-from liminal.worlds import (events, grove, murals, systems,       # noqa: E402
-                            worlds as W)                          # noqa: E402
+from liminal.worlds import (ascent, events, grove, murals,        # noqa: E402
+                            systems, worlds as W)                 # noqa: E402
 
 GAME = ROOT / "game"
 
@@ -207,6 +207,14 @@ def author_events(worlds: dict[str, W.World]) -> int:
     for key in W.MURAL_INSIDE_ORDER:
         rng = random.Random(zlib.crc32(f"mural:{key}".encode()))
         murals.inside_events(worlds[key], worlds, rng)
+    # The ascent.  The forest at the bottom only gets the umbrellas that lift
+    # you; it already has its door, its effect and its residents.
+    ascent.register(worlds)
+    ascent.lifts(worlds["umbrellas"], worlds,
+                 random.Random(zlib.crc32(b"ascent:base")))
+    for key in W.ASCENT_ORDER:
+        rng = random.Random(zlib.crc32(f"ascent:{key}".encode()))
+        ascent.plane_events(worlds[key], worlds, rng)
     return sum(len(worlds[k].map.events) for k in W.WORLD_ORDER)
 
 

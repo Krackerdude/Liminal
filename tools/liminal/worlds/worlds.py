@@ -91,6 +91,13 @@ TINTS: dict[str, tuple[int, int, int, int]] = {
     "faces4": (128, 78, 74, 88),         # test card
     # Inside a painting there is no light source, only the paint, so these
     # push hard toward the two colours the painting was drawn in.
+    # The ascent drains as it climbs: the warm accent that made the first
+    # plane feel like an arrival is gone by the third, and the top is simply
+    # very well lit.
+    "umbrellas2": (108, 106, 102, 88),
+    "umbrellas3": (104, 104, 104, 62),
+    "umbrellas4": (102, 102, 104, 38),
+    "umbrellas5": (104, 104, 106, 16),
     "neon2": (80, 116, 128, 136),        # cyan
     "neon3": (124, 82, 132, 140),        # magenta into violet
     "neon4": (128, 78, 78, 124),         # red
@@ -116,6 +123,10 @@ OVERLAYS: dict[str, tuple[str, int]] = {
     "stars": ("Dust", 80),
     "faces2": ("HazeGold", 80),
     "faces3": ("Grain", 72),
+    "umbrellas2": ("HazeGold", 76),
+    "umbrellas3": ("Shaft", 78),
+    "umbrellas4": ("Grain", 84),
+    "umbrellas5": ("Grain", 92),
     "neon2": ("Vignette", 62),
     "neon3": ("Scanline", 70),
     "neon4": ("VignetteSoft", 58),
@@ -133,6 +144,8 @@ MUSIC: dict[str, str] = {
     "umbrellas": "Umbrellas", "stars": "Stars",
     "faces2": "Faces", "faces3": "Deep", "faces4": "Wrong",
     "neon2": "Neon", "neon3": "Neon", "neon4": "Wrong", "neon5": "Deep",
+    "umbrellas2": "Umbrellas", "umbrellas3": "Umbrellas",
+    "umbrellas4": "Deep", "umbrellas5": "Wrong",
 }
 
 TITLES: dict[str, str] = {
@@ -153,6 +166,10 @@ TITLES: dict[str, str] = {
     "faces2": "overgrown",
     "faces3": "off-colour",
     "faces4": "no signal",
+    "umbrellas2": "higher",
+    "umbrellas3": "higher still",
+    "umbrellas4": "the tiers",
+    "umbrellas5": "the top",
     "neon2": "the eye",
     "neon3": "the spiral",
     "neon4": "the mouth",
@@ -194,8 +211,14 @@ MURAL_INSIDE_ORDER = ["neon2", "neon3", "neon4", "neon5"]
 MURAL_OF = {"neon2": "eye", "neon3": "spiral", "neon4": "mouth",
             "neon5": "star"}
 
+# Four planes above the umbrella forest, each higher and less kind than the
+# last.  Opening an umbrella under yourself lifts you one; a waterfall drops
+# you the whole way to the bottom.
+ASCENT_ORDER = ["umbrellas2", "umbrellas3", "umbrellas4", "umbrellas5"]
+
 WORLD_ORDER = ["room", "nexus", *DREAM_ORDER, *STAIR_FLOORS,
-               *FACE_CHANNELS[1:], *MURAL_INSIDE_ORDER]
+               *FACE_CHANNELS[1:], *MURAL_INSIDE_ORDER,
+               *ASCENT_ORDER]
 
 # How far down each floor is, which drives everything that gets worse.
 DEPTH = {"stairs": 0, "stairs2": 1, "stairs3": 2, "stairs4": 3, "stairs5": 4}
@@ -1427,6 +1450,153 @@ def build_umbrellas(map_id: int) -> World:
     return world
 
 
+# --- the ascent --------------------------------------------------------------
+# Four planes above the umbrella forest.  Opening an umbrella under yourself
+# lifts you one plane; stepping into a waterfall drops you the whole way to
+# the bottom in one go.  The geometry is the argument: the first plane is soft
+# blobs joined by curves, and by the fourth it is a grid of identical cells
+# with corridors that meet at right angles and a counter at the end of each.
+#
+# Nothing is ever named.  There is no scripture and no iconography anybody
+# could point at.  It is a dream about the *shape* of an ascent.
+
+ASCENT_SIZE = {"umbrellas2": (138, 126), "umbrellas3": (134, 122),
+               "umbrellas4": (130, 118), "umbrellas5": (126, 114)}
+
+
+def _cloud_plane(world: World, cs, rng: random.Random) -> None:
+    """Soft blobs, joined by curves.  Everything here says you arrived."""
+    m, t = world.map, cs.tiles
+    fld = Field(m.width, m.height)
+    banks = layout.clusters(fld, rng, count=16, blobs=7, radius=(8, 13),
+                            thread=3)
+    fld.ensure_connected()
+    fld.protect_chokepoints()
+    fld.build_walls(4)
+    layout.paint(m, fld, t, rng=rng)
+    layout.shade_walls(m, fld, t)
+
+    fur = Furnisher(m, fld, cs, rng)
+    for index, zone in enumerate(banks):
+        layout.carpet(m, fld, zone, t, rng, ("rings", "full")[index % 2])
+        for slot, (px, py) in enumerate(ring(zone, 5, inset=4)):
+            fur.put(("umbrella_0", "umbrella_1", "mushroom")[slot % 3], px, py)
+        fur.put("bench", zone.cx, zone.cy, pad=1)
+        layout.glow_floor(m, fld, zone, t, "flow", ring(zone, 6, inset=6))
+    world.plan = fld
+    world.landmarks = {"banks": [(z.cx, z.cy) for z in banks]}
+    world.spawn = (banks[0].cx, banks[0].cy)
+
+
+def _terrace_plane(world: World, cs, rng: random.Random) -> None:
+    """Squared off, colonnaded, and beautifully made.  Nobody made it."""
+    m, t = world.map, cs.tiles
+    fld = Field(m.width, m.height)
+    courts = layout.chambers(fld, rng, cols=5, rows=4, size=(21, 18),
+                             shape="rect", corridor_width=3, skip=0.10,
+                             jitter=1)
+    fld.ensure_connected()
+    fld.protect_chokepoints()
+    fld.build_walls(3)
+    layout.paint(m, fld, t, rng=rng)
+    layout.shade_walls(m, fld, t)
+
+    fur = Furnisher(m, fld, cs, rng)
+    for index, zone in enumerate(courts):
+        layout.carpet(m, fld, zone, t, rng, "border")
+        # a colonnade down both long sides, the same on every court
+        for px, py in ring(zone, 8, inset=3):
+            fur.put("column", px, py, pad=0)
+        fur.put(("bench", "planter")[index % 2], zone.cx, zone.cy, pad=1)
+        if index % 3 == 0:
+            fur.put("umbrella_0", zone.cx + 5, zone.cy - 4, pad=1)
+    world.plan = fld
+    world.landmarks = {"courts": [(z.cx, z.cy) for z in courts]}
+    world.spawn = (courts[0].cx, courts[0].cy)
+
+
+def _tier_plane(world: World, cs, rng: random.Random) -> None:
+    """Cells, all the same size, in rows.  The corridors meet at right angles."""
+    m, t = world.map, cs.tiles
+    fld = Field(m.width, m.height)
+    cells = []
+    for row in range(5):
+        for col in range(6):
+            cx = 12 + col * 19
+            cy = 12 + row * 22
+            cells.append(fld.carve(Zone(f"cell{row}{col}", cx, cy, 13, 13,
+                                        "rect")))
+    for row in range(5):
+        fld.long_hall(0, 12 + row * 22, m.width, vertical=False, width=3)
+    for col in range(6):
+        fld.long_hall(12 + col * 19, 0, m.height, vertical=True, width=3)
+    fld.ensure_connected()
+    fld.protect_chokepoints()
+    fld.build_walls(3)
+    layout.paint(m, fld, t, rng=rng)
+    layout.shade_walls(m, fld, t)
+
+    fur = Furnisher(m, fld, cs, rng)
+    for index, zone in enumerate(cells):
+        layout.carpet(m, fld, zone, t, rng, "full")
+        # identical furnishing in every single one, which is the point
+        fur.put("cabinet", zone.cx - 4, zone.cy - 3, pad=0)
+        fur.put("bench", zone.cx + 2, zone.cy + 2, pad=0)
+        fur.put("column", zone.cx + 4, zone.cy - 4, pad=0)
+    world.plan = fld
+    world.landmarks = {"cells": [(z.cx, z.cy) for z in cells]}
+    world.spawn = (cells[0].cx, cells[0].cy)
+
+
+def _office_plane(world: World, cs, rng: random.Random) -> None:
+    """A counter at the end of every corridor, and nothing behind any of them."""
+    m, t = world.map, cs.tiles
+    fld = Field(m.width, m.height)
+    halls = []
+    for row in range(7):
+        y = 8 + row * 15
+        fld.long_hall(0, y, m.width, vertical=False, width=5)
+        halls.append((m.width // 2, y))
+    for col in range(4):
+        fld.long_hall(14 + col * 32, 0, m.height, vertical=True, width=3)
+    windows = []
+    for row in range(7):
+        for col in range(4):
+            zone = fld.carve(Zone(f"win{row}{col}", 14 + col * 32,
+                                  8 + row * 15, 9, 7, "rect"))
+            windows.append((zone.cx, zone.cy))
+    fld.ensure_connected()
+    fld.protect_chokepoints()
+    fld.build_walls(2)
+    layout.paint(m, fld, t, rng=rng)
+    layout.shade_walls(m, fld, t)
+
+    fur = Furnisher(m, fld, cs, rng)
+    for index, (wx, wy) in enumerate(windows):
+        fur.put("counter", wx, wy - 2, pad=0)
+        fur.put("cabinet", wx - 3, wy + 2, pad=0)
+    world.plan = fld
+    world.landmarks = {"windows": windows, "halls": halls}
+    world.spawn = halls[0]
+
+
+ASCENT_LAYOUT = {"umbrellas2": _cloud_plane, "umbrellas3": _terrace_plane,
+                 "umbrellas4": _tier_plane, "umbrellas5": _office_plane}
+
+
+def _ascent_plane(key: str):
+    """One plane of the ascent, higher and less kind than the last."""
+    def build(map_id: int) -> World:
+        width, height = ASCENT_SIZE[key]
+        world, cs, rng = _new(key, map_id, width, height)
+        ASCENT_LAYOUT[key](world, cs, rng)
+        snap_spawn(world)
+        repair_connectivity(world.map, world.plan, cs, world.spawn,
+                            cs.tiles["ground"])
+        return world
+    return build
+
+
 def build_stars(map_id: int) -> World:
     """THE SHALLOWS.
 
@@ -1534,6 +1704,7 @@ BUILD = {
     **{key: _face_channel(i)
        for i, key in enumerate(FACE_CHANNELS) if i},
     **{key: _mural_inside(key) for key in MURAL_INSIDE_ORDER},
+    **{key: _ascent_plane(key) for key in ASCENT_ORDER},
 }
 
 
@@ -1563,6 +1734,10 @@ CARPETS: dict[str, list[str]] = {
     # only marks out where a room is — a ring, not a fill.
     "neon2": ["rings"], "neon3": ["rings"], "neon4": ["rings"],
     "neon5": ["rings"],
+    # The carpets go from loose to regimented the same way everything else in
+    # the ascent does.
+    "umbrellas2": ["rings", "full"], "umbrellas3": ["border", "lattice"],
+    "umbrellas4": ["checker", "full"], "umbrellas5": ["full"],
 }
 
 # The base flooring laid through every walkable tile of a world, before any
@@ -1576,6 +1751,8 @@ WASH: dict[str, tuple[str, int]] = {
     "faces4": ("scatter", 4),
     "neon2": ("scatter", 9), "neon3": ("diagonal", 8),
     "neon4": ("rows", 7), "neon5": ("scatter", 9),
+    "umbrellas2": ("scatter", 5), "umbrellas3": ("diagonal", 3),
+    "umbrellas4": ("grid", 2), "umbrellas5": ("rows", 2),
 }
 
 # Where the animated tiles go, and how many, per world.
@@ -1587,6 +1764,8 @@ GLOW: dict[str, tuple[str, int]] = {
     "faces2": ("anim_0", 6), "faces3": ("anim_0", 6), "faces4": ("anim_0", 6),
     "neon2": ("flow", 9), "neon3": ("flow", 8), "neon4": ("anim_0", 5),
     "neon5": ("flow", 11),
+    "umbrellas2": ("flow", 8), "umbrellas3": ("flow", 6),
+    "umbrellas4": ("anim_0", 4), "umbrellas5": ("anim_2", 2),
 }
 
 

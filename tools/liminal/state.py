@@ -112,6 +112,17 @@ VR_RING_X = 54              # where you were standing when it started
 VR_RING_Y = 55
 VR_RING_WAIT = 56           # seconds left before the next ring
 
+# Where you were standing in the scrawl world when you stepped into a
+# painting, so that coming back out puts you on the mural rather than at an
+# arrival tile.  Consecutive, because the engine reads a teleport destination
+# from three variables in a row.
+VR_MURAL_MAP = 57
+VR_MURAL_X = 58
+VR_MURAL_Y = 59
+# How far round the star's tips you have got, and in which order.
+VR_STAR_ORDER = 60
+VR_STAR_STEP = 61
+
 # The four things the grove has that can be carried, one found on each
 # channel and every one of them used on a different channel from the one that
 # had it.  They are switches rather than inventory because none of them are
@@ -124,6 +135,21 @@ SW_FACE_BULB = SW_FACE_BASE + 3
 SW_FACE_MAST = SW_FACE_BASE + 4         # the compound gate is open
 SW_FACE_ENDED = SW_FACE_BASE + 5        # you have stood under the mast
 SW_FACE_HEARD = SW_FACE_BASE + 6        # the receiver is in your hands
+
+# The four paintings on the floor of the scrawl world, and the four things
+# each of them keeps.  Unlike the grove's loop these are not a chain — a
+# painting is a closed object and you can visit them in any order — but all
+# four together are the only thing the plaza will answer to.
+SW_MURAL_BASE = SW_FACE_BASE + 8
+SW_MURAL_LENS = SW_MURAL_BASE + 0       # the eye
+SW_MURAL_THREAD = SW_MURAL_BASE + 1     # the spiral
+SW_MURAL_TOOTH = SW_MURAL_BASE + 2      # the mouth
+SW_MURAL_POINT = SW_MURAL_BASE + 3      # the star
+SW_MURAL_PLAZA = SW_MURAL_BASE + 4      # the plaza has been given all four
+SW_MURAL_ITEM = {"neon2": SW_MURAL_LENS, "neon3": SW_MURAL_THREAD,
+                 "neon4": SW_MURAL_TOOTH, "neon5": SW_MURAL_POINT}
+# One per painting, for the secret in it that has been found.
+SW_MURAL_SECRET = SW_MURAL_BASE + 8     # + painting index
 SW_FACE_ITEM = {"coin": SW_FACE_COIN, "tape": SW_FACE_TAPE,
                 "seed": SW_FACE_SEED, "bulb": SW_FACE_BULB}
 
@@ -173,7 +199,13 @@ def switch_names(world_names: list[str]) -> dict[int, str]:
     names.update({SW_FACE_COIN: "the coin", SW_FACE_TAPE: "the tape",
                   SW_FACE_SEED: "the seed", SW_FACE_BULB: "the bulb",
                   SW_FACE_MAST: "the compound", SW_FACE_ENDED: "under the mast",
-                  SW_FACE_HEARD: "the receiver"})
+                  SW_FACE_HEARD: "the receiver",
+                  SW_MURAL_LENS: "the lens", SW_MURAL_THREAD: "the thread",
+                  SW_MURAL_TOOTH: "the loose tooth",
+                  SW_MURAL_POINT: "the long point",
+                  SW_MURAL_PLAZA: "the plaza answered"})
+    for index in range(4):
+        names[SW_MURAL_SECRET + index] = f"painting {index} secret"
     return _dense(names)
 
 
@@ -195,5 +227,8 @@ def variable_names(world_names: list[str]) -> dict[int, str]:
     names.update({VR_CHASE: "the chase", VR_CHANNEL: "the channel",
                   VR_CHASE_FROM: "chased from", VR_RING_DIR: "the ring",
                   VR_RING_X: "ring x", VR_RING_Y: "ring y",
-                  VR_RING_WAIT: "until the ring"})
+                  VR_RING_WAIT: "until the ring",
+                  VR_MURAL_MAP: "the way back", VR_MURAL_X: "back x",
+                  VR_MURAL_Y: "back y", VR_STAR_ORDER: "the order",
+                  VR_STAR_STEP: "how many points"})
     return _dense(names)

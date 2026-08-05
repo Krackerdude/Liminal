@@ -303,7 +303,14 @@ BESPOKE: dict[str, dict] = {"pink": kin.PINK, "numbers": kin.NUMBERS,
                             # the grove's other three channels
                             "faces2": kin.FACES2,
                             "faces3": kin.FACES3,
-                            "faces4": kin.FACES4}
+                            "faces4": kin.FACES4,
+                            # two per painting, made of the painting
+                            "neon2": kin.NEON_EYE,
+                            "neon3": kin.NEON_SPIRAL,
+                            "neon4": kin.NEON_MOUTH,
+                            "neon5": kin.NEON_STAR,
+                            # the only thing at the top with a face on it
+                            "umbrellas5": kin.ASCENT_TOP}
 
 
 def _sheets() -> dict[str, list[tuple[str, object]]]:

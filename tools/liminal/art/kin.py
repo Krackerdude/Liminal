@@ -20,6 +20,8 @@ whose floor is at :data:`GROUND`.
 
 from __future__ import annotations
 
+import math
+
 from .canvas import Canvas, RGB, blend, cooler, warmer
 from .charsets import (CELL_W as CELL_W_FULL, DOWN, GROUND, LEFT,
                         RIGHT, UP, _small_legs)
@@ -2799,3 +2801,392 @@ FACES4 = {
     "test_tone": draw_test_tone,
     "continuity": draw_continuity,
 }
+
+
+# --- inside the murals -------------------------------------------------------
+# Two residents per painting.  Everything in a mural's interior is made of the
+# mural, these included: there is no skin, no cloth and no wood in any of them,
+# only the two colours the painting was drawn in and the one shape it repeats.
+# That is the whole reason they read as being *of* the place rather than as
+# visitors to it, and it is the only constraint they are under.
+
+def draw_lash(cell: Canvas, facing: int, frame: int) -> None:
+    """An eyelash, walking.  It is longer than it needs to be."""
+    b = _bob(frame)
+    line, glow = (96, 240, 226), (214, 254, 250)
+    dark = (20, 96, 108)
+    side = facing in (LEFT, RIGHT)
+    lead = -1 if facing == LEFT else 1
+    top = 9 + b
+    sway = (0, 1, -1)[frame]
+
+    # the shaft: one thick curved stroke from the ground up
+    for row in range(top, GROUND - 2):
+        offset = (row - top) // 5
+        cell.rect(CX - 2 + (offset * lead if side else 0), row, 4, 1,
+                  line if row % 3 else glow)
+    cell.rect(CX - 2, GROUND - 3, 5, 2, dark)
+
+    if facing == DOWN:
+        # facing you, the lash is foreshortened and its root is an open lid
+        cell.ellipse(CX, top - 2, 7, 4, dark)
+        cell.ellipse(CX, top - 2, 5.4, 2.6, line)
+        cell.ellipse(CX, top - 2, 2.4, 2.2, glow)
+        cell.dot(CX, top - 2, (10, 26, 34))
+        for dx in (-6, -3, 3, 6):
+            cell.line(CX + dx, top - 4, CX + dx + dx // 2, top - 9, line)
+    elif facing == UP:
+        # from behind there is no lid and no eye: only the shaft, and it
+        # carries on off the top of the cell
+        cell.rect(CX - 2, 0, 4, top, dark)
+        cell.rect(CX - 1, 0, 2, top, line)
+        cell.ellipse(CX, top - 1, 5, 2.4, dark)
+    else:
+        # in profile the lash curls hard the way it is going
+        for step in range(9):
+            cell.dot(CX + lead * (step + 1), top - 2 - step - step * step // 8,
+                     glow if step % 2 else line)
+        cell.ellipse(CX + lead, top, 3.4, 3, dark)
+        cell.ellipse(CX + lead, top, 2, 1.8, line)
+
+
+def draw_iris(cell: Canvas, facing: int, frame: int) -> None:
+    """A ring, standing on its edge.  It turns to keep you in the middle."""
+    line, glow = (96, 240, 226), (240, 252, 250)
+    dark = (20, 96, 108)
+    side = facing in (LEFT, RIGHT)
+    lead = -1 if facing == LEFT else 1
+    cy = 15
+    open_ = (0, 1, 0)[frame]
+
+    if facing == DOWN:
+        for radius in (10, 8, 6):
+            cell.ellipse(CX, cy, radius, radius, line if radius % 4 else dark,
+                         filled=False)
+        cell.ellipse(CX, cy, 4 + open_, 4 + open_, dark)
+        cell.ellipse(CX, cy, 2, 2, glow)
+        for angle in range(0, 360, 30):
+            x = CX + int(9.4 * math.cos(math.radians(angle)))
+            y = cy + int(9.4 * math.sin(math.radians(angle)))
+            cell.dot(x, y, glow)
+    elif facing == UP:
+        # a ring from behind is a disc: nothing to look through
+        cell.ellipse(CX, cy, 10, 10, dark)
+        cell.ellipse(CX, cy, 8, 8, line)
+        cell.ellipse(CX, cy, 6, 6, dark)
+        cell.rect(CX - 2, cy + 9, 5, GROUND - cy - 10, dark)
+    else:
+        # edge on it is almost a line, and it leans into the walk
+        cell.ellipse(CX + lead, cy, 3.2, 10, line, filled=False)
+        cell.ellipse(CX + lead, cy, 2.0, 8, dark, filled=False)
+        cell.rect(CX + lead - 1, cy - 2, 3, 4, glow)
+        cell.rect(CX - 1, cy + 9, 3, GROUND - cy - 10, dark)
+
+
+def draw_winding(cell: Canvas, facing: int, frame: int) -> None:
+    """A figure wound out of one line.  The line has no end you can find."""
+    b = _bob(frame)
+    line, glow = (244, 118, 196), (254, 200, 234)
+    deep = (112, 30, 96)
+    side = facing in (LEFT, RIGHT)
+    lead = -1 if facing == LEFT else 1
+    top = 8 + b
+    spin = frame * 0.7
+
+    turns = 3.0 if not side else 2.0
+    steps = 44
+    for step in range(steps):
+        progress = step / steps
+        angle = spin + progress * turns * 2 * math.pi
+        radius = 1.5 + progress * (5.5 if side else 8.0)
+        x = CX + (lead if side else 0) + int(radius * math.cos(angle))
+        y = top + 8 + int(radius * math.sin(angle) * 0.9)
+        cell.dot(x, y, glow if step % 5 == 0 else line)
+        cell.dot(x, y + 1, deep)
+    cell.rect(CX - 2, top + 17, 5, GROUND - top - 18, deep)
+
+    if facing == DOWN:
+        for ex in (CX - 3, CX + 2):
+            cell.rect(ex, top + 5, 2, 2, (26, 10, 34))
+    elif facing == UP:
+        # the coil closes up: from behind it is a solid knot
+        cell.ellipse(CX, top + 8, 7, 7, deep)
+        cell.ellipse(CX, top + 7, 5, 5, line)
+    else:
+        cell.rect(CX + lead + (1 if lead > 0 else -2), top + 5, 2, 2,
+                  (26, 10, 34))
+        cell.line(CX + 5 * lead, top + 12, CX + 9 * lead, top + 18, line)
+
+
+def draw_unplaced(cell: Canvas, facing: int, frame: int) -> None:
+    """Keeps arriving at the middle and setting off again."""
+    b = _bob(frame)
+    line, glow = (244, 118, 196), (180, 138, 246)
+    deep = (112, 30, 96)
+    side = facing in (LEFT, RIGHT)
+    lead = -1 if facing == LEFT else 1
+    top = 10 + b
+    step_out = (0, 2, 4)[frame]
+
+    body_w = 6 if side else 11
+    cell.round_rect(CX - body_w // 2 + (lead if side else 0), top, body_w,
+                    GROUND - top - 4, 3, deep)
+    cell.rect(CX - body_w // 2 + (lead if side else 0), top, body_w, 2, line)
+    _small_legs(cell, frame, CX, GROUND - 4, deep, spread=3 if side else 4)
+
+    if facing == DOWN:
+        cell.ellipse(CX, top - 3, 5, 5, deep)
+        for ex in (CX - 3, CX + 1):
+            cell.rect(ex, top - 4, 2, 2, glow)
+        # the trail: where they have already been, fading
+        for index in range(4):
+            cell.dot(CX - 6 + index * 4, GROUND - 1, line if index % 2 else deep)
+    elif facing == UP:
+        cell.ellipse(CX, top - 3, 5, 5, cooler(deep, 0.3))
+        cell.ellipse(CX, top - 4, 4.5, 3, (26, 10, 34))
+        # the whole spiral they have walked, drawn on their back
+        for index in range(20):
+            angle = index * 0.6
+            radius = 0.8 + index * 0.28
+            cell.dot(CX + int(radius * math.cos(angle)),
+                     top + 7 + int(radius * math.sin(angle)), line)
+    else:
+        cell.ellipse(CX + lead, top - 3, 4, 5, deep)
+        cell.rect(CX + lead + (1 if lead > 0 else -2), top - 4, 2, 2, glow)
+        # a stride that is always about to be taken back
+        cell.line(CX + 3 * lead, GROUND - 2, CX + (3 + step_out) * lead,
+                  GROUND - 2, line)
+
+
+def draw_tooth(cell: Canvas, facing: int, frame: int) -> None:
+    """A tooth, upright, walking on its own roots."""
+    b = _bob(frame)
+    enamel, shade = (255, 236, 220), (168, 40, 62)
+    deep = (120, 22, 34)
+    side = facing in (LEFT, RIGHT)
+    lead = -1 if facing == LEFT else 1
+    top = 7 + b
+    crown_w = 9 if side else 15
+
+    cell.round_rect(CX - crown_w // 2 + (lead if side else 0), top, crown_w,
+                    15, 4, enamel)
+    cell.rect(CX - crown_w // 2 + (lead if side else 0) + 1, top + 1,
+              crown_w - 2, 4, (255, 252, 248))
+    # the roots, which are also the legs
+    root_spread = 3 if side else 5
+    swing = (0, 1, 0)[frame]
+    for sign in (-1, 1):
+        cell.line(CX + sign * 2, top + 14,
+                  CX + sign * root_spread + swing * sign, GROUND - 2, shade)
+        cell.line(CX + sign * 2 + 1, top + 14,
+                  CX + sign * root_spread + 1 + swing * sign, GROUND - 2, deep)
+
+    if facing == DOWN:
+        for ex in (CX - 4, CX + 2):
+            cell.rect(ex, top + 5, 3, 3, deep)
+        cell.hline(top + 11, CX - 4, CX + 4, shade)
+        cell.rect(CX - 1, top + 2, 3, 9, (255, 246, 240))
+    elif facing == UP:
+        # From behind, the crown is in shadow and the roots are the whole
+        # story: they splay much wider than the tooth, and there are three of
+        # them, which is one more than a tooth seen from the front admits to.
+        cell.round_rect(CX - crown_w // 2 + 2, top + 2, crown_w - 4, 13, 4,
+                        shade)
+        cell.line(CX, top + 2, CX + 1, top + 14, deep)
+        cell.line(CX + 1, top + 6, CX + 4, top + 13, deep)
+        for sign, spread in ((-1, 7), (0, 0), (1, 7)):
+            cell.line(CX + sign * 2, top + 13, CX + sign * spread,
+                      GROUND - 2, shade)
+            cell.line(CX + sign * 2 + 1, top + 13, CX + sign * spread + 1,
+                      GROUND - 2, deep)
+        cell.rect(CX - crown_w // 2, top + 12, crown_w, 3, deep)
+    else:
+        cell.rect(CX + (lead if lead > 0 else -2) + lead, top + 5, 2, 3, deep)
+        # in profile a tooth is a wedge, not a block
+        for row in range(15):
+            cell.rect(CX + lead - 4 + row // 4 * lead, top + row,
+                      max(1, 4 - row // 5), 1, shade)
+
+
+def draw_swallowed(cell: Canvas, facing: int, frame: int) -> None:
+    """On their way down.  Facing the wrong way for it."""
+    b = _bob(frame)
+    line, glow = (250, 90, 96), (255, 190, 176)
+    deep = (120, 22, 34)
+    side = facing in (LEFT, RIGHT)
+    lead = -1 if facing == LEFT else 1
+    top = 13 + b
+    pull = (0, 1, 2)[frame]
+
+    # only the top half of them is above the floor
+    body_w = 7 if side else 13
+    cell.round_rect(CX - body_w // 2 + (lead if side else 0), top + pull,
+                    body_w, GROUND - top - pull, 4, deep)
+    cell.rect(CX - body_w // 2 + (lead if side else 0), top + pull, body_w, 2,
+              line)
+    # the floor closing over them, drawn as concentric pull-lines
+    for radius in (9, 12):
+        cell.ellipse(CX, GROUND - 4, radius, radius * 0.34, line, filled=False)
+
+    if facing == DOWN:
+        cell.ellipse(CX, top - 3 + pull, 5, 5, deep)
+        for ex in (CX - 3, CX + 1):
+            cell.rect(ex, top - 4 + pull, 2, 2, glow)
+        # both arms up, which is the only part of this that is not calm
+        cell.line(CX - 6, top + 4 + pull, CX - 8, top - 4 + pull, line)
+        cell.line(CX + 6, top + 4 + pull, CX + 8, top - 4 + pull, line)
+    elif facing == UP:
+        cell.ellipse(CX, top - 3 + pull, 5, 5, cooler(deep, 0.3))
+        cell.ellipse(CX, top - 4 + pull, 4.5, 3, (30, 8, 12))
+        cell.rect(CX - 5, top + 1 + pull, 11, 2, cooler(line, 0.35))
+    else:
+        cell.ellipse(CX + lead, top - 3 + pull, 4, 5, deep)
+        cell.rect(CX + lead + (1 if lead > 0 else -2), top - 4 + pull, 2, 2,
+                  glow)
+        cell.line(CX + 4 * lead, top + 4 + pull, CX + 7 * lead,
+                  top - 3 + pull, line)
+
+
+def draw_point(cell: Canvas, facing: int, frame: int) -> None:
+    """A five-pointed thing with four points.  It does not mention it."""
+    b = _bob(frame)
+    gold, pale = (252, 210, 84), (255, 252, 236)
+    deep = (122, 92, 20)
+    side = facing in (LEFT, RIGHT)
+    lead = -1 if facing == LEFT else 1
+    cy = 14 + b
+    spin = frame * 24
+
+    if facing == UP:
+        # From behind, the arms are all pointing away from you: what is left
+        # is the back of the hub and the four stubs where the arms leave it,
+        # which is a completely different silhouette from the open star.
+        cell.blob(CX, cy, 8.0, deep)
+        cell.blob(CX, cy - 1, 6.0, gold)
+        cell.blob(CX, cy - 2, 3.0, deep)
+        for index in (0, 1, 3, 4):
+            angle = math.radians(-90 + index * 72 + spin)
+            cell.blob(CX + int(7 * math.cos(angle)),
+                      cy + int(7 * math.sin(angle)), 2.2, deep)
+        cell.rect(CX - 4, GROUND - 4, 9, 3, deep)
+        return
+
+    present = (0, 1, 3, 4)
+    for index in present:
+        angle = math.radians(-90 + index * 72 + spin)
+        length = 11 if side else 12
+        tx = CX + (lead if side else 0) + int(length * math.cos(angle))
+        ty = cy + int(length * math.sin(angle) * (0.7 if side else 1.0))
+        cell.line(CX + (lead if side else 0), cy, tx, ty,
+                  pale if index == 0 else gold)
+        cell.line(CX + (lead if side else 0) + 1, cy, tx + 1, ty, deep)
+        cell.blob(tx, ty, 1.8, pale)
+    cell.blob(CX + (lead if side else 0), cy, 3.4, gold)
+
+    if facing == DOWN:
+        for ex in (CX - 3, CX + 1):
+            cell.rect(ex, cy - 1, 2, 2, (28, 24, 8))
+        cell.rect(CX - 5, GROUND - 3, 11, 2, deep)
+    else:
+        cell.rect(CX + lead + (1 if lead > 0 else -2), cy - 1, 2, 2,
+                  (28, 24, 8))
+        cell.rect(CX - 3, GROUND - 3, 7, 2, deep)
+
+
+def draw_long_point(cell: Canvas, facing: int, frame: int) -> None:
+    """The point that is longer than the others, on its own."""
+    b = _bob(frame)
+    gold, pale = (252, 210, 84), (255, 252, 236)
+    deep = (122, 92, 20)
+    side = facing in (LEFT, RIGHT)
+    lead = -1 if facing == LEFT else 1
+    top = 4 + b
+    lean = (0, 1, 0)[frame]
+
+    if facing == DOWN:
+        # a long tapering spike, point toward you, so it is nearly all base
+        for row in range(top, GROUND - 2):
+            half = max(1, (GROUND - row) // 3)
+            cell.rect(CX - half, row, half * 2, 1,
+                      pale if row % 4 == 0 else gold)
+        cell.rect(CX - 1, top, 3, 6, pale)
+        for ex in (CX - 3, CX + 2):
+            cell.rect(ex, GROUND - 12, 2, 2, (28, 24, 8))
+    elif facing == UP:
+        # from behind it is a flat blade with a seam and no face
+        cell.rect(CX - 5, top + 4, 11, GROUND - top - 6, deep)
+        cell.rect(CX - 3, top + 4, 7, GROUND - top - 6, gold)
+        cell.vline(CX, top + 4, GROUND - 3, deep)
+        cell.rect(CX - 2, top, 5, 5, deep)
+    else:
+        # in profile it leans a long way over the direction of travel
+        for row in range(top, GROUND - 2):
+            progress = (row - top) / (GROUND - top)
+            offset = int((1 - progress) * 8) * lead + lean * lead
+            half = max(1, int(1 + progress * 3))
+            cell.rect(CX + offset - half, row, half * 2, 1,
+                      pale if row % 5 == 0 else gold)
+        cell.rect(CX + 8 * lead - 1, top, 3, 3, pale)
+        cell.rect(CX - 3, GROUND - 3, 7, 2, deep)
+
+
+NEON_EYE = {"lash": draw_lash, "iris": draw_iris}
+NEON_SPIRAL = {"winding": draw_winding, "unplaced": draw_unplaced}
+NEON_MOUTH = {"tooth": draw_tooth, "swallowed": draw_swallowed}
+NEON_STAR = {"point": draw_point, "long_point": draw_long_point}
+
+
+# --- the top of the ascent ---------------------------------------------------
+
+def draw_clerk(cell: Canvas, facing: int, frame: int) -> None:
+    """Behind the counter on the top plane.
+
+    Drawn as a fitting rather than a person: a plain box on a plain post, at
+    counter height, with a face on the front and nothing on the back.  It is
+    the last thing in the ascent that has a face at all, and it only has one
+    because the counter needs somewhere to look out of.
+    """
+    b = _bob(frame)
+    case, light = (206, 206, 202), (248, 248, 246)
+    dark, ink = (118, 122, 124), (78, 82, 84)
+    side = facing in (LEFT, RIGHT)
+    lead = -1 if facing == LEFT else 1
+    top = 8 + b
+    width = 7 if side else 15
+
+    # the post, which stands under the box and is offset from it in profile
+    post = CX - 2 + (3 * lead if side else 0)
+    cell.rect(post, top + 15, 5, GROUND - top - 16, dark)
+    cell.rect(post, top + 15, 2, GROUND - top - 16, case)
+    # the box.  In profile it hangs right off to the leading side, which is
+    # what makes left and right two sprites rather than one drawn twice.
+    box = CX - width // 2 + (4 * lead if side else 0)
+    cell.round_rect(box, top, width, 16, 2, case)
+    cell.rect(box + 1, top + 1, width - 2, 2, light)
+
+    if facing == DOWN:
+        for ex in (CX - 4, CX + 2):
+            cell.rect(ex, top + 5, 3, 3, ink)
+        cell.hline(top + 12, CX - 4, CX + 4, dark)
+        # the slot under the face, which is the whole reason for the face
+        cell.rect(CX - 5, top + 17, 11, 2, ink)
+    elif facing == UP:
+        # From behind it is a blank cabinet: a vent, two hinges, a cable, and
+        # nothing anywhere on it that could be looked at.
+        cell.rect(CX - width // 2, top, width, 16, dark)
+        cell.rect(CX - width // 2 + 1, top + 1, width - 2, 14, case)
+        for row in range(top + 3, top + 13, 3):
+            cell.rect(CX - 4, row, 9, 1, dark)
+        cell.rect(CX - width // 2 + 1, top + 2, 2, 3, dark)
+        cell.rect(CX - width // 2 + 1, top + 10, 2, 3, dark)
+        cell.line(CX + 5, top + 15, CX + 9, GROUND - 3, dark)
+    else:
+        # Edge on, the box is shallow, the face is gone, and the whole
+        # assembly leans off the post the way it is looking.
+        cell.rect(box, top + 2, 2, 12, dark)
+        cell.rect(box + (width - 2 if lead > 0 else 0), top + 2, 2, 12, light)
+        cell.rect(box + (width - 3 if lead > 0 else 1), top + 6, 2, 3, ink)
+        cell.line(post + 2, top + 15, box + width // 2, top + 15, dark)
+
+
+ASCENT_TOP = {"clerk": draw_clerk}

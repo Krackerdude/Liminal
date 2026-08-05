@@ -172,4 +172,77 @@ PALETTES: dict[str, Palette] = {
         accent=(240, 236, 226), accent_soft=(74, 128, 148),
         void=(18, 10, 14),
     ),
+
+    # --- inside the murals -------------------------------------------------
+    #
+    # Four paintings on the floor of the scrawl world, each of which is also a
+    # way in.  A mural is drawn in two or three colours, so its interior gets
+    # those two or three colours and no others — the discipline is the point.
+    # Walking into a painting should feel like the world has been reduced to
+    # what the painting had, not like another room with a filter on it.
+
+    # THE EYE.  Cyan and white on black, concentric, and it does not blink.
+    "neon2": Palette(
+        ground=(10, 26, 34), ground_b=(14, 36, 46),
+        form=(96, 240, 226), form_light=(214, 254, 250), form_dark=(20, 96, 108),
+        accent=(240, 252, 250), accent_soft=(46, 158, 176),
+        void=(4, 10, 14),
+    ),
+    # THE SPIRAL.  Magenta into violet, and it only goes one way.
+    "neon3": Palette(
+        ground=(26, 10, 34), ground_b=(36, 14, 48),
+        form=(244, 118, 196), form_light=(254, 200, 234), form_dark=(112, 30, 96),
+        accent=(180, 138, 246), accent_soft=(140, 54, 158),
+        void=(12, 4, 18),
+    ),
+    # THE MOUTH.  Hot red on near-black, and everything in it is a tooth.
+    "neon4": Palette(
+        ground=(30, 8, 12), ground_b=(42, 12, 16),
+        form=(250, 90, 96), form_light=(255, 190, 176), form_dark=(120, 22, 34),
+        accent=(255, 236, 220), accent_soft=(168, 40, 62),
+        void=(12, 2, 6),
+    ),
+    # THE STAR.  Gold and white, radial, with nothing at all in between.
+    "neon5": Palette(
+        ground=(28, 24, 8), ground_b=(38, 32, 12),
+        form=(252, 210, 84), form_light=(255, 246, 200), form_dark=(122, 92, 20),
+        accent=(255, 252, 236), accent_soft=(198, 142, 44),
+        void=(10, 8, 2),
+    ),
+
+    # --- the ascent --------------------------------------------------------
+    #
+    # Four planes above the umbrella forest, and the palette does the whole
+    # argument on its own: the colour drains, the contrast climbs, and the
+    # warm accent that made the first plane feel like an arrival is gone by
+    # the third.  What is left at the top is a very well-lit filing system.
+
+    # The cloud.  Soft, bright, pale, high — and laying it on slightly thick.
+    "umbrellas2": Palette(
+        ground=(232, 236, 242), ground_b=(214, 222, 234),
+        form=(250, 250, 252), form_light=(255, 255, 255), form_dark=(186, 196, 212),
+        accent=(252, 226, 170), accent_soft=(198, 214, 238),
+        void=(246, 248, 252),
+    ),
+    # Ordered, and less kind.  The soft edges have gone square.
+    "umbrellas3": Palette(
+        ground=(214, 218, 220), ground_b=(196, 202, 206),
+        form=(236, 238, 238), form_light=(252, 252, 252), form_dark=(160, 168, 174),
+        accent=(232, 214, 178), accent_soft=(176, 190, 200),
+        void=(228, 232, 234),
+    ),
+    # Uniform.  Everything is the same size as everything else.
+    "umbrellas4": Palette(
+        ground=(196, 198, 196), ground_b=(180, 184, 182),
+        form=(220, 222, 220), form_light=(240, 242, 240), form_dark=(140, 146, 148),
+        accent=(206, 202, 190), accent_soft=(158, 168, 172),
+        void=(206, 208, 206),
+    ),
+    # Administrative, with very good lighting.
+    "umbrellas5": Palette(
+        ground=(176, 178, 174), ground_b=(162, 164, 162),
+        form=(206, 206, 202), form_light=(248, 248, 246), form_dark=(118, 122, 124),
+        accent=(188, 188, 182), accent_soft=(140, 146, 148),
+        void=(184, 186, 184),
+    ),
 }

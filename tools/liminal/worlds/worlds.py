@@ -27,7 +27,8 @@ from .. import maps
 from ..maps import SCROLL_BOTH, SCROLL_NONE, Map, MapInfo
 from . import gen, layout
 from .gen import MazeSpec, Placer
-from .layout import FLOOR_ALT, Field, Zone, repair_connectivity, solid_ids
+from .layout import (FLOOR, FLOOR_ALT, Field, Zone, repair_connectivity,
+                     solid_ids)
 from .rooms import Furnisher, Room, avenue, back_wall, corners, facing_pair, ring, spiral_out
 
 
@@ -88,6 +89,19 @@ TINTS: dict[str, tuple[int, int, int, int]] = {
     "faces2": (86, 128, 84, 138),        # everything alive, saturated hard
     "faces3": (96, 96, 100, 34),         # the colour going out of it
     "faces4": (128, 78, 74, 88),         # test card
+    # Inside a painting there is no light source, only the paint, so these
+    # push hard toward the two colours the painting was drawn in.
+    # The ascent drains as it climbs: the warm accent that made the first
+    # plane feel like an arrival is gone by the third, and the top is simply
+    # very well lit.
+    "umbrellas2": (108, 106, 102, 88),
+    "umbrellas3": (104, 104, 104, 62),
+    "umbrellas4": (102, 102, 104, 38),
+    "umbrellas5": (104, 104, 106, 16),
+    "neon2": (80, 116, 128, 136),        # cyan
+    "neon3": (124, 82, 132, 140),        # magenta into violet
+    "neon4": (128, 78, 78, 124),         # red
+    "neon5": (118, 108, 74, 116),        # gold
 }
 
 # The screen overlay each world wears, and how strongly.  Transparency is
@@ -109,6 +123,14 @@ OVERLAYS: dict[str, tuple[str, int]] = {
     "stars": ("Dust", 80),
     "faces2": ("HazeGold", 80),
     "faces3": ("Grain", 72),
+    "umbrellas2": ("HazeGold", 76),
+    "umbrellas3": ("Shaft", 78),
+    "umbrellas4": ("Grain", 84),
+    "umbrellas5": ("Grain", 92),
+    "neon2": ("Vignette", 62),
+    "neon3": ("Scanline", 70),
+    "neon4": ("VignetteSoft", 58),
+    "neon5": ("Dust", 74),
     # A dead channel is noisy, but the noise cannot be so heavy that the town
     # under it stops being findable — the whole point of this reception is
     # that it is the most *legible* the street plan ever gets.
@@ -121,6 +143,9 @@ MUSIC: dict[str, str] = {
     "hands": "Hands", "checker": "Checker", "toys": "Toys", "neon": "Neon",
     "umbrellas": "Umbrellas", "stars": "Stars",
     "faces2": "Faces", "faces3": "Deep", "faces4": "Wrong",
+    "neon2": "Neon", "neon3": "Neon", "neon4": "Wrong", "neon5": "Deep",
+    "umbrellas2": "Umbrellas", "umbrellas3": "Umbrellas",
+    "umbrellas4": "Deep", "umbrellas5": "Wrong",
 }
 
 TITLES: dict[str, str] = {
@@ -141,6 +166,14 @@ TITLES: dict[str, str] = {
     "faces2": "overgrown",
     "faces3": "off-colour",
     "faces4": "no signal",
+    "umbrellas2": "higher",
+    "umbrellas3": "higher still",
+    "umbrellas4": "the tiers",
+    "umbrellas5": "the top",
+    "neon2": "the eye",
+    "neon3": "the spiral",
+    "neon4": "the mouth",
+    "neon5": "the star",
 }
 
 # How many residents each world has.  182 in total, and deliberately uneven:
@@ -170,8 +203,22 @@ STAIR_FLOORS = ["stairs2", "stairs3", "stairs4", "stairs5"]
 # walked when a telephone rang.
 FACE_CHANNELS = ["faces", "faces2", "faces3", "faces4"]
 
+# Four paintings on the floor of the scrawl world are also ways into it.  Each
+# interior is built out of the shape of the painting it belongs to and nothing
+# else, so the way a room is laid out carries the same information as the
+# picture you stepped on to get there.
+MURAL_INSIDE_ORDER = ["neon2", "neon3", "neon4", "neon5"]
+MURAL_OF = {"neon2": "eye", "neon3": "spiral", "neon4": "mouth",
+            "neon5": "star"}
+
+# Four planes above the umbrella forest, each higher and less kind than the
+# last.  Opening an umbrella under yourself lifts you one; a waterfall drops
+# you the whole way to the bottom.
+ASCENT_ORDER = ["umbrellas2", "umbrellas3", "umbrellas4", "umbrellas5"]
+
 WORLD_ORDER = ["room", "nexus", *DREAM_ORDER, *STAIR_FLOORS,
-               *FACE_CHANNELS[1:]]
+               *FACE_CHANNELS[1:], *MURAL_INSIDE_ORDER,
+               *ASCENT_ORDER]
 
 # How far down each floor is, which drives everything that gets worse.
 DEPTH = {"stairs": 0, "stairs2": 1, "stairs3": 2, "stairs4": 3, "stairs5": 4}
@@ -1162,6 +1209,198 @@ def build_neon(map_id: int) -> World:
     return world
 
 
+# --- inside the murals -------------------------------------------------------
+# Four paintings on the floor of the scrawl world are also ways into it.  Each
+# interior is built out of the shape of the painting it belongs to and nothing
+# else: the geometry *is* the motif, so the way a room is laid out is the same
+# information as the picture on the floor you stepped on to get here.
+#
+# None of them loop.  Everywhere else in the game is a torus, which is what
+# makes walking feel endless; a painting has an edge, and hitting it is how the
+# player learns they are inside something finite for the first time.
+
+def _eye_inside(world: World, cs, rng: random.Random) -> None:
+    """Concentric rings around a pupil you can stand in.
+
+    Walkable rings, joined by four gaps that never line up, so getting to the
+    middle means going round — which is what looking at an eye painted in
+    circles ought to cost.
+    """
+    m, t, fld = world.map, cs.tiles, Field(world.map.width, world.map.height)
+    cx, cy = m.width // 2, m.height // 2
+    rings = [8, 18, 28, 38, 48]
+    for index, radius in enumerate(rings):
+        for angle in range(0, 3600):
+            theta = math.radians(angle / 10)
+            for band in (-2, -1, 0, 1, 2):
+                fld.set(int(cx + (radius + band) * math.cos(theta)),
+                        int(cy + (radius + band) * math.sin(theta) * 0.86),
+                        FLOOR if index % 2 else FLOOR_ALT)
+    # the pupil
+    fld.carve(Zone("pupil", cx, cy, 11, 9, "round"))
+    # one gap per ring, each a quarter turn on from the last, so no two are on
+    # the same walk out
+    gaps = []
+    for index in range(len(rings)):
+        theta = math.radians(35 + index * 78)
+        inner = rings[index - 1] if index else 0
+        for step in range(inner, rings[index] + 3):
+            for band in (-1, 0, 1):
+                fld.set(int(cx + step * math.cos(theta)) + band,
+                        int(cy + step * math.sin(theta) * 0.86), FLOOR)
+        gaps.append((int(cx + (rings[index] - 3) * math.cos(theta)),
+                     int(cy + (rings[index] - 3) * math.sin(theta) * 0.86)))
+    fld.build_walls(2)
+    layout.paint(m, fld, t, rng=rng)
+    layout.shade_walls(m, fld, t)
+
+    fur = Furnisher(m, fld, cs, rng)
+    for index, radius in enumerate(rings):
+        for slot in range(6 + index * 2):
+            theta = math.radians(slot * 360 / (6 + index * 2) + index * 11)
+            fur.put("post", int(cx + radius * math.cos(theta)),
+                    int(cy + radius * math.sin(theta) * 0.86), pad=1)
+    gen.stamp_centered(m, cs.obj("motif"), cx, cy)
+    world.plan = fld
+    world.landmarks = {"pupil": [(cx, cy)], "gaps": gaps,
+                       "rings": [(cx + r, cy) for r in rings]}
+    world.spawn = (cx, cy + rings[-1])
+
+
+def _spiral_inside(world: World, cs, rng: random.Random) -> None:
+    """One corridor.  It goes in, and then it is the way out as well."""
+    m, t, fld = world.map, cs.tiles, Field(world.map.width, world.map.height)
+    cx, cy = m.width // 2, m.height // 2
+    marks = []
+    turns = 4.6
+    steps = 2600
+    for step in range(steps):
+        progress = step / steps
+        theta = progress * turns * 2 * math.pi
+        radius = 4 + progress * 52
+        x = int(cx + radius * math.cos(theta))
+        y = int(cy + radius * math.sin(theta) * 0.84)
+        for dy in (-2, -1, 0, 1, 2):
+            for dx in (-2, -1, 0, 1, 2):
+                fld.set(x + dx, y + dy, FLOOR)
+        if step % 520 == 0:
+            marks.append((x, y))
+    fld.carve(Zone("centre", cx, cy, 13, 11, "round"))
+    fld.build_walls(3)
+    layout.paint(m, fld, t, rng=rng)
+    layout.shade_walls(m, fld, t)
+
+    fur = Furnisher(m, fld, cs, rng)
+    for index, (x, y) in enumerate(marks):
+        fur.put("scrawl_arrow" if index % 2 else "scrawl_spiral", x, y, pad=1)
+    gen.stamp_centered(m, cs.obj("motif"), cx, cy)
+    world.plan = fld
+    world.landmarks = {"centre": [(cx, cy)], "turns": marks,
+                       "outer": [marks[-1]]}
+    world.spawn = marks[-1]
+
+
+def _mouth_inside(world: World, cs, rng: random.Random) -> None:
+    """A throat: one hall that narrows the whole way, teeth down both sides."""
+    m, t, fld = world.map, cs.tiles, Field(world.map.width, world.map.height)
+    cy = m.height // 2
+    length = m.width - 8
+    chambers = []
+    for step in range(length):
+        half = int(26 - 20 * (step / length))
+        for dy in range(-half, half + 1):
+            fld.set(4 + step, cy + dy, FLOOR if abs(dy) > half - 4 else FLOOR_ALT)
+    # side pockets between the teeth, which is where everything in here is
+    for index in range(7):
+        x = 14 + index * ((length - 20) // 7)
+        half = int(26 - 20 * ((x - 4) / length))
+        for sign in (-1, 1):
+            zone = fld.carve(Zone(f"gum{index}{sign}", x,
+                                  cy + sign * (half + 5), 13, 11, "round"))
+            fld.corridor((x, cy + sign * (half - 1)), (zone.cx, zone.cy),
+                         width=3)
+            chambers.append((zone.cx, zone.cy))
+    fld.ensure_connected()
+    fld.build_walls(3)
+    layout.paint(m, fld, t, rng=rng)
+    layout.shade_walls(m, fld, t)
+
+    fur = Furnisher(m, fld, cs, rng)
+    for index in range(9):
+        x = 10 + index * ((length - 16) // 9)
+        half = int(26 - 20 * ((x - 4) / length))
+        for sign in (-1, 1):
+            fur.put("post", x, cy + sign * (half - 2), pad=1)
+            fur.put("post", x + 3, cy + sign * (half - 5), pad=1)
+    gen.stamp_centered(m, cs.obj("motif"), m.width - 14, cy)
+    world.plan = fld
+    world.landmarks = {"throat": [(m.width - 14, cy)], "gums": chambers,
+                       "lip": [(8, cy)]}
+    world.spawn = (8, cy)
+
+
+def _star_inside(world: World, cs, rng: random.Random) -> None:
+    """Five arms and a hub.  Between the arms there is nothing to stand on."""
+    m, t, fld = world.map, cs.tiles, Field(world.map.width, world.map.height)
+    cx, cy = m.width // 2, m.height // 2
+    hub = fld.carve(Zone("hub", cx, cy, 21, 17, "octagon"))
+    tips = []
+    for index in range(5):
+        theta = math.radians(-90 + index * 72)
+        tx = int(cx + 52 * math.cos(theta))
+        ty = int(cy + 46 * math.sin(theta))
+        # the arm tapers: wide at the hub, one tile at the point
+        for step in range(60):
+            progress = step / 60
+            x = int(cx + progress * (tx - cx))
+            y = int(cy + progress * (ty - cy))
+            half = max(1, int(7 - 6 * progress))
+            for dy in range(-half, half + 1):
+                for dx in range(-half, half + 1):
+                    fld.set(x + dx, y + dy, FLOOR)
+        zone = fld.carve(Zone(f"tip{index}", tx, ty, 13, 11, "round"))
+        tips.append((zone.cx, zone.cy))
+    fld.ensure_connected()
+    fld.build_walls(2)
+    layout.paint(m, fld, t, rng=rng)
+    layout.shade_walls(m, fld, t)
+
+    fur = Furnisher(m, fld, cs, rng)
+    for index, (tx, ty) in enumerate(tips):
+        fur.put("scrawl_star", tx, ty, pad=1)
+        layout.glow_floor(m, fld, Zone(f"t{index}", tx, ty, 13, 11, "round"),
+                          t, "anim_0", ring(Zone("r", tx, ty, 13, 11, "round"),
+                                            5, inset=3))
+    for slot, (px, py) in enumerate(ring(hub, 6, inset=4)):
+        fur.put("post", px, py, pad=1)
+    gen.stamp_centered(m, cs.obj("motif"), cx, cy)
+    world.plan = fld
+    world.landmarks = {"hub": [(cx, cy)], "tips": tips}
+    world.spawn = (cx, cy + 6)
+
+
+MURAL_LAYOUT = {"neon2": _eye_inside, "neon3": _spiral_inside,
+                "neon4": _mouth_inside, "neon5": _star_inside}
+MURAL_SIZE = {"neon2": (124, 110), "neon3": (128, 112), "neon4": (140, 74),
+              "neon5": (126, 108)}
+
+
+def _mural_inside(key: str):
+    """One painting, from the inside.
+
+    Not a torus.  Every other place in the game wraps, which is what makes
+    walking in them feel like it has no end; a painting is a finite object and
+    finding its edge is the whole difference.
+    """
+    def build(map_id: int) -> World:
+        width, height = MURAL_SIZE[key]
+        world, cs, rng = _new(key, map_id, width, height, loop=False)
+        MURAL_LAYOUT[key](world, cs, rng)
+        snap_spawn(world)
+        return world
+    return build
+
+
 NEON_LINES = {
     "eye": "it has been open the whole time.",
     "spiral": "you lose your place halfway round.",
@@ -1209,6 +1448,153 @@ def build_umbrellas(map_id: int) -> World:
     world.spawn = (groves[0].cx, groves[0].cy)
     world.npcs = ["umbrella_watcher", "drenched"]
     return world
+
+
+# --- the ascent --------------------------------------------------------------
+# Four planes above the umbrella forest.  Opening an umbrella under yourself
+# lifts you one plane; stepping into a waterfall drops you the whole way to
+# the bottom in one go.  The geometry is the argument: the first plane is soft
+# blobs joined by curves, and by the fourth it is a grid of identical cells
+# with corridors that meet at right angles and a counter at the end of each.
+#
+# Nothing is ever named.  There is no scripture and no iconography anybody
+# could point at.  It is a dream about the *shape* of an ascent.
+
+ASCENT_SIZE = {"umbrellas2": (138, 126), "umbrellas3": (134, 122),
+               "umbrellas4": (130, 118), "umbrellas5": (126, 114)}
+
+
+def _cloud_plane(world: World, cs, rng: random.Random) -> None:
+    """Soft blobs, joined by curves.  Everything here says you arrived."""
+    m, t = world.map, cs.tiles
+    fld = Field(m.width, m.height)
+    banks = layout.clusters(fld, rng, count=16, blobs=7, radius=(8, 13),
+                            thread=3)
+    fld.ensure_connected()
+    fld.protect_chokepoints()
+    fld.build_walls(4)
+    layout.paint(m, fld, t, rng=rng)
+    layout.shade_walls(m, fld, t)
+
+    fur = Furnisher(m, fld, cs, rng)
+    for index, zone in enumerate(banks):
+        layout.carpet(m, fld, zone, t, rng, ("rings", "full")[index % 2])
+        for slot, (px, py) in enumerate(ring(zone, 5, inset=4)):
+            fur.put(("umbrella_0", "umbrella_1", "mushroom")[slot % 3], px, py)
+        fur.put("bench", zone.cx, zone.cy, pad=1)
+        layout.glow_floor(m, fld, zone, t, "flow", ring(zone, 6, inset=6))
+    world.plan = fld
+    world.landmarks = {"banks": [(z.cx, z.cy) for z in banks]}
+    world.spawn = (banks[0].cx, banks[0].cy)
+
+
+def _terrace_plane(world: World, cs, rng: random.Random) -> None:
+    """Squared off, colonnaded, and beautifully made.  Nobody made it."""
+    m, t = world.map, cs.tiles
+    fld = Field(m.width, m.height)
+    courts = layout.chambers(fld, rng, cols=5, rows=4, size=(21, 18),
+                             shape="rect", corridor_width=3, skip=0.10,
+                             jitter=1)
+    fld.ensure_connected()
+    fld.protect_chokepoints()
+    fld.build_walls(3)
+    layout.paint(m, fld, t, rng=rng)
+    layout.shade_walls(m, fld, t)
+
+    fur = Furnisher(m, fld, cs, rng)
+    for index, zone in enumerate(courts):
+        layout.carpet(m, fld, zone, t, rng, "border")
+        # a colonnade down both long sides, the same on every court
+        for px, py in ring(zone, 8, inset=3):
+            fur.put("column", px, py, pad=0)
+        fur.put(("bench", "planter")[index % 2], zone.cx, zone.cy, pad=1)
+        if index % 3 == 0:
+            fur.put("umbrella_0", zone.cx + 5, zone.cy - 4, pad=1)
+    world.plan = fld
+    world.landmarks = {"courts": [(z.cx, z.cy) for z in courts]}
+    world.spawn = (courts[0].cx, courts[0].cy)
+
+
+def _tier_plane(world: World, cs, rng: random.Random) -> None:
+    """Cells, all the same size, in rows.  The corridors meet at right angles."""
+    m, t = world.map, cs.tiles
+    fld = Field(m.width, m.height)
+    cells = []
+    for row in range(5):
+        for col in range(6):
+            cx = 12 + col * 19
+            cy = 12 + row * 22
+            cells.append(fld.carve(Zone(f"cell{row}{col}", cx, cy, 13, 13,
+                                        "rect")))
+    for row in range(5):
+        fld.long_hall(0, 12 + row * 22, m.width, vertical=False, width=3)
+    for col in range(6):
+        fld.long_hall(12 + col * 19, 0, m.height, vertical=True, width=3)
+    fld.ensure_connected()
+    fld.protect_chokepoints()
+    fld.build_walls(3)
+    layout.paint(m, fld, t, rng=rng)
+    layout.shade_walls(m, fld, t)
+
+    fur = Furnisher(m, fld, cs, rng)
+    for index, zone in enumerate(cells):
+        layout.carpet(m, fld, zone, t, rng, "full")
+        # identical furnishing in every single one, which is the point
+        fur.put("cabinet", zone.cx - 4, zone.cy - 3, pad=0)
+        fur.put("bench", zone.cx + 2, zone.cy + 2, pad=0)
+        fur.put("column", zone.cx + 4, zone.cy - 4, pad=0)
+    world.plan = fld
+    world.landmarks = {"cells": [(z.cx, z.cy) for z in cells]}
+    world.spawn = (cells[0].cx, cells[0].cy)
+
+
+def _office_plane(world: World, cs, rng: random.Random) -> None:
+    """A counter at the end of every corridor, and nothing behind any of them."""
+    m, t = world.map, cs.tiles
+    fld = Field(m.width, m.height)
+    halls = []
+    for row in range(7):
+        y = 8 + row * 15
+        fld.long_hall(0, y, m.width, vertical=False, width=5)
+        halls.append((m.width // 2, y))
+    for col in range(4):
+        fld.long_hall(14 + col * 32, 0, m.height, vertical=True, width=3)
+    windows = []
+    for row in range(7):
+        for col in range(4):
+            zone = fld.carve(Zone(f"win{row}{col}", 14 + col * 32,
+                                  8 + row * 15, 9, 7, "rect"))
+            windows.append((zone.cx, zone.cy))
+    fld.ensure_connected()
+    fld.protect_chokepoints()
+    fld.build_walls(2)
+    layout.paint(m, fld, t, rng=rng)
+    layout.shade_walls(m, fld, t)
+
+    fur = Furnisher(m, fld, cs, rng)
+    for index, (wx, wy) in enumerate(windows):
+        fur.put("counter", wx, wy - 2, pad=0)
+        fur.put("cabinet", wx - 3, wy + 2, pad=0)
+    world.plan = fld
+    world.landmarks = {"windows": windows, "halls": halls}
+    world.spawn = halls[0]
+
+
+ASCENT_LAYOUT = {"umbrellas2": _cloud_plane, "umbrellas3": _terrace_plane,
+                 "umbrellas4": _tier_plane, "umbrellas5": _office_plane}
+
+
+def _ascent_plane(key: str):
+    """One plane of the ascent, higher and less kind than the last."""
+    def build(map_id: int) -> World:
+        width, height = ASCENT_SIZE[key]
+        world, cs, rng = _new(key, map_id, width, height)
+        ASCENT_LAYOUT[key](world, cs, rng)
+        snap_spawn(world)
+        repair_connectivity(world.map, world.plan, cs, world.spawn,
+                            cs.tiles["ground"])
+        return world
+    return build
 
 
 def build_stars(map_id: int) -> World:
@@ -1317,6 +1703,8 @@ BUILD = {
     **{key: _stair_floor(DEPTH[key]) for key in STAIR_FLOORS},
     **{key: _face_channel(i)
        for i, key in enumerate(FACE_CHANNELS) if i},
+    **{key: _mural_inside(key) for key in MURAL_INSIDE_ORDER},
+    **{key: _ascent_plane(key) for key in ASCENT_ORDER},
 }
 
 
@@ -1340,6 +1728,16 @@ CARPETS: dict[str, list[str]] = {
     "faces2": ["rings", "full", "lattice", "checker"],
     "faces3": ["rings", "full", "lattice", "checker"],
     "faces4": ["rings", "full", "lattice", "checker"],
+    # A painting's interior is already the pattern; the carpet only picks out
+    # where a room is, so it stays to one arrangement each.
+    # A painting's interior is already patterned floor to wall, so the carpet
+    # only marks out where a room is — a ring, not a fill.
+    "neon2": ["rings"], "neon3": ["rings"], "neon4": ["rings"],
+    "neon5": ["rings"],
+    # The carpets go from loose to regimented the same way everything else in
+    # the ascent does.
+    "umbrellas2": ["rings", "full"], "umbrellas3": ["border", "lattice"],
+    "umbrellas4": ["checker", "full"], "umbrellas5": ["full"],
 }
 
 # The base flooring laid through every walkable tile of a world, before any
@@ -1351,6 +1749,10 @@ WASH: dict[str, tuple[str, int]] = {
     "umbrellas": ("diagonal", 3), "stars": ("scatter", 4),
     "faces2": ("scatter", 4), "faces3": ("scatter", 4),
     "faces4": ("scatter", 4),
+    "neon2": ("scatter", 9), "neon3": ("diagonal", 8),
+    "neon4": ("rows", 7), "neon5": ("scatter", 9),
+    "umbrellas2": ("scatter", 5), "umbrellas3": ("diagonal", 3),
+    "umbrellas4": ("grid", 2), "umbrellas5": ("rows", 2),
 }
 
 # Where the animated tiles go, and how many, per world.
@@ -1360,6 +1762,10 @@ GLOW: dict[str, tuple[str, int]] = {
     "hands": ("anim_0", 4), "checker": ("anim_1", 6), "toys": ("anim_0", 6),
     "umbrellas": ("flow", 7), "stars": ("flow", 10),
     "faces2": ("anim_0", 6), "faces3": ("anim_0", 6), "faces4": ("anim_0", 6),
+    "neon2": ("flow", 9), "neon3": ("flow", 8), "neon4": ("anim_0", 5),
+    "neon5": ("flow", 11),
+    "umbrellas2": ("flow", 8), "umbrellas3": ("flow", 6),
+    "umbrellas4": ("anim_0", 4), "umbrellas5": ("anim_2", 2),
 }
 
 

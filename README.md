@@ -51,7 +51,16 @@ rebuilding does not regenerate anything that has not changed.
 
 ## Playing
 
-Point [EasyRPG Player](https://easyrpg.org/player/) at the `game/` directory.
+Point [EasyRPG Player](https://easyrpg.org/player/) at the **`game/`**
+directory — not at the repository root.
+
+    easyrpg-player --project-path game
+
+The root is a source checkout, not a project. Opening it in the Player used to
+find a stub `RPG_RT.ldb` left over from the first day of the project and play
+*that* instead: a single grey map, a sprite called `Hero`, and the words
+"hello there". Those files are gone, so the Player now correctly refuses the
+root rather than quietly playing something else.
 
 ## Controls
 

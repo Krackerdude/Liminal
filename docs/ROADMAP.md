@@ -27,7 +27,7 @@ are how they get built.
 | Subworlds | **34** |
 | Secrets per subworld | **1–5** |
 | Subworld music | **one generated track each**, 34 additional tracks |
-| World layers | **18 extra maps**, and they are *not* subworlds |
+| World layers | **15 extra maps**, and they are *not* subworlds |
 
 **Uneven NPC density is a requirement, not an accident.** Some worlds have
 none at all and are meant to feel emptied rather than unfinished. Others are
@@ -46,12 +46,15 @@ described as "the X world but smaller", it is cut.
 they are additional *states or floors of the same world*, reached by that
 world's own verb and sharing its identity, music family and cast:
 
-| world | layers | what they are | built |
+Counted as *planes including the base world*, so "5" means the world plus
+four more maps. Fifteen extra maps in all.
+
+| world | planes | what they are | built |
 |---|---|---|---|
 | stairs | 5 | floors, each more corrupted than the last, reached by falling in a particular order | ✅ |
-| umbrellas | 5 | planes, ascending, the imagery coming apart the higher you get | |
+| umbrellas | 5 | planes, ascending, the imagery coming apart the higher you get | ✅ |
 | faces | 4 | broadcast states of one map, each a different palette with its own residents and items | ✅ |
-| neon | 4 | the insides of murals, entered by standing on them | |
+| neon | 4 | the insides of murals, entered by standing on them | ✅ |
 
 A subworld is secret, hostile and unrelated. A layer is the world continuing.
 
@@ -83,6 +86,48 @@ down. Walk that way inside a two-second window and the picture changes around
 you — a teleport to the same coordinates on the next channel, which is only
 possible because the four maps are the same map. Miss it and nothing at all
 happens.
+
+**The paintings, in detail.** Four floor murals in the scrawl world are also
+ways into it. Step on one — touch, not action, because facing a picture on the
+floor and pressing a button would make it a door — and you are inside it. Each
+interior is built out of that painting's shape and its two colours and nothing
+else, so the layout carries the same information as the picture:
+
+| painting | inside it | its secret |
+|---|---|---|
+| the eye | concentric rings round a pupil, gaps that never line up | stand in the pupil and stop moving |
+| the spiral | one corridor, in and back out again | walk it outward, from the middle |
+| the mouth | a throat that narrows, pockets between the teeth | go all the way down instead of into a pocket |
+| the star | five arms and a hub, nothing in between | touch the tips in the order the points are longest |
+
+None of these are a torus. Everywhere else wraps, which is what makes walking
+feel endless; a painting is a finite object, and finding its edge is the
+difference. Each keeps one thing — the lens, the thread, the loose tooth, the
+long point — and two residents made of the painting itself. They are a set
+rather than a chain: any order, but the plaza in the middle of the scrawl
+world answers to all four and to nothing less.
+
+**The ascent, in detail.** Opening an umbrella under yourself lifts you one
+plane. That is the whole verb — no ladder, no lift, no stair, nothing that
+looks like a way up, only a furled umbrella lying about and the ordinary act
+of opening one. The argument is carried by what happens to three things on the
+way up:
+
+| plane | layout | who is on it | palette |
+|---|---|---|---|
+| higher | soft blobs joined by curves | three designs, wandering, talkative | warm cream, saturation 88 |
+| higher still | squared courts, colonnaded | two designs, wandering | cooler, saturation 62 |
+| the tiers | thirty identical cells on a grid | one design, stationary, identical | grey, saturation 38 |
+| the top | corridors of counters | one, and it is a fitting with a face | flat, saturation 16 |
+
+Nothing is ever named. There is no scripture, no iconography anybody could
+point at, nothing that says the word out loud. One sentence is written across
+the four planes, one fragment per plane, and it is only readable by somebody
+who went all the way up.
+
+Coming down is the waterfalls. Every plane pours off its own edge and stepping
+into one drops you the whole way to the bottom in a single go — no stages, no
+gentle descent. The climb and the fall are deliberately not the same shape.
 
 **Reaching a subworld is never signposted.** No door is drawn as a door. The
 route is a behaviour, a condition, or a coincidence — not an exit.

@@ -309,8 +309,25 @@ def build_nexus() -> ChipsetBuild:
     ground = ct.soft_ground(pal.ground, pal.ground_b, 0.35)
     _basics(cb, pal, ground)
 
-    cb.add_object("door", ct.door_frame(pal, 2, 3,
-                                    reflect=_reflection(cb.name)))
+    # Twelve portals, and every one of them is a different mirror.
+    #
+    # These used to be one object, so all twelve looked identical and the
+    # per-world mirror only ever appeared *inside* its own world — which put
+    # the distinguishing detail on the side of the trip where the player
+    # already knows where they are.  A mirror is only useful as a portal if it
+    # tells you where it goes while you are still standing in front of it.
+    #
+    # Each takes the destination world's own frame colour and glass, and the
+    # silhouette standing in it is a thing from that world.  The nexus is the
+    # only place in the game that borrows other worlds' palettes, and it is
+    # allowed to because looking through is the entire point of the room.
+    from ..worlds.worlds import DREAM_ORDER
+
+    for key in DREAM_ORDER:
+        other = PALETTES[key]
+        cb.add_object(f"door_{key}", ct.door_frame(other, 2, 3,
+                                                   reflect=ct.REFLECTION[key]))
+    cb.add_object("door", ct.door_frame(pal, 2, 3, reflect="door"))
     cb.add_object("door_shut", ct.door_frame(pal, 2, 3))
     cb.add_object("lamp", ct.lamp_post(pal, 1, 3), solid="bottom")
     cb.add_object("bench", ct.bench_seat(pal, 3, 2), solid="bottom")

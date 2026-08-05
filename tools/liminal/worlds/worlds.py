@@ -310,7 +310,8 @@ def build_nexus(map_id: int) -> World:
         angle = -math.pi / 2 + index * math.tau / 12
         x = int(m.width / 2 + math.cos(angle) * 15) - 1
         y = int(m.height / 2 + math.sin(angle) * 11) - 1
-        gen.stamp(m, cs.obj("door"), x, y)
+        # each portal wears the mirror of the world it opens onto
+        gen.stamp(m, cs.obj(f"door_{DREAM_ORDER[index]}"), x, y)
         world.placer.mark(x, y, 2, 3, f"door_{DREAM_ORDER[index]}")
         doors.append((x, y))
         gen.patch(m, t["glow"], x + 1, y + 3, 2.4, rng, ragged=0.2)

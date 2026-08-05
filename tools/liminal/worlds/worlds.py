@@ -71,6 +71,7 @@ class World:
 # player has consciously registered why.
 TINTS: dict[str, tuple[int, int, int, int]] = {
     "room": (104, 100, 94, 96),          # warm, slightly faded
+    "balcony": (96, 98, 110, 84),        # night air, colder than indoors
     "nexus": (86, 88, 108, 78),          # cold, desaturated, low
     "pink": (110, 96, 102, 104),         # pushed towards its own pink
     "numbers": (96, 104, 102, 92),       # clinical
@@ -108,6 +109,7 @@ TINTS: dict[str, tuple[int, int, int, int]] = {
 # 0..100 where 100 is invisible, so these are all whispers.
 OVERLAYS: dict[str, tuple[str, int]] = {
     "room": ("Grain", 88),
+    "balcony": ("Grain", 84),
     "nexus": ("Vignette", 62),
     "pink": ("HazePink", 90),
     "numbers": ("Grain", 92),
@@ -138,7 +140,7 @@ OVERLAYS: dict[str, tuple[str, int]] = {
 }
 
 MUSIC: dict[str, str] = {
-    "room": "Room", "nexus": "Nexus", "pink": "Pink", "numbers": "Numbers",
+    "room": "Room", "balcony": "Room", "nexus": "Nexus", "pink": "Pink", "numbers": "Numbers",
     "blocks": "Blocks", "stairs": "Stairs", "sand": "Sand", "faces": "Faces",
     "hands": "Hands", "checker": "Checker", "toys": "Toys", "neon": "Neon",
     "umbrellas": "Umbrellas", "stars": "Stars",
@@ -150,6 +152,7 @@ MUSIC: dict[str, str] = {
 
 TITLES: dict[str, str] = {
     "room": "the room",
+    "balcony": "outside",
     "nexus": "the doors",
     "pink": "brick",
     "numbers": "counting",
@@ -181,7 +184,7 @@ TITLES: dict[str, str] = {
 # Two dreams have nobody at all — the stairwell and the field of hands are
 # meant to read as *emptied*, not as unfinished — and the room is yours.
 POPULATION: dict[str, int] = {
-    "room": 0, "nexus": 3,
+    "room": 0, "balcony": 0, "nexus": 3,
     "pink": 20, "numbers": 20, "blocks": 16, "stairs": 0, "sand": 15,
     "faces": 19, "hands": 0, "checker": 17, "toys": 20, "neon": 20,
     "umbrellas": 16, "stars": 16,
@@ -216,7 +219,7 @@ MURAL_OF = {"neon2": "eye", "neon3": "spiral", "neon4": "mouth",
 # you the whole way to the bottom.
 ASCENT_ORDER = ["umbrellas2", "umbrellas3", "umbrellas4", "umbrellas5"]
 
-WORLD_ORDER = ["room", "nexus", *DREAM_ORDER, *STAIR_FLOORS,
+WORLD_ORDER = ["room", "balcony", "nexus", *DREAM_ORDER, *STAIR_FLOORS,
                *FACE_CHANNELS[1:], *MURAL_INSIDE_ORDER,
                *ASCENT_ORDER]
 
@@ -245,53 +248,161 @@ def _new(key: str, map_id: int, width: int, height: int, *,
 
 # --- the two places that are not dreams --------------------------------------
 
-def build_room(map_id: int) -> World:
-    """A small room with one bed, one door and one window.  Does not loop.
+def _walls(m, t) -> None:
+    """Cut a room out of a building, on a map exactly one screen across.
 
-    Four walls, not one.  A room with a single back wall gives furniture only
-    one place to stand, and everything lines up along it like a showroom — so
-    the near and side walls are real, and the furniture is grouped the way a
-    person's things actually collect: the sleeping corner on one side, the
-    everything-else corner on the other, and the middle left alone.
+    The border of an interior is not a texture, it is the wall in section:
+    skin outside, core in the middle, plaster turned toward you.  Laying it as
+    bands rather than as one repeated tile is the whole reason a top-down room
+    reads as having thickness.
+
+    Outside the wall is black.  The map is twenty by fifteen — one screen, no
+    scrolling — so the room ends exactly where the room ends and nothing of
+    the engine's backdrop is ever visible past it.
     """
-    world, cs, rng = _new("room", map_id, 21, 17, loop=False)
+    m.fill_rect(0, 0, m.width, m.height, t["black"])
+    for x in range(1, m.width - 1):
+        m.set_lower(x, 0, t["cut_n"])
+        m.set_lower(x, 1, t["face_n"])
+        m.set_lower(x, 2, t["face_n_low"])
+        m.set_lower(x, m.height - 2, t["face_s"])
+        m.set_lower(x, m.height - 1, t["cut_s"])
+    for y in range(3, m.height - 2):
+        m.set_lower(1, y, t["cut_w"])
+        m.set_lower(2, y, t["face_w"])
+        m.set_lower(m.width - 3, y, t["face_e"])
+        m.set_lower(m.width - 2, y, t["cut_e"])
+
+
+def build_room(map_id: int) -> World:
+    """One room, one screen, and a door out to the balcony.
+
+    Fourteen tiles by eight of actual floor — about four of the player's own
+    height corner to corner — so the furniture is always in shot and crossing
+    it takes three seconds rather than ten.
+
+    Everything with a back has that back against a wall and is drawn flush to
+    it; nothing stands out in the floor facing another piece of furniture.
+    There is no painted pool of light anywhere on the boards either: the lamp
+    is lit, the room is not, and a stain of warm tiles under it only ever read
+    as a stain.
+    """
+    world, cs, rng = _new("room", map_id, 20, 15, loop=False)
     m, t = world.map, cs.tiles
 
-    m.fill_rect(0, 0, m.width, m.height, t["ground"])
+    _walls(m, t)
+    for y in range(3, m.height - 2):            # the boards, with the joints
+        for x in range(3, m.width - 3):         # falling in different places
+            key = ("ground_b" if (x * 5 + y * 3) % 7 == 0
+                   else "path" if (x * 3 + y * 7) % 11 == 0 else "ground")
+            m.set_lower(x, y, t[key])
 
-    # the back wall, three tiles deep, and the other three one tile deep
-    for x in range(m.width):
-        gen.stamp(m, cs.obj("wall"), x, 0)
-    for y in range(3, m.height):
-        m.set_lower(0, y, t["skirt"])
-        m.set_lower(m.width - 1, y, t["skirt"])
-    for x in range(m.width):
-        m.set_lower(x, m.height - 1, t["skirt"])
+    # --- set into the far wall.  The wall is rows 0-2: the cut across its
+    # top, then two rows of plaster.  These sit on the plaster and nowhere
+    # else, which is what makes them read as part of the wall — one row lower
+    # and the bottom half of every door lands on floorboards.
+    gen.stamp(m, cs.obj("door"), 3, 1, overlap=True)       # never opens
+    gen.stamp(m, cs.obj("window"), 5, 1, overlap=True)
+    gen.stamp(m, cs.obj("slider"), 13, 1, overlap=True)    # out to the balcony
+    gen.stamp(m, cs.obj("clock"), 16, 1, overlap=True)     # hung, not standing
 
-    # -- the sleeping corner, left
-    gen.stamp(m, cs.obj("bed"), 1, 3)
-    gen.stamp(m, cs.obj("television"), 1, 11)
+    # --- along the far wall, on the first row of floor and flush to it: the
+    # bed, the lamp, and the nightstand the lamp stands beside
+    gen.stamp(m, cs.obj("bed"), 7, 3)
+    gen.stamp(m, cs.obj("lamp_lit"), 9, 3)
+    gen.stamp(m, cs.obj("nightstand"), 10, 3)
+    gen.stamp(m, cs.obj("television"), 11, 3)
 
-    # -- the rest of a life, right.  Spread down the wall rather than lined up
-    # along the back one, so crossing the room passes each of them in turn.
-    gen.stamp(m, cs.obj("wardrobe"), 18, 3)
-    gen.stamp(m, cs.obj("desk"), 18, 8)
-    gen.stamp(m, cs.obj("mirror"), 18, 12)
+    # --- along the side walls
+    gen.stamp(m, cs.obj("desk"), 3, 5)
+    gen.stamp(m, cs.obj("mirror"), 3, 8)
+    gen.stamp(m, cs.obj("wardrobe"), 15, 5)
+    gen.stamp(m, cs.obj("shelf"), 15, 9)
+    gen.stamp(m, cs.obj("plant"), 5, 11)
+    gen.stamp(m, cs.obj("bin"), 7, 12)
+    gen.stamp(m, cs.obj("slippers"), 8, 6)
 
-    # -- the back wall itself: the door you cannot use, and the window
-    gen.stamp(m, cs.obj("door"), 9, 0)
-    gen.stamp(m, cs.obj("window"), 5, 1)
-    m.set_upper(14, 1, t["lamp"])
-
-    # The rug sits in front of the television, not filling a corner.
-    m.fill_rect(5, 9, 6, 4, t["rug"])
+    for y in range(8, 12):                      # one rug, in the middle
+        for x in range(8, 14):
+            m.set_lower(x, y, t["rug_edge"] if y == 8 else t["rug"])
 
     world.landmarks = {
-        "bed": [(1, 3)], "desk": [(18, 8)], "wardrobe": [(18, 3)],
-        "television": [(1, 11)], "mirror": [(18, 12)], "window": [(5, 1)],
-        "door": [(9, 0)],
+        "bed": [(7, 3)], "desk": [(3, 5)], "wardrobe": [(15, 5)],
+        "television": [(11, 3)], "mirror": [(3, 8)], "window": [(5, 1)],
+        "door": [(3, 1)], "shelf": [(15, 9)], "clock": [(16, 1)],
+        "plant": [(5, 11)], "slider": [(13, 1)], "nightstand": [(10, 3)],
     }
-    world.spawn = (10, 11)
+    world.spawn = (10, 7)
+    world.npcs = []
+    return world
+
+
+def build_balcony(map_id: int) -> World:
+    """Three paces of concrete, and the only horizon in the waking half.
+
+    Its own screen rather than a strip along the top of the bedroom: the room
+    is somewhere you are kept, and this is the one place you can see out of.
+    Sharing a map would have made the view a border.
+
+    What you can see is water, a far shore with towers on it, and snow lying
+    on everything including the rail you are holding.  The towers are objects
+    rather than tiles so they can be genuinely large — the point of the view
+    is the difference in scale between them and the flat.
+    """
+    world, cs, rng = _new("balcony", map_id, 20, 15, loop=False)
+    m, t = world.map, cs.tiles
+
+    # --- the view, far to near
+    m.fill_rect(0, 0, m.width, 2, t["sky"])
+    m.fill_rect(0, 2, m.width, 1, t["sky_low"])
+    m.fill_rect(0, 3, m.width, 3, t["sky_low"])
+    m.fill_rect(0, 6, m.width, 1, t["bank_far"])
+    m.fill_rect(0, 7, m.width, 2, t["water"])
+    for x in range(0, m.width, 3):              # the towers' light on it
+        m.set_lower(x, 7, t["water_lit"])
+    m.fill_rect(0, 9, m.width, 1, t["bank_near"])
+
+    # the far shore, standing on the bank.  Bases on row 5 so every tower
+    # meets the snow at the same waterline.
+    for name, x, rows in (("tower_c", 0, 4), ("tower_a", 3, 6),
+                          ("tower_d", 5, 6), ("tower_b", 9, 5),
+                          ("tower_a", 12, 6), ("tower_d", 14, 6),
+                          ("tower_c", 17, 4)):
+        gen.stamp(m, cs.obj(name), x, 6 - rows, overlap=True)
+
+    # --- the parapet you lean on, and the rail standing on it
+    m.fill_rect(0, 10, m.width, 1, t["parapet"])
+    for x in range(m.width):
+        gen.stamp(m, cs.obj("rail"), x, 10, overlap=True)
+
+    # --- the deck
+    m.fill_rect(0, 11, m.width, 2, t["ground"])
+    for x in range(m.width):
+        if x % 3 == 1:
+            m.set_lower(x, 11, t["ground_b"])
+        if x % 5 == 2:
+            m.set_lower(x, 12, t["path"])
+
+    # --- the building at your back, in the same section as the room's walls
+    for x in range(m.width):
+        m.set_lower(x, 13, t["render"])
+        m.set_lower(x, 14, t["cut_s"])
+    for y in range(11, 13):                     # the returns, either side
+        m.set_lower(0, y, t["cut_w"])
+        m.set_lower(m.width - 1, y, t["cut_e"])
+
+    gen.stamp(m, cs.obj("slider"), 9, 13, overlap=True)
+    gen.stamp(m, cs.obj("aircon"), 15, 11)
+    gen.stamp(m, cs.obj("chair"), 5, 11)
+    gen.stamp(m, cs.obj("pot"), 3, 12)
+    gen.stamp(m, cs.obj("pot"), 13, 12)
+    gen.stamp(m, cs.obj("bucket"), 7, 12)
+
+    world.landmarks = {
+        "slider": [(9, 13)], "rail": [(10, 10)], "chair": [(5, 11)],
+        "aircon": [(15, 11)], "bucket": [(7, 12)],
+    }
+    world.spawn = (10, 12)
     world.npcs = []
     return world
 
@@ -1696,7 +1807,7 @@ def _face_channel(channel: int):
 
 
 BUILD = {
-    "room": build_room, "nexus": build_nexus, "pink": build_pink,
+    "room": build_room, "balcony": build_balcony, "nexus": build_nexus, "pink": build_pink,
     "numbers": build_numbers, "blocks": build_blocks, "stairs": build_stairs,
     "sand": build_sand, "faces": build_faces, "hands": build_hands,
     "checker": build_checker, "toys": build_toys, "neon": build_neon,

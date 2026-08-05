@@ -15,6 +15,7 @@ from __future__ import annotations
 from typing import Callable
 
 from . import chipsets as ct
+from . import material as mt
 from . import landmarks as lm
 from .canvas import Canvas, TRANSPARENT, blend, cooler, outline_in, warmer
 from .chipsets import ChipsetBuild, ChipsetBuilder
@@ -246,59 +247,612 @@ def _finish(cb: ChipsetBuilder, ground: Canvas) -> ChipsetBuild:
 
 # --- the two places that are not dreams --------------------------------------
 
+def _room_materials() -> dict[str, "mt.Material"]:
+    """One palette shared by the room and the balcony it opens onto.
+
+    Two places that are the same flat need the same substances, or stepping
+    outside reads as loading a different game.  The concrete, the sky and the
+    city are the only things the balcony adds.
+    """
+    return {
+        # the building itself, in three substances so a cut through a wall
+        # shows layers rather than a border
+        "plaster": mt.Material("plaster", (98, 94, 116), grain="v"),
+        "core": mt.Material("core", (74, 76, 92)),
+        "skin": mt.Material("skin", (48, 48, 64)),
+        # the room
+        "floor": mt.Material("floor", (80, 58, 50)),
+        "wood": mt.Material("wood", (94, 68, 54)),
+        "linen": mt.Material("linen", (188, 188, 196)),
+        "cloth": mt.Material("cloth", (56, 86, 98)),
+        "lamp": mt.Material("lamp", (204, 164, 106)),
+        "metal": mt.Material("metal", (96, 100, 112)),
+        "screen": mt.Material("screen", (60, 76, 80)),
+        "leaf": mt.Material("leaf", (70, 98, 68)),
+        # outside
+        "sky": mt.Material("sky", (98, 100, 130)),
+        "far": mt.Material("far", (64, 64, 92)),
+        "near": mt.Material("near", (46, 44, 66)),
+        "concrete": mt.Material("concrete", (92, 90, 100)),
+    }
+
+
+def _wall_cut(mats: dict, side: str) -> Canvas:
+    """One tile of a wall seen in section: skin, then core.
+
+    The room is a hole cut in a building, and this is the cut.  Yume Nikki's
+    interiors do the same thing and it is the single cheapest way to make a
+    top-down room read as having thickness — the border is not a texture, it
+    is the *inside* of the wall, and the layers are what say so.
+    """
+    core, skin = mats["core"], mats["skin"]
+    art = Canvas(TILE, TILE, core.mid)
+    mt.bricks(art, 0, 0, TILE, TILE, core, course=4, stagger=True)
+    if side == "n":                     # the far wall: skin above, core below
+        mt.plane(art, 0, 0, TILE, 6, skin.shade)
+        art.hline(6, 0, TILE - 1, skin.deep)
+        art.hline(7, 0, TILE - 1, core.lit)
+    elif side == "s":                   # the near wall: core above, skin below
+        mt.plane(art, 0, 10, TILE, 6, skin.shade)
+        art.hline(9, 0, TILE - 1, skin.deep)
+        art.hline(8, 0, TILE - 1, core.lit)
+    elif side == "w":
+        mt.plane(art, 0, 0, 6, TILE, skin.shade)
+        art.vline(6, 0, TILE - 1, skin.deep)
+        art.vline(7, 0, TILE - 1, core.lit)
+    elif side == "e":
+        mt.plane(art, 10, 0, 6, TILE, skin.shade)
+        art.vline(9, 0, TILE - 1, skin.deep)
+        art.vline(8, 0, TILE - 1, core.lit)
+    return art
+
+
+def _wall_face(mats: dict, side: str, low: bool = False) -> Canvas:
+    """The plaster face of a wall, turned toward the room.
+
+    Light comes from the upper left for the whole game, so the far wall is
+    brightest at the top and the west-facing plaster is the one in shadow.
+    Everything here is two flat values with a dithered seam between them —
+    there is no gradient anywhere on a wall.
+    """
+    pl = mats["plaster"]
+    art = Canvas(TILE, TILE, pl.mid)
+    if side == "n":
+        if low:
+            mt.plane(art, 0, 0, TILE, 10, pl.mid)
+            mt.seam(art, 0, 10, TILE, 3, pl.mid, pl.shade)
+            mt.plane(art, 0, 13, TILE, 3, pl.shade)
+        else:
+            mt.plane(art, 0, 0, TILE, 2, pl.hot)
+            mt.seam(art, 0, 2, TILE, 3, pl.hot, pl.lit)
+            mt.plane(art, 0, 5, TILE, 11, pl.lit)
+    elif side == "s":
+        mt.plane(art, 0, 0, TILE, 4, pl.shade)     # the floor join, in shadow
+        mt.seam(art, 0, 4, TILE, 3, pl.shade, pl.mid)
+        mt.plane(art, 0, 7, TILE, 9, pl.mid)
+    elif side == "w":                              # faces east: lit
+        mt.plane(art, 0, 0, 4, TILE, pl.shade)
+        mt.seam(art, 4, 0, 3, TILE, pl.shade, pl.mid, vertical=True)
+        mt.plane(art, 7, 0, 9, TILE, pl.mid)
+    elif side == "e":                              # faces west: in shadow
+        mt.plane(art, 0, 0, 9, TILE, pl.mid)
+        mt.seam(art, 9, 0, 3, TILE, pl.mid, pl.shade, vertical=True)
+        mt.plane(art, 12, 0, 4, TILE, pl.shade)
+    for x in range(0, TILE, 8):                    # faint vertical panelling
+        art.vline(x, 0, TILE - 1, pl.shade)
+    return art
+
+
+def _planks(mats: dict, offset: int) -> Canvas:
+    """Floorboards: four to a tile, with the butt joints staggered.
+
+    Two planks per tile is a scaled-up texture and looks like it; four with
+    the ends broken in different places reads as a floor.  Every board has its
+    lit lip on the side the light comes from and its groove on the other.
+    """
+    fl = mats["floor"]
+    art = Canvas(TILE, TILE, fl.mid)
+    mt.plane(art, 0, 0, TILE, TILE, fl.mid)
+    for top in range(0, TILE, 8):               # two wide boards to a tile
+        art.hline(top, 0, TILE - 1, fl.shade)   # the groove between them
+        art.hline(top + 1, 0, TILE - 1, fl.lit)  # and the lit lip of the next
+        art.hline(top + 5, 0, TILE - 1, fl.shade)   # the grain within a board
+    if offset:                                  # a butt joint, but rarely:
+        art.vline(offset % TILE, 0, TILE - 1, fl.shade)   # one tile in six
+    return art
+
+
 def build_room() -> ChipsetBuild:
-    """The room you wake up in.  Ordinary on purpose, so leaving it counts."""
+    """The room you wake up in, built on the shared material system.
+
+    The least dreamlike place in the game, and the one that sets the style for
+    everything remastered after it.  Every surface here is a Material — five
+    values from one base, shadows keeping their hue and pushed cool, highlights
+    warm and desaturating — laid down as flat planes with a two-pixel dithered
+    seam where they meet.  No gradients, no noise, no black outlines.
+
+    The walls are the load-bearing idea.  They are not a border pattern: they
+    are a section through a building, drawn as skin, core and plaster face, so
+    that standing in the middle of the floor you can see how thick the walls
+    are on every side.  Furniture is drawn with a visible front, lit from the
+    same upper-left as the walls, so the whole room agrees about where it is.
+    """
     pal = PALETTES["room"]
     cb = ChipsetBuilder("room", pal)
+    mats = _room_materials()
+    PLASTER, CORE = mats["plaster"], mats["core"]
+    FLOOR, WOOD = mats["floor"], mats["wood"]
+    LINEN, CLOTH = mats["linen"], mats["cloth"]
+    LAMP, METAL = mats["lamp"], mats["metal"]
+    SCREEN, LEAF = mats["screen"], mats["leaf"]
+    SKY, FAR = mats["sky"], mats["far"]
 
-    boards = Canvas(TILE, TILE, pal.ground)
-    boards.rect(0, 0, TILE, 1, warmer(pal.ground, 0.25))
-    boards.vline(0, 0, TILE - 1, cooler(pal.ground, 0.14))
-    boards.vline(8, 0, TILE - 1, cooler(pal.ground, 0.10))
-    _basics(cb, pal, boards)
-    rug = Canvas(TILE, TILE, pal.accent_soft)
-    rug.dither(pal.accent, 0.35)
+    # --- the floor
+    floor = _planks(mats, 0)
+    cb.add("ground", floor)
+    cb.add("ground_b", _planks(mats, 9))
+    cb.add("path", _planks(mats, 5))
+
+    RUG = mt.Material("rug", (88, 54, 58))
+    rug = Canvas(TILE, TILE, RUG.mid)
+    mt.weave(rug, 0, 0, TILE, TILE, RUG, pitch=4)
     cb.add("rug", rug)
+    rug_edge = rug.copy()
+    mt.plane(rug_edge, 0, 0, TILE, 2, RUG.lit)
+    cb.add("rug_edge", rug_edge)
 
-    cb.add_object("wall", ct.wall_run(pal, height=3, brick=False))
-    cb.add_object("door", ct.door_frame(pal, reflect="bed"))
-    # The near and side walls, one tile deep, so the room is a room and not a
-    # slab of floor with a headboard.  Without these there is only one wall to
-    # put anything against, and everything ends up in a row along it.
-    cb.add("skirt", ct.wall_run(pal, height=1, brick=False), passable=False)
+    glow = _planks(mats, 0)
+    mt.seam(glow, 0, 0, TILE, TILE, blend(FLOOR.mid, LAMP.mid, 0.34), FLOOR.mid)
+    cb.add("glow", glow)
+    cb.add("void", ct.flat(mats["skin"].deep), passable=False)
+    # Outside the room there is nothing, and nothing is black.  The map is
+    # exactly one screen, so this is what fills the corners rather than the
+    # engine's backdrop showing through.
+    cb.add("black", ct.flat((0, 0, 0)), passable=False)
 
+    # --- the walls, in section
+    for side in ("n", "s", "w", "e"):
+        cb.add(f"cut_{side}", _wall_cut(mats, side), passable=False)
+        cb.add(f"face_{side}", _wall_face(mats, side), passable=False)
+    cb.add("face_n_low", _wall_face(mats, "n", low=True), passable=False)
+
+    # --- the bed.  White pillow: it is the one thing in a dark room that has
+    # to be legible from across it.
     bed = ct._canvas(2, 3)
-    bed.round_rect(1, 4, 30, 42, 5, pal.form)
-    bed.round_rect(3, 6, 26, 16, 4, pal.form_light)
-    bed.round_rect(3, 24, 26, 20, 4, pal.accent_soft)
-    bed.round_rect(1, 0, 30, 8, 4, pal.form_dark)
-    outline_in(bed, cooler(pal.form_dark, 0.3))
+    mt.plane(bed, 2, 4, 28, 42, WOOD.mid)
+    mt.plane(bed, 2, 4, 28, 2, WOOD.lit)
+    mt.plane(bed, 2, 43, 28, 3, WOOD.deep)
+    mt.plane(bed, 3, 1, 26, 7, WOOD.shade)              # headboard
+    mt.sheen(bed, 4, 2, 24, 4, WOOD)
+    mt.plane(bed, 4, 9, 24, 12, LINEN.lit)              # pillow
+    mt.plane(bed, 4, 9, 24, 3, LINEN.hot)
+    mt.seam(bed, 4, 18, 24, 3, LINEN.lit, LINEN.mid)
+    bed.hline(20, 4, 27, LINEN.shade)
+    mt.plane(bed, 4, 21, 24, 21, CLOTH.mid)             # blanket
+    mt.plane(bed, 4, 21, 24, 3, CLOTH.lit)
+    mt.seam(bed, 4, 34, 24, 4, CLOTH.mid, CLOTH.shade)
+    mt.plane(bed, 4, 38, 24, 4, CLOTH.shade)
+    for fold in (10, 16, 22):                           # folds, not noise
+        bed.vline(4 + fold, 24, 37, CLOTH.shade)
+        bed.vline(5 + fold, 24, 37, CLOTH.lit)
     cb.add_object("bed", bed, solid="all")
 
+    # --- the desk
+    # Everything that stands against a wall is drawn flush to the top of its
+    # own canvas.  Half a tile of transparent padding is invisible in the
+    # sheet and reads, in the room, as furniture hovering an inch off the
+    # skirting — which is what the first pass at this room did on every piece.
     desk = ct._canvas(2, 2)
-    desk.round_rect(1, 8, 30, 12, 3, pal.form_dark)
-    desk.rect(4, 20, 4, 11, cooler(pal.form_dark, 0.2))
-    desk.rect(24, 20, 4, 11, cooler(pal.form_dark, 0.2))
-    outline_in(desk, cooler(pal.form_dark, 0.45))
+    mt.plane(desk, 1, 0, 30, 8, WOOD.shade)             # the back panel
+    mt.plane(desk, 1, 6, 30, 7, WOOD.mid)               # the top
+    mt.plane(desk, 1, 6, 30, 2, WOOD.lit)
+    mt.plane(desk, 1, 12, 30, 2, WOOD.deep)
+    mt.plane(desk, 2, 14, 28, 9, WOOD.shade)            # the drawer front
+    mt.plane(desk, 3, 15, 26, 7, WOOD.mid)
+    desk.hline(19, 12, 20, WOOD.lit)                    # its handle
+    for lx in (3, 26):
+        mt.plane(desk, lx, 23, 3, 8, WOOD.shade)
+        desk.vline(lx, 23, 30, WOOD.mid)
     cb.add_object("desk", desk, solid="bottom")
 
-    cb.add_object("wardrobe", ct.wardrobe(pal, 2, 3), solid="all")
-    cb.add_object("television", ct.old_television(pal, 2, 2), solid="all")
-    cb.add_object("mirror", ct.standing_mirror(pal, 2, 3), solid="all")
+    # The nightstand the lamp stands beside.
+    stand = ct._canvas(1, 2)
+    mt.plane(stand, 1, 0, 14, 6, WOOD.shade)
+    mt.plane(stand, 0, 4, 16, 5, WOOD.mid)              # the top
+    mt.plane(stand, 0, 4, 16, 2, WOOD.lit)
+    mt.plane(stand, 1, 9, 14, 11, WOOD.shade)           # the drawer
+    mt.plane(stand, 2, 10, 12, 4, WOOD.mid)
+    stand.hline(12, 5, 10, WOOD.lit)
+    mt.plane(stand, 2, 15, 12, 5, WOOD.deep)
+    for lx in (2, 12):
+        mt.plane(stand, lx, 20, 2, 6, WOOD.shade)
+    cb.add_object("nightstand", stand, solid="all")
+
+    # --- the shelf
+    shelf = ct._canvas(2, 3)
+    mt.plane(shelf, 2, 2, 28, 44, WOOD.shade)
+    mt.plane(shelf, 2, 2, 28, 2, WOOD.lit)
+    mt.plane(shelf, 3, 4, 26, 41, WOOD.deep)
+    for sy in (5, 19, 33):
+        for index, bx in enumerate(range(5, 27, 4)):
+            book = mt.Material("book", ((124, 66, 64), (74, 90, 118),
+                                        (96, 100, 68), (108, 88, 60))[index % 4])
+            tall = 11 - (index % 3)
+            mt.plane(shelf, bx, sy + (11 - tall), 3, tall, book.mid)
+            shelf.vline(bx, sy + (11 - tall), sy + 10, book.lit)
+            shelf.vline(bx + 2, sy + (11 - tall), sy + 10, book.shade)
+        mt.plane(shelf, 3, sy + 11, 26, 3, WOOD.mid)    # the shelf board
+        mt.plane(shelf, 3, sy + 11, 26, 1, WOOD.lit)
+    cb.add_object("shelf", shelf, solid="all")
+
+    # --- the wardrobe
+    wardrobe = ct._canvas(2, 3)
+    mt.plane(wardrobe, 1, 1, 30, 46, WOOD.shade)
+    mt.plane(wardrobe, 1, 1, 30, 3, WOOD.lit)
+    mt.plane(wardrobe, 1, 44, 30, 3, WOOD.deep)
+    for ox in (3, 17):
+        mt.plane(wardrobe, ox, 5, 12, 38, WOOD.mid)
+        mt.sheen(wardrobe, ox, 5, 12, 9, WOOD)
+        mt.seam(wardrobe, ox, 36, 12, 4, WOOD.mid, WOOD.shade)
+    wardrobe.vline(15, 3, 44, WOOD.deep)
+    wardrobe.vline(16, 3, 44, WOOD.lit)
+    for hy in range(22, 28):
+        wardrobe.dot(13, hy, METAL.lit)
+        wardrobe.dot(18, hy, METAL.mid)
+    cb.add_object("wardrobe", wardrobe, solid="all")
+
+    # --- the television, in the new style: a box with a front, not a decal
+    tv = ct._canvas(2, 2)
+    CASE = mt.Material("case", (76, 68, 64))
+    mt.plane(tv, 1, 4, 30, 24, CASE.mid)
+    mt.plane(tv, 1, 4, 30, 3, CASE.lit)                 # the lit top edge
+    mt.plane(tv, 1, 26, 30, 2, CASE.deep)
+    mt.plane(tv, 3, 8, 19, 16, SCREEN.deep)             # the tube's bezel
+    mt.plane(tv, 4, 9, 17, 14, SCREEN.mid)
+    mt.plane(tv, 4, 9, 17, 4, SCREEN.lit)               # the reflection in it
+    mt.seam(tv, 4, 13, 17, 3, SCREEN.lit, SCREEN.mid)
+    for gy in range(10, 23, 3):                         # scanlines, structured
+        tv.hline(gy, 5, 20, SCREEN.shade)
+    mt.plane(tv, 24, 9, 5, 14, CASE.shade)              # the dials
+    tv.blob(26, 13, 1.8, METAL.lit)
+    tv.blob(26, 19, 1.8, METAL.mid)
+    for fx in (4, 25):                                  # feet
+        mt.plane(tv, fx, 28, 3, 3, CASE.deep)
+    cb.add_object("television", tv, solid="all")
+
+    # --- the small things
+    plant = ct._canvas(1, 2)
+    POT = mt.Material("pot", (120, 76, 58))
+    mt.plane(plant, 3, 20, 10, 11, POT.mid)
+    mt.plane(plant, 3, 20, 10, 2, POT.lit)
+    mt.plane(plant, 4, 29, 8, 2, POT.deep)
+    for dx, dy, ln in ((-4, 6, 8), (0, 2, 11), (4, 5, 9), (-2, 9, 6),
+                       (3, 10, 6)):
+        plant.line(8, 20, 8 + dx, 20 - dy - ln + 4, LEAF.mid)
+        plant.blob(8 + dx, 20 - dy - ln + 5, 2.4, LEAF.lit)
+    cb.add_object("plant", plant, solid="all")
+
+    # A standing lamp, flush to the wall.  It does not light the floor: a pool
+    # of paint under a lamp is a lie the tile grid cannot keep, and it looked
+    # like a stain rather than like light.  The shade is lit and everything
+    # else in the room is lit from the upper left, and that is the whole of it.
+    #
+    # The shade sits a few pixels down and the column under it is wide enough
+    # to be read at this size.  Drawn hard against the top of the canvas with
+    # a two-pixel stem it looked like it was hanging from nothing.
+    lamp = ct._canvas(1, 2)
+    mt.plane(lamp, 1, 3, 14, 11, LAMP.mid)              # the shade
+    mt.plane(lamp, 1, 3, 14, 3, LAMP.hot)
+    mt.seam(lamp, 1, 11, 14, 3, LAMP.mid, LAMP.shade)
+    lamp.vline(1, 3, 13, LAMP.lit)
+    lamp.vline(14, 3, 13, LAMP.shade)
+    lamp.hline(2, 2, 13, LAMP.shade)                    # the top rim
+    mt.plane(lamp, 6, 14, 4, 13, METAL.mid)             # the column
+    lamp.vline(6, 14, 26, METAL.lit)
+    lamp.vline(9, 14, 26, METAL.deep)
+    mt.plane(lamp, 3, 27, 10, 4, METAL.shade)           # the foot
+    mt.plane(lamp, 3, 27, 10, 1, METAL.lit)
+    mt.plane(lamp, 4, 30, 8, 1, METAL.deep)
+    cb.add_object("lamp_lit", lamp, solid="all", upper=True)
+
+    clock = ct._canvas(1, 2)
+    mt.plane(clock, 2, 10, 12, 16, WOOD.shade)
+    mt.plane(clock, 2, 10, 12, 2, WOOD.lit)
+    mt.plane(clock, 3, 12, 10, 12, WOOD.deep)
+    clock.blob(8, 18, 4.4, LINEN.lit)
+    clock.blob(8, 18, 3.2, LINEN.hot)
+    clock.vline(8, 15, 18, WOOD.deep)
+    clock.hline(18, 8, 11, WOOD.deep)
+    cb.add_object("clock", clock, solid="none", upper=True, above=True)
+
+    bin_ = ct._canvas(1, 1)
+    mt.plane(bin_, 4, 5, 8, 11, METAL.mid)
+    mt.plane(bin_, 4, 5, 8, 2, METAL.lit)
+    mt.plane(bin_, 5, 14, 6, 2, METAL.deep)
+    cb.add_object("bin", bin_, solid="all")
+
+    slippers = ct._canvas(1, 1)
+    for sx in (2, 9):
+        mt.plane(slippers, sx, 9, 5, 5, CLOTH.mid)
+        mt.plane(slippers, sx, 9, 5, 2, CLOTH.lit)
+    cb.add_object("slippers", slippers, solid="none", upper=True)
+
+    # the mirror in the room is the same object as every portal in the game
+    cb.add_object("mirror", ct.door_frame(pal, 2, 3, reflect="bed"),
+                  solid="all")
+
+    # --- what is set into the far wall.  All three of these are two tiles
+    # tall so they sit exactly on the plaster and never over the wall's cut,
+    # which is what makes them read as being *in* the wall.
+    door = ct._canvas(2, 2)
+    mt.plane(door, 0, 0, 32, 32, WOOD.shade)            # the architrave
+    mt.plane(door, 0, 0, 32, 2, WOOD.lit)
+    mt.plane(door, 3, 2, 26, 30, WOOD.deep)             # the reveal
+    mt.plane(door, 5, 3, 22, 29, WOOD.mid)              # the leaf
+    mt.plane(door, 5, 3, 22, 2, WOOD.lit)
+    for py, ph in ((7, 9), (19, 9)):                    # two recessed panels
+        mt.plane(door, 8, py, 16, ph, WOOD.shade)
+        mt.plane(door, 9, py + 1, 14, ph - 2, WOOD.mid)
+        door.hline(py, 8, 23, WOOD.deep)
+        door.hline(py + ph - 1, 8, 23, WOOD.lit)
+    door.blob(24, 17, 1.9, METAL.lit)                   # the handle
+    cb.add_object("door", door, solid="all")
 
     window = ct._canvas(2, 2)
-    window.round_rect(2, 2, 28, 26, 3, pal.form_dark)
-    window.rect(5, 5, 22, 20, pal.void)
-    window.vline(15, 5, 24, pal.form_dark)
-    window.hline(14, 5, 26, pal.form_dark)
-    cb.add_object("window", window, solid="none", upper=True)
+    mt.plane(window, 0, 0, 32, 32, WOOD.shade)
+    mt.plane(window, 0, 0, 32, 2, WOOD.lit)
+    mt.plane(window, 3, 3, 26, 24, SKY.shade)
+    mt.plane(window, 3, 3, 26, 9, SKY.mid)              # sky in the top half
+    mt.seam(window, 3, 12, 26, 3, SKY.mid, SKY.shade)
+    mt.plane(window, 3, 19, 26, 8, FAR.mid)             # the city in the low
+    for bx, bh in ((4, 6), (9, 8), (15, 5), (21, 7), (26, 4)):
+        mt.plane(window, bx, 27 - bh, 3, bh, FAR.shade)
+        window.dot(bx + 1, 27 - bh + 2, LAMP.shade)
+    window.vline(15, 3, 26, WOOD.mid)                   # glazing bars
+    window.hline(14, 3, 28, WOOD.mid)
+    mt.plane(window, 1, 27, 30, 4, WOOD.mid)            # the sill
+    mt.plane(window, 1, 27, 30, 1, WOOD.hot)
+    cb.add_object("window", window, solid="all")
 
-    cb.add_upper("lamp", ct.lamp_post(pal, 1, 1).sub(0, 0, TILE, TILE), above=True)
+    slider = ct._canvas(3, 2)
+    mt.plane(slider, 0, 0, 48, 32, METAL.shade)         # aluminium frame
+    mt.plane(slider, 0, 0, 48, 2, METAL.lit)
+    mt.plane(slider, 2, 2, 44, 28, METAL.deep)
+    for ox in (3, 24):                                  # two panes
+        mt.plane(slider, ox, 3, 21, 26, SKY.shade)
+        mt.plane(slider, ox, 3, 21, 10, SKY.mid)
+        mt.seam(slider, ox, 13, 21, 3, SKY.mid, SKY.shade)
+        mt.plane(slider, ox, 22, 21, 7, FAR.mid)
+        for bx in range(ox + 2, ox + 20, 5):
+            mt.plane(slider, bx, 22, 3, 7, FAR.shade)
+            slider.dot(bx + 1, 25, LAMP.shade)
+        slider.vline(ox, 3, 28, METAL.mid)              # the leading edge
+    mt.plane(slider, 23, 2, 2, 28, METAL.mid)           # where they overlap
+    slider.vline(22, 2, 29, METAL.deep)
+    mt.plane(slider, 1, 29, 46, 3, METAL.mid)           # the track
+    slider.hline(29, 1, 46, METAL.lit)
+    cb.add_object("slider", slider, solid="all")
+
     _shadows(cb, pal)
     _landmarks(cb, pal, "room")
     _animate(cb, pal, "room")
-    _decals(cb, pal, "room", boards)
-    return _finish(cb, boards)
+    _decals(cb, pal, "room", floor)
+    return _finish(cb, floor)
+
+
+def build_balcony() -> ChipsetBuild:
+    """Outside the room, three paces deep, with the city in front of it.
+
+    A separate screen on purpose.  The room is somewhere you are kept and the
+    balcony is the one place in the waking half of the game with a horizon in
+    it, and putting both on one map would have made the horizon a decoration
+    at the top of a bedroom.  Same materials, same light, different substance:
+    everything out here is concrete, render and weather.
+    """
+    pal = PALETTES["room"]
+    cb = ChipsetBuilder("balcony", pal)
+    mats = _room_materials()
+    CONC, METAL = mats["concrete"], mats["metal"]
+    SKY, FAR, NEAR = mats["sky"], mats["far"], mats["near"]
+    LAMP, PLASTER = mats["lamp"], mats["plaster"]
+    CORE, SKIN = mats["core"], mats["skin"]
+
+    # --- the deck: poured concrete in slabs, with the joints where they fall
+    def _slab(offset: int) -> Canvas:
+        art = Canvas(TILE, TILE, CONC.mid)
+        mt.plane(art, 0, 0, TILE, TILE, CONC.mid)
+        art.hline((offset + 3) % TILE, 0, TILE - 1, CONC.shade)
+        art.hline((offset + 4) % TILE, 0, TILE - 1, CONC.lit)
+        art.vline((offset * 3 + 5) % TILE, 0, TILE - 1, CONC.shade)
+        return art
+
+    deck = _slab(0)
+    cb.add("ground", deck)
+    cb.add("ground_b", _slab(6))
+    cb.add("path", _slab(11))
+    stain = _slab(2)
+    mt.seam(stain, 0, 0, TILE, TILE, CONC.shade, CONC.mid)
+    cb.add("glow", stain)
+    cb.add("rug", stain)
+    cb.add("void", ct.flat(SKIN.deep), passable=False)
+
+    # --- the view: sky, then a far shore of towers, then water, then the
+    # near bank, and snow lying on all of it.
+    #
+    # Distance is done as bands and the towers are *objects*, not tiles: a
+    # skyline assembled out of sixteen-pixel cells can only ever be a fence,
+    # and the one thing this view has to do is be much larger than the flat
+    # it is seen from.
+    SNOW = mt.Material("snow", (188, 194, 210))
+    WATER = mt.Material("water", (46, 52, 82))
+    TOWER = mt.Material("tower", (54, 54, 80), grain="v")
+
+    sky = Canvas(TILE, TILE, SKY.mid)
+    mt.seam(sky, 0, 0, TILE, TILE, SKY.lit, SKY.mid)
+    cb.add("sky", sky, passable=False)
+    sky_low = Canvas(TILE, TILE, SKY.mid)
+    mt.plane(sky_low, 0, 0, TILE, TILE, SKY.mid)
+    mt.seam(sky_low, 0, 8, TILE, 8, SKY.mid, SKY.shade)
+    cb.add("sky_low", sky_low, passable=False)
+
+    # the far bank the towers stand on: snow, and the shoreline under it
+    bank = Canvas(TILE, TILE, SNOW.shade)
+    mt.plane(bank, 0, 0, TILE, 7, SNOW.mid)
+    mt.plane(bank, 0, 0, TILE, 2, SNOW.lit)
+    mt.seam(bank, 0, 7, TILE, 3, SNOW.mid, SNOW.shade)
+    mt.plane(bank, 0, 10, TILE, 4, SNOW.shade)
+    mt.plane(bank, 0, 14, TILE, 2, WATER.lit)      # the waterline itself
+    cb.add("bank_far", bank, passable=False)
+
+    # open water: nearly flat.  It was a full grid of highlight runs and read
+    # as another course of brickwork sitting between the city and the flat,
+    # which is the last thing a body of water should do.  Two long broken
+    # runs a tile, and the value under them barely moving.
+    water = Canvas(TILE, TILE, WATER.mid)
+    mt.plane(water, 0, 0, TILE, TILE, WATER.mid)
+    mt.seam(water, 0, 0, TILE, 5, WATER.shade, WATER.mid)
+    water.hline(6, 1, 9, WATER.lit)
+    water.hline(12, 7, TILE - 2, WATER.lit)
+    cb.add("water", water, passable=False)
+    # the same water directly under the towers, carrying their lights down in
+    # broken vertical smears — the only place the surface is busy
+    glint = water.copy()
+    for gx in range(3, TILE, 6):
+        for gy in (2, 6, 11):
+            glint.dot(gx, gy, LAMP.deep)
+            glint.dot(gx, gy + 2, WATER.lit)
+    cb.add("water_lit", glint, passable=False)
+
+    # the near bank, below the water: snow again, and the top of it lit
+    near_bank = Canvas(TILE, TILE, SNOW.shade)
+    mt.plane(near_bank, 0, 0, TILE, 2, WATER.deep)
+    mt.plane(near_bank, 0, 2, TILE, 5, SNOW.shade)
+    mt.seam(near_bank, 0, 7, TILE, 3, SNOW.shade, SNOW.mid)
+    mt.plane(near_bank, 0, 10, TILE, 6, SNOW.mid)
+    cb.add("bank_near", near_bank, passable=False)
+
+    # --- the towers.  Drawn as single unbroken shafts: the first pass put a
+    # snow-capped setback every four courses, which chopped each one into a
+    # stack of crates and lost the only thing they are for, which is being
+    # much taller than the flat they are seen from.
+    def _tower(cols: int, rows: int, crown: int, pitch: int) -> Canvas:
+        art = ct._canvas(cols, rows)
+        w, h = cols * TILE, rows * TILE
+        lit = max(4, w // 3)                    # the face turned to the light
+        mt.plane(art, 0, crown, w, h - crown, TOWER.shade)
+        mt.plane(art, 0, crown, lit, h - crown, TOWER.mid)
+        mt.seam(art, lit, crown, 3, h - crown, TOWER.mid, TOWER.shade,
+                vertical=True)
+        art.vline(0, crown, h - 1, TOWER.lit)   # the lit corner
+        art.vline(w - 1, crown, h - 1, TOWER.deep)
+        # the crown: a plant room, and snow lying on top of it
+        mt.plane(art, 3, crown - 5, w - 6, 6, TOWER.shade)
+        mt.plane(art, 3, crown - 5, w - 6, 2, SNOW.shade)
+        mt.plane(art, 0, crown, w, 2, SNOW.shade)
+        mt.plane(art, 0, crown, w, 1, SNOW.mid)
+        art.vline(w // 2, max(0, crown - 11), crown - 5, TOWER.deep)  # a mast
+        # windows: sparse and unevenly lit, so the tower reads as occupied at
+        # night rather than as a grid
+        for course, row in enumerate(range(crown + 5, h - 3, pitch)):
+            for index, col in enumerate(range(2, w - 3, 4)):
+                state = (course * 5 + index * 3) % 7
+                art.rect(col, row, 2, 2,
+                         LAMP.shade if state == 0 else
+                         LAMP.deep if state == 1 else TOWER.deep)
+        return art
+
+    cb.add_object("tower_a", _tower(2, 6, 14, 6), solid="all", upper=True)
+    cb.add_object("tower_b", _tower(3, 5, 22, 7), solid="all", upper=True)
+    cb.add_object("tower_c", _tower(2, 4, 30, 6), solid="all", upper=True)
+    cb.add_object("tower_d", _tower(3, 6, 8, 8), solid="all", upper=True)
+
+    # --- the building at your back, in the same section as the room's walls
+    for side in ("s", "w", "e"):
+        cb.add(f"cut_{side}", _wall_cut(mats, side), passable=False)
+    render = Canvas(TILE, TILE, PLASTER.shade)
+    mt.plane(render, 0, 0, TILE, TILE, PLASTER.shade)
+    mt.plane(render, 0, 0, TILE, 3, PLASTER.mid)
+    for x in range(0, TILE, 8):
+        render.vline(x, 3, TILE - 1, PLASTER.deep)
+    cb.add("render", render, passable=False)
+
+    # --- the parapet, seen in section the same way: a top surface you look
+    # down on and a face turned back toward you
+    SNOW_C = mt.Material("snow", (188, 194, 210))
+    parapet = Canvas(TILE, TILE, CONC.mid)
+    mt.plane(parapet, 0, 0, TILE, 4, CONC.shade)        # the outside face
+    mt.plane(parapet, 0, 4, TILE, 4, SNOW_C.lit)        # snow lying on it
+    mt.seam(parapet, 0, 8, TILE, 2, SNOW_C.lit, SNOW_C.shade)
+    mt.plane(parapet, 0, 10, TILE, 3, CONC.mid)         # the coping under it
+    mt.plane(parapet, 0, 13, TILE, 3, CONC.deep)        # the shadow it throws
+    cb.add("parapet", parapet, passable=False)
+
+    # --- the railing that stands on it
+    rail = ct._canvas(1, 1)
+    mt.plane(rail, 0, 1, TILE, 3, METAL.mid)            # the handrail
+    mt.plane(rail, 0, 1, TILE, 1, METAL.lit)
+    for x in range(1, TILE, 4):                         # the balusters
+        mt.plane(rail, x, 4, 2, 11, METAL.shade)
+        rail.vline(x, 4, 14, METAL.mid)
+    cb.add_object("rail", rail, solid="all", upper=True)
+
+    # --- the way back in: the same door, from the other side
+    slider = ct._canvas(3, 2)
+    mt.plane(slider, 0, 0, 48, 32, METAL.shade)
+    mt.plane(slider, 0, 0, 48, 2, METAL.lit)
+    mt.plane(slider, 2, 2, 44, 28, METAL.deep)
+    ROOMGLOW = mt.Material("roomglow", (86, 70, 74))
+    for ox in (3, 24):
+        mt.plane(slider, ox, 3, 21, 26, ROOMGLOW.shade)
+        mt.plane(slider, ox, 3, 21, 9, ROOMGLOW.mid)
+        mt.seam(slider, ox, 12, 21, 3, ROOMGLOW.mid, ROOMGLOW.shade)
+        slider.vline(ox, 3, 28, METAL.mid)
+    mt.plane(slider, 8, 14, 6, 8, LAMP.shade)           # the lamp, through it
+    mt.plane(slider, 23, 2, 2, 28, METAL.mid)
+    slider.vline(22, 2, 29, METAL.deep)
+    mt.plane(slider, 1, 29, 46, 3, METAL.mid)
+    slider.hline(29, 1, 46, METAL.lit)
+    cb.add_object("slider", slider, solid="all")
+
+    # --- what accumulates on a balcony nobody sits on
+    aircon = ct._canvas(2, 2)
+    mt.plane(aircon, 2, 6, 28, 24, METAL.mid)
+    mt.plane(aircon, 2, 6, 28, 3, METAL.lit)
+    mt.plane(aircon, 2, 28, 28, 2, METAL.deep)
+    mt.plane(aircon, 5, 11, 22, 15, METAL.shade)        # the grille
+    for gy in range(12, 26, 3):
+        aircon.hline(gy, 6, 25, METAL.deep)
+        aircon.hline(gy + 1, 6, 25, METAL.mid)
+    cb.add_object("aircon", aircon, solid="all")
+
+    chair = ct._canvas(1, 2)
+    PLASTIC = mt.Material("plastic", (118, 116, 108))
+    mt.plane(chair, 3, 6, 10, 13, PLASTIC.shade)        # the back
+    mt.plane(chair, 3, 6, 10, 2, PLASTIC.lit)
+    mt.plane(chair, 2, 19, 12, 5, PLASTIC.mid)          # the seat
+    mt.plane(chair, 2, 19, 12, 2, PLASTIC.lit)
+    for lx in (3, 11):
+        mt.plane(chair, lx, 24, 2, 6, PLASTIC.shade)
+    cb.add_object("chair", chair, solid="all")
+
+    pot = ct._canvas(1, 1)
+    POT = mt.Material("pot", (118, 74, 56))
+    DEAD = mt.Material("dead", (96, 88, 62))
+    mt.plane(pot, 3, 7, 10, 9, POT.mid)
+    mt.plane(pot, 3, 7, 10, 2, POT.lit)
+    for dx, dy in ((-3, 5), (0, 7), (3, 4)):
+        pot.line(8, 7, 8 + dx, 7 - dy, DEAD.mid)
+    cb.add_object("pot", pot, solid="all")
+
+    bucket = ct._canvas(1, 1)
+    mt.plane(bucket, 4, 6, 8, 10, METAL.shade)
+    mt.plane(bucket, 4, 6, 8, 2, METAL.mid)
+    mt.plane(bucket, 5, 8, 6, 5, mats["sky"].shade)     # rain, still in it
+    cb.add_object("bucket", bucket, solid="all")
+
+    _shadows(cb, pal)
+    _animate(cb, pal, "room")
+    return _finish(cb, deck)
 
 
 def build_nexus() -> ChipsetBuild:
@@ -1182,6 +1736,7 @@ def build_stars() -> ChipsetBuild:
 
 BUILDERS: dict[str, Callable[[], ChipsetBuild]] = {
     "room": build_room,
+    "balcony": build_balcony,
     "nexus": build_nexus,
     "pink": build_pink,
     "numbers": build_numbers,

@@ -303,7 +303,7 @@ def room_events(world: World, worlds: dict[str, World]) -> None:
             sleep.msg_options(MSG_BOTTOM)
     # the head of the bed, against the back wall: the tile you reach if you
     # walk into the corner, which is how anyone actually crosses a room
-    _place(world, "bed", 2, 3, [Page(script=sleep, trigger=TRIGGER_ACTION)])
+    _place(world, "bed", 7, 6, [Page(script=sleep, trigger=TRIGGER_ACTION)])
 
     # The television: shows the world you were last in.
     tv = Script()
@@ -316,7 +316,7 @@ def room_events(world: World, worlds: dict[str, World]) -> None:
                "it stops when you look directly at it.")
     with tv.if_var(VR_DREAM_DISTANCE, 0):
         tv.msg("it is not plugged in.")
-    _place(world, "television", 2, 11, [Page(script=tv, trigger=TRIGGER_ACTION)])
+    _place(world, "television", 11, 5, [Page(script=tv, trigger=TRIGGER_ACTION)])
 
     # The mirror: after you have been away long enough, it is late.
     mirror = Script()
@@ -325,7 +325,7 @@ def room_events(world: World, worlds: dict[str, World]) -> None:
         mirror.msg("you are still there.", "", "you look tired.")
     with mirror.if_var(VR_DREAM_DISTANCE, 3, 2):
         mirror.msg("you are still there.")
-    _place(world, "mirror", 18, 13, [Page(script=mirror, trigger=TRIGGER_ACTION)])
+    _place(world, "mirror", 5, 9, [Page(script=mirror, trigger=TRIGGER_ACTION)])
 
     # The wardrobe: a deep layer, and the only thing in the game with a lock.
     wardrobe = Script()
@@ -334,13 +334,13 @@ def room_events(world: World, worlds: dict[str, World]) -> None:
             wardrobe.se("DoorOpen", volume=60)
             wardrobe.msg("it opens.")
             wardrobe.fade_out(30)      # zoom in
-            wardrobe.teleport(worlds["room"].map_id, 10, 11)
+            wardrobe.teleport(worlds["room"].map_id, *worlds["room"].spawn)
             wardrobe.switch(SW_WORLD_MEMORY_BASE, True)
             wardrobe.fade_in(30)
         with arm(True):
             wardrobe.msg("it does not open.",
                          "it has never opened.")
-    _place(world, "wardrobe", 18, 4, [Page(script=wardrobe, trigger=TRIGGER_ACTION)])
+    _place(world, "wardrobe", 14, 6, [Page(script=wardrobe, trigger=TRIGGER_ACTION)])
 
     # The window: nothing outside, unless you are wearing the eye.
     window = Script()
@@ -354,11 +354,11 @@ def room_events(world: World, worlds: dict[str, World]) -> None:
             window.msg("none of it is lit from anywhere.")
         with arm(True):
             window.msg("it is too dark to see out.")
-    _place(world, "window", 5, 2, [Page(script=window, trigger=TRIGGER_ACTION)])
+    _place(world, "window", 5, 3, [Page(script=window, trigger=TRIGGER_ACTION)])
 
     desk = Script()
     desk.msg("there is nothing written on it.")
-    _place(world, "desk", 18, 8, [Page(script=desk, trigger=TRIGGER_ACTION)])
+    _place(world, "desk", 3, 7, [Page(script=desk, trigger=TRIGGER_ACTION)])
 
     # The room's door.  Every world has exactly one, and this is the only one
     # in the game that does not lead anywhere — the way out of here is the bed.
@@ -366,7 +366,84 @@ def room_events(world: World, worlds: dict[str, World]) -> None:
     door = Script()
     door.se("Wrong", volume=40)
     door.msg("it does not open.")
-    _place(world, "door", 9, 2, [Page(script=door, trigger=TRIGGER_ACTION)])
+    _place(world, "door", 3, 3, [Page(script=door, trigger=TRIGGER_ACTION)])
+
+    # The rest of the room.  None of it does anything; all of it has been
+    # here longer than the player has, which is the only thing the room is
+    # trying to say.
+    shelf = Script()
+    shelf.msg("the spines have gone the colour of the wall.", "",
+              "you have read all of them",
+              "and you could not say what any of them were about.")
+    _place(world, "shelf", 14, 10, [Page(script=shelf, trigger=TRIGGER_ACTION)])
+
+    clock = Script()
+    with clock.if_var(VR_DREAM_DISTANCE, 1, 1):
+        clock.se("Watch", volume=34)
+        clock.msg("it is later than it was.", "",
+                  "it is always later than it was.")
+    with clock.if_var(VR_DREAM_DISTANCE, 0):
+        clock.msg("the hands have not moved since you looked.")
+    _place(world, "clock", 16, 3, [Page(script=clock, trigger=TRIGGER_ACTION)])
+
+    plant = Script()
+    plant.msg("it is doing better than it has any right to.", "",
+              "you do not remember watering it.")
+    _place(world, "plant", 6, 11, [Page(script=plant, trigger=TRIGGER_ACTION)])
+
+    lamp = Script()
+    lamp.msg("it is the only warm thing in here.")
+    _place(world, "lamp", 9, 5, [Page(script=lamp, trigger=TRIGGER_ACTION)])
+
+    slippers = Script()
+    slippers.msg("they are pointed at the bed.")
+    _place(world, "slippers", 8, 7,
+           [Page(script=slippers, trigger=TRIGGER_ACTION)])
+
+    stand = Script()
+    stand.msg("a glass of water you do not remember pouring.")
+    _place(world, "nightstand", 10, 5,
+           [Page(script=stand, trigger=TRIGGER_ACTION)])
+
+    # The way out to the balcony.  The only door in the room that opens.
+    _place(world, "slider", 14, 3,
+           [_door(worlds["balcony"].map_id, *worlds["balcony"].spawn,
+                  sound="DoorOpen", leaving="room", entering="balcony")])
+
+
+def balcony_events(world: World, worlds: dict[str, World]) -> None:
+    """Outside: a horizon, and four things nobody has moved in a while."""
+    m = world.map
+    m.add_event("arrive", 0, 0, [_arrival_event(world)])
+
+    _place(world, "slider", 10, 12,
+           [_door(worlds["room"].map_id, 14, 3, sound="DoorOpen",
+                  leaving="balcony", entering="room")])
+
+    rail = Script()
+    rail.se("Watch", volume=40)
+    rail.msg("the city is on.", "", "not all of it. enough of it.")
+    with rail.if_var(VR_DREAM_DISTANCE, 3, 1):
+        rail.wait(8)
+        rail.msg("some of those windows are the wrong colour",
+                 "and you know which ones.")
+    for spot in (5, 10, 15):
+        _place(world, f"the rail {spot}", spot, 11,
+               [Page(script=rail, trigger=TRIGGER_ACTION)])
+
+    chair = Script()
+    chair.msg("a plastic chair, facing out.", "",
+              "it has been rained on since anybody sat in it.")
+    _place(world, "chair", 5, 12, [Page(script=chair, trigger=TRIGGER_ACTION)])
+
+    unit = Script()
+    unit.se("Carrier", volume=30)
+    unit.msg("it is running.", "", "nothing in the flat is cold.")
+    _place(world, "aircon", 14, 11, [Page(script=unit, trigger=TRIGGER_ACTION)])
+
+    bucket = Script()
+    bucket.msg("there is water in it.", "", "it has not rained.")
+    _place(world, "bucket", 7, 11, [Page(script=bucket, trigger=TRIGGER_ACTION)])
 
 
 # --- the nexus ---------------------------------------------------------------

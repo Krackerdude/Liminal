@@ -184,6 +184,7 @@ def author_events(worlds: dict[str, W.World]) -> int:
     import zlib
 
     events.room_events(worlds["room"], worlds)
+    events.balcony_events(worlds["balcony"], worlds)
     events.nexus_events(worlds["nexus"], worlds)
     for key in W.DREAM_ORDER:
         rng = random.Random(zlib.crc32(f"events:{key}".encode()))

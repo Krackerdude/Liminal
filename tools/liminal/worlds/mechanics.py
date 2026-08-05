@@ -106,7 +106,11 @@ def _checker(s: Script) -> None:
         s.fade_out(15)
         s.var_random(VR_TEMP_X, 8, 128)
         s.var_random(VR_TEMP_Y, 8, 116)
-        s.teleport_var(10, VR_TEMP_X, VR_TEMP_Y)
+        # the map id, derived rather than written down: it was a literal 10
+        # and silently pointed at the wrong world the moment a map was added
+        from .worlds import WORLD_ORDER
+        s.teleport_var(WORLD_ORDER.index("checker") + 1,
+                       VR_TEMP_X, VR_TEMP_Y)
         s.fade_in(15)
         s.var(VR_STILL, 0)
 

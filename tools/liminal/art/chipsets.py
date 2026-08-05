@@ -235,6 +235,10 @@ class ChipsetBuilder:
                 if _has_transparency(piece):
                     opaque = False
         if upper is None:
+            # Art with any transparency in it is an object and goes above
+            # the floor; art opaque to its own edges may be a surface.  That
+            # much is sound.  What was *not* sound is that nothing stopped a
+            # later pass from painting over the result — see Map.claimed.
             upper = not opaque
 
         def row_solid(row: int) -> bool:
@@ -744,15 +748,22 @@ def door_frame(pal: Palette, cols: int = 2, rows: int = 3, *,
     body = leaf or pal.form
     jamb = pal.form_dark
 
-    # the frame: square-shouldered, with a plinth, so it stands rather than
-    # floats and never reads as an oval
-    art.rect(0, 1, w, h - 1, jamb)
-    art.rect(1, 2, w - 2, h - 4, warmer(jamb, 0.18))
-    art.rect(0, h - 3, w, 3, cooler(jamb, 0.25))
-    art.rect(2, h - 2, w - 4, 2, jamb)
+    # The frame: square-shouldered, with a plinth, so it stands rather than
+    # floats and never reads as an oval.
+    #
+    # Inset by two pixels on every side, and that inset is load-bearing rather
+    # than cosmetic.  add_object puts art on the upper layer only if some tile
+    # of it has a transparent pixel; the first version of this filled its whole
+    # bounding box, outline_in then filled the last transparent ring, and the
+    # mirror went to the *lower* layer — where it stopped being an object
+    # standing on the floor and became a two-by-three hole punched through it.
+    art.rect(2, 2, w - 4, h - 3, jamb)
+    art.rect(3, 3, w - 6, h - 6, warmer(jamb, 0.18))
+    art.rect(2, h - 4, w - 4, 3, cooler(jamb, 0.25))
+    art.rect(4, h - 3, w - 8, 2, jamb)
 
     glass = cooler(glow or pal.accent_soft, 0.15)
-    gx, gy, gw, gh = 3, 4, w - 6, h - 9
+    gx, gy, gw, gh = 5, 5, w - 10, h - 11
     art.rect(gx, gy, gw, gh, glass)
     # the sky in it: a lighter band across the top and a darker one at the
     # foot, both flat, so the surface reads as glass and not as a hole

@@ -109,15 +109,16 @@ class Furnisher:
         self.placed: list[tuple[int, int, int, int]] = []
 
     def _clear(self, x: int, y: int, w: int, h: int, pad: int = 1) -> bool:
+        """Free of routes, and free of anything already standing there.
+
+        The occupancy half of this question is asked of the *map*, not of a
+        list this furnisher keeps to itself.  Two placement paths keeping two
+        separate records is how a world ended up with objects the furnisher
+        had refused and a bare stamp had put down anyway.
+        """
         if not self.field.open_space(x, y, w, h, pad):
             return False
-        for px, py, pw, ph in self.placed:
-            if (abs(((x - px + self.field.w // 2) % self.field.w)
-                    - self.field.w // 2) < (w + pw) // 2 + 1 and
-                    abs(((y - py + self.field.h // 2) % self.field.h)
-                        - self.field.h // 2) < (h + ph) // 2 + 1):
-                return False
-        return True
+        return self.m.is_clear(x, y, w, h, pad=1)
 
     def put(self, obj_name: str, x: int, y: int, *, centred: bool = True,
             pad: int = 1) -> bool:
@@ -126,7 +127,8 @@ class Furnisher:
         oy = y - grid.rows // 2 if centred else y
         if not self._clear(ox, oy, grid.cols, grid.rows, pad):
             return False
-        gen.stamp(self.m, grid, ox, oy)
+        if not gen.stamp(self.m, grid, ox, oy):
+            return False
         self.placed.append((ox, oy, grid.cols, grid.rows))
         return True
 

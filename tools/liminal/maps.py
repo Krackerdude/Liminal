@@ -177,12 +177,35 @@ class Map:
         self.lower = [fill] * (width * height)
         self.upper = [EMPTY_UPPER] * (width * height)
         self.events: list[Event] = []
+        # Every cell an object has been stamped into.  One record, owned by the
+        # map, so that *all* placement paths share it — the furnisher and the
+        # bare stamp alike.  Before this existed the two disagreed: Furnisher
+        # kept its own private list and refused overlaps, gen.stamp kept none
+        # and allowed them, so any world that stamped directly could pile
+        # objects on top of each other indefinitely.
+        self.claimed: set[tuple[int, int]] = set()
         self.parallax: str | None = None
         self.parallax_loop_x = True
         self.parallax_loop_y = True
         self.parallax_auto_x = 0
         self.parallax_auto_y = 0
         self._next_event_id = 1
+
+    # -- occupancy ------------------------------------------------------------
+    def is_clear(self, x: int, y: int, w: int, h: int, pad: int = 0) -> bool:
+        """Is a footprint free of every object already placed?"""
+        for row in range(-pad, h + pad):
+            for col in range(-pad, w + pad):
+                if ((x + col) % self.width, (y + row) % self.height) \
+                        in self.claimed:
+                    return False
+        return True
+
+    def claim(self, x: int, y: int, w: int, h: int) -> None:
+        for row in range(h):
+            for col in range(w):
+                self.claimed.add(((x + col) % self.width,
+                                  (y + row) % self.height))
 
     # -- tiles ---------------------------------------------------------------
     def idx(self, x: int, y: int) -> int:

@@ -172,4 +172,41 @@ PALETTES: dict[str, Palette] = {
         accent=(240, 236, 226), accent_soft=(74, 128, 148),
         void=(18, 10, 14),
     ),
+
+    # --- inside the murals -------------------------------------------------
+    #
+    # Four paintings on the floor of the scrawl world, each of which is also a
+    # way in.  A mural is drawn in two or three colours, so its interior gets
+    # those two or three colours and no others — the discipline is the point.
+    # Walking into a painting should feel like the world has been reduced to
+    # what the painting had, not like another room with a filter on it.
+
+    # THE EYE.  Cyan and white on black, concentric, and it does not blink.
+    "neon2": Palette(
+        ground=(10, 26, 34), ground_b=(14, 36, 46),
+        form=(96, 240, 226), form_light=(214, 254, 250), form_dark=(20, 96, 108),
+        accent=(240, 252, 250), accent_soft=(46, 158, 176),
+        void=(4, 10, 14),
+    ),
+    # THE SPIRAL.  Magenta into violet, and it only goes one way.
+    "neon3": Palette(
+        ground=(26, 10, 34), ground_b=(36, 14, 48),
+        form=(244, 118, 196), form_light=(254, 200, 234), form_dark=(112, 30, 96),
+        accent=(180, 138, 246), accent_soft=(140, 54, 158),
+        void=(12, 4, 18),
+    ),
+    # THE MOUTH.  Hot red on near-black, and everything in it is a tooth.
+    "neon4": Palette(
+        ground=(30, 8, 12), ground_b=(42, 12, 16),
+        form=(250, 90, 96), form_light=(255, 190, 176), form_dark=(120, 22, 34),
+        accent=(255, 236, 220), accent_soft=(168, 40, 62),
+        void=(12, 2, 6),
+    ),
+    # THE STAR.  Gold and white, radial, with nothing at all in between.
+    "neon5": Palette(
+        ground=(28, 24, 8), ground_b=(38, 32, 12),
+        form=(252, 210, 84), form_light=(255, 246, 200), form_dark=(122, 92, 20),
+        accent=(255, 252, 236), accent_soft=(198, 142, 44),
+        void=(10, 8, 2),
+    ),
 }

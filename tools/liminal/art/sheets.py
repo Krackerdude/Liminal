@@ -203,7 +203,9 @@ def _decals(cb: ChipsetBuilder, pal: Palette, world: str, ground: Canvas) -> Non
            "fingers": "strata", "checker": "brick", "toybox": "checker",
            "neon": "checker", "scallops": "strata", "starfield": "checker",
            "paper": "strata", "doors": "brick", "thicket": "trunks",
-           "bare": "strata", "bars": "checker"}.get(motif, "brick")
+           "bare": "strata", "bars": "checker", "rings": "checker",
+           "coil": "strata", "teeth": "checker",
+           "rays": "starfield"}.get(motif, "brick")
     cb.add("wall_alt", ct.wall_band(pal, alt, accent=pal.accent_soft),
            passable=False)
     cb.add("wall_alt_face", ct.wall_band(pal, alt, face=True,
@@ -882,6 +884,96 @@ def build_neon() -> ChipsetBuild:
     return _finish(cb, ground)
 
 
+# The four paintings, from the inside.  Each one is the same construction —
+# glowing line on near-black, with the painting's own motif as the floor, the
+# wall and the props — and the whole difference between them is which two
+# colours they are allowed and which shape everything is made of.  That is a
+# deliberately narrow brief: a mural interior that has as many materials as an
+# ordinary world is not a mural any more, it is another room.
+MURAL_INSIDES: dict[str, dict] = {
+    "neon2": dict(motif="eye", wall="rings", floor="concentric",
+                  glow=("pulse", 11),
+                  decals=(("ring", "form"), ("fingerprint", "accent_soft"),
+                          ("spark", "accent")),
+                  patterns=("concentric", "dots", "square_frame")),
+    "neon3": dict(motif="spiral", wall="coil", floor="spiral",
+                  glow=("crawl", 6),
+                  decals=(("ripple", "form"), ("glyph", "accent_soft"),
+                          ("spark", "accent")),
+                  patterns=("concentric", "diamond", "weave")),
+    "neon4": dict(motif="mouth", wall="teeth", floor="stripes",
+                  glow=("pulse", 8),
+                  decals=(("offsquare", "form"), ("crack", "accent_soft"),
+                          ("point", "accent")),
+                  patterns=("stripes", "chevron", "grid")),
+    "neon5": dict(motif="star", wall="rays", floor="cross",
+                  glow=("scan", 5),
+                  decals=(("fallen_star", "form"), ("spark", "accent"),
+                          ("constellation", "accent_soft")),
+                  patterns=("cross", "diamond", "dots")),
+}
+
+
+def _mural_inside(key: str):
+    """One painting, from inside it."""
+    spec = MURAL_INSIDES[key]
+
+    def build() -> ChipsetBuild:
+        pal = PALETTES[key]
+        cb = ChipsetBuilder(key, pal)
+
+        # The floor is the painting's own line work, drawn *dim*.  The first
+        # pass had it at nearly full brightness and the result was a screen
+        # with one value on it: floor, wall and prop all shouting the same
+        # colour, so nothing had a shape.  A painting's interior is lit by the
+        # paint, and paint on the floor is the part furthest from the light.
+        ground = ct.pattern_tile(pal, spec["floor"],
+                                 blend(pal.form_dark, pal.ground, 0.74),
+                                 pal.ground)
+        ground_b = ct.pattern_tile(pal, spec["floor"],
+                                   blend(pal.form_dark, pal.ground_b, 0.58),
+                                   pal.ground_b)
+        _basics(cb, pal, ground, ground_b, world=key)
+
+        # The lit line: what the painting is actually made of, and the only
+        # thing in here that is allowed to be at full brightness.
+        line = Canvas(TILE, TILE, pal.ground)
+        line.rect(0, 6, TILE, 4, pal.form)
+        line.rect(0, 7, TILE, 2, pal.form_light)
+        cb.add("line", line)
+        cross = Canvas(TILE, TILE, pal.ground)
+        cross.rect(0, 6, TILE, 4, pal.form)
+        cross.rect(6, 0, 4, TILE, pal.form)
+        cross.rect(7, 7, 2, 2, pal.form_light)
+        cb.add("line_cross", cross)
+        # and the part of the painting that is not painted
+        cb.add("unpainted", ct.void_tile(pal), passable=False)
+
+        for kind in ("eye", "spiral", "mouth", "arrow", "star"):
+            cb.add_object(f"scrawl_{kind}", ct.scrawl(pal, kind, 4, 4),
+                          solid="none")
+        # the motif at landmark scale, standing up off the floor
+        cb.add_object("motif", ct.scrawl(pal, spec["motif"], 6, 6),
+                      solid="none", upper=True)
+        cb.add_object("post", ct.checker_pillar(pal, 1, 4), solid="all",
+                      upper=True)
+        cb.add_object("door", ct.door_frame(pal, 2, 3, glow=pal.accent))
+        _shadows(cb, pal)
+        _animate(cb, pal, key)
+        _decals(cb, pal, key, ground)
+        return _finish(cb, ground)
+    return build
+
+
+for _key, _spec in MURAL_INSIDES.items():
+    WALL_MOTIF[_key] = _spec["wall"]
+    DECALS[_key] = [tuple(pair) for pair in _spec["decals"]]
+    PATTERNS[_key] = list(_spec["patterns"])
+    MURALS[_key] = [_spec["motif"] if _spec["motif"] in
+                    ("eye", "spiral", "star") else "rings"]
+    ANIMATION[_key] = ((_spec["glow"][0], "pulse", "scan"), _spec["glow"])
+
+
 def build_umbrellas() -> ChipsetBuild:
     """A forest where the trees are umbrellas.  It is not raining."""
     pal = PALETTES["umbrellas"]
@@ -962,6 +1054,7 @@ BUILDERS: dict[str, Callable[[], ChipsetBuild]] = {
     "faces2": build_faces2,
     "faces3": build_faces3,
     "faces4": build_faces4,
+    **{key: _mural_inside(key) for key in MURAL_INSIDES},
 }
 
 

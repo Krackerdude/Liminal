@@ -1614,6 +1614,47 @@ def wall_band(pal: Palette, motif: str, *, face: bool = False,
         for x0, y0, x1, y1 in ((6, 12, 3, 9), (10, 11, 13, 8), (9, 5, 11, 2)):
             art.line(x0, y0, x1, y1, blend(dark, light, 0.35))
         art.rect(7, 10, 3, 6, base)
+    elif motif == "rings":
+        # THE EYE, from inside it: rings all the way out, and one of them is
+        # always the one you are standing next to.
+        art.px[:, :] = pal.void
+        for radius in (2.2, 5.0, 7.8):
+            art.ellipse(TILE / 2, TILE / 2, radius, radius, base, filled=False)
+            art.ellipse(TILE / 2, TILE / 2, radius - 0.8, radius - 0.8, light,
+                        filled=False)
+        art.blob(TILE / 2, TILE / 2, 1.6, ink)
+    elif motif == "coil":
+        # THE SPIRAL: one line, entering at a corner and leaving at another,
+        # so the boundary itself is continuous around a room.
+        art.px[:, :] = pal.void
+        for step in range(34):
+            angle = step * 0.46
+            radius = 0.8 + step * 0.24
+            x = int(TILE / 2 + radius * math.cos(angle))
+            y = int(TILE / 2 + radius * math.sin(angle))
+            art.dot(x, y, base)
+            art.dot(x, y - 1, light if step % 3 else base)
+        art.dot(TILE // 2, TILE // 2, ink)
+    elif motif == "teeth":
+        # THE MOUTH: a bite, top and bottom, not quite meeting.
+        art.px[:, :] = pal.void
+        for index, x in enumerate(range(0, TILE, 4)):
+            height = 5 + (index % 2) * 2
+            art.rect(x, 0, 3, height, base)
+            art.rect(x, 0, 3, 2, light)
+            art.rect(x + 2, TILE - height - 1, 3, height + 1, base)
+            art.rect(x + 2, TILE - 2, 3, 2, dark)
+        art.hline(TILE // 2, 0, TILE - 1, blend(pal.void, ink, 0.35))
+    elif motif == "rays":
+        # THE STAR: everything points away from a centre that is not in shot.
+        art.px[:, :] = pal.void
+        for angle in range(0, 360, 30):
+            radians = math.radians(angle)
+            art.line(TILE // 2, TILE // 2,
+                     int(TILE / 2 + 11 * math.cos(radians)),
+                     int(TILE / 2 + 11 * math.sin(radians)),
+                     base if angle % 60 else light)
+        art.blob(TILE / 2, TILE / 2, 2.4, ink)
     elif motif == "bars":
         # Where the picture stops carrying the town.  Almost entirely black —
         # the roads on this channel are full-brightness colour bars, and a
@@ -1700,6 +1741,15 @@ def pattern_tile(pal: Palette, kind: str, ink: RGB | None = None,
             y = 7.5 + 4.5 * math.sin(math.radians(angle))
             art.blob(x, y, 2.4, fg)
         art.blob(7.5, 7.5, 2.6, pal.accent_soft)
+    elif kind == "spiral":
+        # An arm of a spiral that carries on into the next tile, so a floor of
+        # these reads as one turning surface rather than as repeated coils.
+        for step in range(26):
+            angle = step * 0.52
+            radius = 0.9 + step * 0.30
+            art.dot(int(7.5 + radius * math.cos(angle)),
+                    int(7.5 + radius * math.sin(angle)),
+                    fg if step % 4 else pal.accent_soft)
     else:
         art.dither(fg, 0.35, BAYER4)
     return art

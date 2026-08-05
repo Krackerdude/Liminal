@@ -51,7 +51,7 @@ world's own verb and sharing its identity, music family and cast:
 | stairs | 5 | floors, each more corrupted than the last, reached by falling in a particular order | ✅ |
 | umbrellas | 5 | planes, ascending, the imagery coming apart the higher you get | |
 | faces | 4 | broadcast states of one map, each a different palette with its own residents and items | ✅ |
-| neon | 4 | the insides of murals, entered by standing on them | |
+| neon | 4 | the insides of murals, entered by standing on them | ✅ |
 
 A subworld is secret, hostile and unrelated. A layer is the world continuing.
 
@@ -83,6 +83,26 @@ down. Walk that way inside a two-second window and the picture changes around
 you — a teleport to the same coordinates on the next channel, which is only
 possible because the four maps are the same map. Miss it and nothing at all
 happens.
+
+**The paintings, in detail.** Four floor murals in the scrawl world are also
+ways into it. Step on one — touch, not action, because facing a picture on the
+floor and pressing a button would make it a door — and you are inside it. Each
+interior is built out of that painting's shape and its two colours and nothing
+else, so the layout carries the same information as the picture:
+
+| painting | inside it | its secret |
+|---|---|---|
+| the eye | concentric rings round a pupil, gaps that never line up | stand in the pupil and stop moving |
+| the spiral | one corridor, in and back out again | walk it outward, from the middle |
+| the mouth | a throat that narrows, pockets between the teeth | go all the way down instead of into a pocket |
+| the star | five arms and a hub, nothing in between | touch the tips in the order the points are longest |
+
+None of these are a torus. Everywhere else wraps, which is what makes walking
+feel endless; a painting is a finite object, and finding its edge is the
+difference. Each keeps one thing — the lens, the thread, the loose tooth, the
+long point — and two residents made of the painting itself. They are a set
+rather than a chain: any order, but the plaza in the middle of the scrawl
+world answers to all four and to nothing less.
 
 **Reaching a subworld is never signposted.** No door is drawn as a door. The
 route is a behaviour, a condition, or a coincidence — not an exit.

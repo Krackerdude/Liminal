@@ -48,7 +48,13 @@ REFERENCE = os.path.normpath(os.path.join(
 SCALE = 8
 CHECKER = ((192, 192, 192), (128, 128, 128))
 COLUMNS = {UP: (9, 24), RIGHT: (44, 58), DOWN: (26, 41), LEFT: (61, 75)}
-ROWS = ((5, 33), (36, 63), (66, 93))
+# The author's rows are idle, step, step — row 0 is the neutral standing pose
+# (in profile its shoe footprint is 8px wide against 11 for the other two, and
+# those two are mirror images of each other).  RPG Maker plays frames 0, 1, 2, 1
+# and shows frame 1 when the player is standing still, so the idle goes in the
+# middle slot: the cycle becomes step, idle, step, idle, and stopping leaves the
+# figure on its own idle rather than mid-stride.
+ROWS = ((36, 63), (5, 33), (66, 93))
 
 
 def _sheet() -> tuple[np.ndarray, np.ndarray]:

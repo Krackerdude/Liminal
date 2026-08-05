@@ -529,7 +529,14 @@ def dream_events(world: World, worlds: dict[str, World],
     if key.startswith("stairs"):
         _stairs_system(world, worlds, rng, index)
     system = interact.of(key)
+    # Three worlds own their verb outright and build it themselves, because in
+    # all three the verb *does* something to the world rather than answering
+    # you: the counters set a register, the edges fold into a fall order, and
+    # the umbrellas lift you a plane.  Leaving the generic version in place
+    # alongside meant most of the umbrellas in the forest promised a lift and
+    # then did not give one, which is the one thing this game must not do.
     if system is not None and key != "numbers" \
+            and key != "umbrellas" \
             and not key.startswith("stairs"):
         zones = list(getattr(world.plan, "zones", []) or [])
         base = SW_INTERACT_BASE + _interact_next[0]

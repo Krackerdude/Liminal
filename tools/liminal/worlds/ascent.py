@@ -196,7 +196,11 @@ def lifts(world, worlds: dict, rng: random.Random) -> None:
     height = height_of(world.key)
     m = world.map
     zones = list(getattr(world.plan, "zones", []) or [])
-    count = (6, 5, 5, 4, 3)[height]
+    # The forest at the bottom is the widest and the one the player meets
+    # first, so it carries the most: eighteen umbrellas of which a quarter go
+    # anywhere.  A world where every umbrella lifts has no umbrellas in it,
+    # only lifts — the ratio is the mechanic.
+    count = (18, 8, 7, 6, 4)[height]
     for n in range(count):
         if zones:
             ux, uy = _at_edge(world, zones[(n * 3 + 1) % len(zones)], rng)
@@ -208,7 +212,7 @@ def lifts(world, worlds: dict, rng: random.Random) -> None:
         shut.msg("it is furled.", "", "it has never once been needed.")
         m.add_event(f"furled {n}", ux, uy, [
             Page(script=shut, trigger=TRIGGER_ACTION, layer=LAYER_SAME),
-        ] if n % 2 else [
+        ] if n % 4 else [
             Page(script=_open_it(height), trigger=TRIGGER_ACTION,
                  layer=LAYER_SAME),
         ])

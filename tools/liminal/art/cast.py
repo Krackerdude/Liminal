@@ -13,6 +13,7 @@ that is the point.
 from __future__ import annotations
 
 from . import kin
+from .dreamer import Dreamer, dreamer_block
 from .canvas import Canvas
 from .charsets import (Body, creature_block, draw_block_cat, draw_cloud_ladder,
                        draw_cone, draw_floating_eye, draw_long_bird,
@@ -60,6 +61,30 @@ DREAMER_SLOTS_B = [
                        shirt=(120, 118, 116), trousers=(84, 82, 80))),
     ("static", _variant(translucent=True, feature="scarf",
                         feature_color=(226, 226, 232), faceless=True)),
+]
+
+
+# The thirteen selves.  Names and order match DREAMER_SLOTS exactly, because
+# cast_lookup indexes charset slots off those names.
+PLAYER_SLOTS = [
+    ("plain", Dreamer()),
+    ("lantern", Dreamer(carry="lantern", glow=(242, 214, 158))),
+    ("quiet", Dreamer(translucent=True)),
+    ("tall", Dreamer(feature="antenna", feature_color=(198, 198, 206))),
+    ("hat", Dreamer(feature="cone_hat", feature_color=(196, 138, 108))),
+    ("ears", Dreamer(feature="ears", feature_color=(206, 186, 150))),
+    ("coat", Dreamer(feature="scarf", feature_color=(74, 70, 88))),
+    ("pole", Dreamer(carry="pole")),
+]
+
+PLAYER_SLOTS_B = [
+    ("eye", Dreamer(feature="antenna", feature_color=(206, 226, 224),
+                    glow=(168, 216, 212))),
+    ("bell", Dreamer(carry="ring")),
+    ("key", Dreamer(carry="can")),
+    ("stone", Dreamer(feature="wide_hat", feature_color=(150, 146, 140))),
+    ("static", Dreamer(translucent=True, feature="scarf",
+                       feature_color=(214, 214, 220))),
 ]
 
 
@@ -344,8 +369,11 @@ def build_sheets() -> dict[str, Canvas]:
     # attached to.  An explicitly empty sheet is the only way to mean "no
     # graphic" and be believed.
     out["Blank"] = sheet([])
-    out["Dreamer"] = sheet([figure_block(body) for _, body in DREAMER_SLOTS])
-    out["DreamerB"] = sheet([figure_block(body) for _, body in DREAMER_SLOTS_B])
+    # The player is the author's own artwork, transcribed out of the reference
+    # sheet by art/dreamer.py rather than generated.  Effects add a halo, a
+    # translucency pass or one small object; none of them repaint the figure.
+    out["Dreamer"] = sheet([dreamer_block(spec) for _, spec in PLAYER_SLOTS])
+    out["DreamerB"] = sheet([dreamer_block(spec) for _, spec in PLAYER_SLOTS_B])
     for sheet_name, entries in _sheets().items():
         blocks = []
         for _, spec in entries:

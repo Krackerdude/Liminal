@@ -592,3 +592,133 @@ def road_sign(look: Look, cols: int, rows: int) -> Canvas:
     for line in range(6, h // 3 - 2, 4):              # legend, unreadable
         art.hline(line, 5, w - 7, blend(p.deep, p.mid, 0.3))
     return art
+
+
+# --- the hidden half ----------------------------------------------------------
+# Twelve secret rooms and four locked buildings, all of them behind something.
+# They share two chipsets because they share two ideas about what a hidden
+# place is made of: rock and water under the town, board and paint inside it.
+
+CAVE = Look(
+    grass=mt.Material("moss", (62, 96, 68)),
+    road=mt.Material("rock", (78, 74, 86)),
+    kerb=mt.Material("wet", (96, 100, 118)),
+    paint=mt.Material("chalk", (206, 202, 190)),
+    bark=mt.Material("clay", (96, 74, 62)),
+    leaf=mt.Material("weed", (74, 116, 78)),
+    metal=mt.Material("iron", (94, 96, 104)),
+    glass=mt.Material("water", (56, 82, 108)),
+    plastic=mt.Material("lamp", (206, 168, 106)),
+)
+
+PREM = Look(
+    grass=mt.Material("board", (98, 74, 58)),
+    road=mt.Material("lino", (92, 90, 96)),
+    kerb=mt.Material("skirt", (78, 66, 58)),
+    paint=mt.Material("paper", (196, 190, 176)),
+    bark=mt.Material("desk", (106, 80, 60)),
+    leaf=mt.Material("felt", (72, 96, 88)),
+    metal=mt.Material("rack", (104, 108, 118)),
+    glass=mt.Material("crt", (66, 86, 90)),
+    plastic=mt.Material("bake", (176, 122, 74)),
+)
+
+
+def rock_face(look: Look, *, cracked: bool = False) -> Canvas:
+    """A wall of rock, in courses rather than in noise.
+
+    Stone reads as stone because it has bedding: roughly horizontal seams with
+    vertical joints broken between them.  A crack is a single dark run that
+    ignores the bedding, which is exactly why the eye finds it.
+    """
+    r = look.road
+    art = Canvas(TILE, TILE, r.mid)
+    mt.plane(art, 0, 0, TILE, TILE, r.mid)
+    for row, y in enumerate(range(0, TILE, 6)):
+        art.hline(y, 0, TILE - 1, r.shade)
+        if y + 1 < TILE:
+            art.hline(y + 1, 0, TILE - 1, r.lit)
+        for x in range((row % 2) * 7, TILE, 11):
+            art.vline(x, y + 1, min(TILE - 1, y + 5), r.shade)
+    if cracked:
+        for step in range(TILE):
+            art.dot((5 + step // 3 + (step % 5 == 0)) % TILE, step, r.deep)
+            art.dot((6 + step // 3 + (step % 5 == 0)) % TILE, step, r.shade)
+    return art
+
+
+def cave_floor(look: Look, wet: bool = False) -> Canvas:
+    """Rubble underfoot, and where it is wet it is a plane with a shine."""
+    r, w = look.bark, look.glass
+    art = Canvas(TILE, TILE, r.mid)
+    mt.plane(art, 0, 0, TILE, TILE, r.mid)
+    for y in range(1, TILE, 5):
+        for x in range((y // 5) * 4, TILE, 6):
+            art.rect(x, y, 2, 1, r.shade)
+            art.dot(x + 1, y + 1, r.lit)
+    if wet:
+        mt.plane(art, 0, 0, TILE, TILE, w.shade)
+        mt.seam(art, 0, 5, TILE, 4, w.mid, w.shade)
+        art.hline(3, 2, 9, w.lit)
+        art.hline(11, 6, TILE - 2, w.lit)
+    return art
+
+
+def brick_wall(look: Look) -> Canvas:
+    """Engineering brick, for everything under the road that was built."""
+    b = mt.Material("brick", (108, 72, 62))
+    art = Canvas(TILE, TILE, b.mid)
+    mt.bricks(art, 0, 0, TILE, TILE, b, course=5, stagger=True)
+    return art
+
+
+def boards(look: Look, offset: int) -> Canvas:
+    """An interior floor: the room's own boards, in this world's timber."""
+    f = look.grass
+    art = Canvas(TILE, TILE, f.mid)
+    mt.plane(art, 0, 0, TILE, TILE, f.mid)
+    for top in range(0, TILE, 8):
+        art.hline(top, 0, TILE - 1, f.shade)
+        art.hline(top + 1, 0, TILE - 1, f.lit)
+        art.hline(top + 5, 0, TILE - 1, f.shade)
+    if offset:
+        art.vline(offset % TILE, 0, TILE - 1, f.shade)
+    return art
+
+
+def rack(look: Look, cols: int, rows: int) -> Canvas:
+    """Equipment: a frame of shelves with things blinking in it."""
+    art = _canvas(cols, rows)
+    w, h = cols * TILE, rows * TILE
+    m, g, l = look.metal, look.glass, look.plastic
+    solid(art, 1, 2, w - 2, h - 4, m, top=5)
+    for shelf in range(10, h - 8, 9):
+        mt.plane(art, 4, shelf, w - 10, 7, g.shade)
+        mt.plane(art, 4, shelf, w - 10, 2, g.mid)
+        for lamp in range(6, w - 10, 6):
+            art.dot(lamp, shelf + 4, l.mid if (lamp + shelf) % 3 else g.lit)
+    foot(art, 0, h - 2, w, m)
+    return art
+
+
+def crate(look: Look, cols: int, rows: int) -> Canvas:
+    """A box that has been here longer than you have."""
+    art = _canvas(cols, rows)
+    w, h = cols * TILE, rows * TILE
+    b = look.bark
+    solid(art, 1, 3, w - 2, h - 5, b, top=6)
+    for band in (h // 2, h - 10):
+        mt.plane(art, 1, band, w - 2, 2, b.shade)
+    foot(art, 0, h - 2, w, b)
+    return art
+
+
+def water_pool(look: Look) -> Canvas:
+    """Standing water.  It has been standing a long time."""
+    w = look.glass
+    art = Canvas(TILE, TILE, w.mid)
+    mt.plane(art, 0, 0, TILE, TILE, w.shade)
+    mt.seam(art, 0, 3, TILE, 5, w.mid, w.shade)
+    art.hline(2, 1, 8, w.lit)
+    art.hline(9, 5, TILE - 2, w.lit)
+    return art

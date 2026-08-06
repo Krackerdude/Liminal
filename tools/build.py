@@ -204,6 +204,15 @@ def author_events(worlds: dict[str, W.World]) -> int:
     for key in W.FACE_CHANNELS:
         rng = random.Random(zlib.crc32(f"grove:{key}".encode()))
         grove.grove_events(worlds[key], worlds, rng)
+    # The grove's hidden half: the ways in, on each channel, and the rooms
+    # themselves.  Entrances go on last so they can see which tiles the town
+    # has already claimed.
+    from liminal.worlds import hidden
+    for key in W.FACE_CHANNELS:
+        rng = random.Random(zlib.crc32(f"hidden:{key}".encode()))
+        hidden.entrances(worlds[key], worlds, rng)
+    for key in W.HIDDEN_ORDER:
+        hidden.events(worlds[key], worlds)
     # The four paintings on the floor of the scrawl world, and their insides.
     murals.entrances(worlds["neon"], worlds,
                      random.Random(zlib.crc32(b"murals")))

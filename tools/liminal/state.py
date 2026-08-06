@@ -142,7 +142,19 @@ SW_FACE_HEARD = SW_FACE_BASE + 6        # the receiver is in your hands
 # each of them keeps.  Unlike the grove's loop these are not a chain — a
 # painting is a closed object and you can visit them in any order — but all
 # four together are the only thing the plaza will answer to.
-SW_MURAL_BASE = SW_FACE_BASE + 8
+# --- the grove's hidden half --------------------------------------------------
+# Twelve secret rooms and four locked buildings.  Everything about them is a
+# switch: whether you have the key, whether the door is open, whether the
+# manhole has been lifted, and whether you have picked up what is inside.
+SW_HIDE_BASE = SW_FACE_BASE + 16
+SW_HIDE_KEY = SW_HIDE_BASE + 0          # + channel: the four keys, one each
+SW_HIDE_DOOR = SW_HIDE_BASE + 4         # + channel: that building is open
+SW_HIDE_FOUND = SW_HIDE_BASE + 8        # + area index 0..15: taken already
+SW_HIDE_MANHOLE = SW_HIDE_BASE + 24     # the cover is off
+SW_HIDE_ASKED = SW_HIDE_BASE + 25       # somebody asked you to find them
+SW_REMOTE = SW_HIDE_BASE + 26           # the television remote is in your hand
+
+SW_MURAL_BASE = SW_FACE_BASE + 48
 SW_MURAL_LENS = SW_MURAL_BASE + 0       # the eye
 SW_MURAL_THREAD = SW_MURAL_BASE + 1     # the spiral
 SW_MURAL_TOOTH = SW_MURAL_BASE + 2      # the mouth

@@ -65,6 +65,13 @@ class World:
         return gen.free_spot(self.map, self.placer, rng, **kwargs)
 
 
+# The grove's hidden half: twelve secret rooms and four locked buildings, all
+# of them one screen and all of them behind something.
+HIDDEN_ORDER = ["cave1", "cave2", "cave3", "cave4",
+                "under1", "under2", "under3", "under4",
+                "box1", "box2", "box3", "box4",
+                "prem1", "prem2", "prem3", "prem4"]
+
 # Colour grading per world, as a screen tint: (red, green, blue, saturation),
 # where 100 is neutral and the range is 0..200.  This is the single strongest
 # tool the engine gives for making a place feel a particular way before the
@@ -80,6 +87,13 @@ TINTS: dict[str, tuple[int, int, int, int]] = {
     "hall3": (84, 84, 100, 70),
     "hall2": (74, 74, 92, 60),
     "lobby": (58, 58, 76, 40),
+    # Under the town it is colder than the town, and inside its buildings it
+    # is warmer.  Each room also keeps a trace of the channel it belongs to,
+    # so a cave found on the red reception is still a red place.
+    **{f"cave{n}": (86 + n * 6, 84, 96 - n * 4, 62 + n * 8) for n in (1, 2, 3, 4)},
+    **{f"under{n}": (72 + n * 5, 74, 96 - n * 3, 54 + n * 9) for n in (1, 2, 3, 4)},
+    **{f"box{n}": (104 - n * 2, 98, 92, 78 + n * 6) for n in (1, 2, 3, 4)},
+    **{f"prem{n}": (100 + n * 3, 96, 88, 84 + n * 5) for n in (1, 2, 3, 4)},
     "nexus": (86, 88, 108, 78),          # cold, desaturated, low
     "pink": (110, 96, 102, 104),         # pushed towards its own pink
     "numbers": (96, 104, 102, 92),       # clinical
@@ -120,6 +134,10 @@ OVERLAYS: dict[str, tuple[str, int]] = {
     "balcony": ("Grain", 84),
     "hall5": ("Grain", 84), "hall4": ("Grain", 86), "hall3": ("Grain", 80),
     "hall2": ("VignetteSoft", 72), "lobby": ("Vignette", 58),
+    **{f"cave{n}": ("Vignette", 60) for n in (1, 2, 3, 4)},
+    **{f"under{n}": ("VignetteSoft", 56) for n in (1, 2, 3, 4)},
+    **{f"box{n}": ("Grain", 82) for n in (1, 2, 3, 4)},
+    **{f"prem{n}": ("Grain", 78) for n in (1, 2, 3, 4)},
     "nexus": ("Vignette", 62),
     "pink": ("HazePink", 90),
     "numbers": ("Grain", 92),
@@ -159,6 +177,11 @@ MUSIC: dict[str, str] = {
     # each reception has its own: upbeat-and-too-pleased, sad, and
     # something on the other end that knows you are there
     "faces2": "Overgrown", "faces3": "OffColour", "faces4": "NoSignal",
+    **{f"cave{n}": "Deep" for n in (1, 2, 3, 4)},
+    **{f"under{n}": "Deep" for n in (1, 2, 3, 4)},
+    **{f"box{n}": "Faces" for n in (1, 2, 3, 4)},
+    "prem1": "Faces", "prem2": "Overgrown", "prem3": "OffColour",
+    "prem4": "NoSignal",
     "neon2": "Neon", "neon3": "Neon", "neon4": "Wrong", "neon5": "Deep",
     "umbrellas2": "Umbrellas", "umbrellas3": "Umbrellas",
     "umbrellas4": "Deep", "umbrellas5": "Wrong",
@@ -170,6 +193,14 @@ TITLES: dict[str, str] = {
     "hall5": "the fifth floor", "hall4": "the fourth floor",
     "hall3": "the third floor", "hall2": "the second floor",
     "lobby": "the ground floor",
+    "cave1": "the culvert", "cave2": "the root hollow",
+    "cave3": "the dry cave", "cave4": "the anechoic",
+    "under1": "the sewers", "under2": "the flooded run",
+    "under3": "the dry main", "under4": "the cable duct",
+    "box1": "the signal box", "box2": "the sunken greenhouse",
+    "box3": "the substation", "box4": "the continuity suite",
+    "prem1": "the exchange", "prem2": "the nursery office",
+    "prem3": "the depot", "prem4": "the transmitter hut",
     "nexus": "the doors",
     "pink": "brick",
     "numbers": "counting",
@@ -203,6 +234,7 @@ TITLES: dict[str, str] = {
 POPULATION: dict[str, int] = {
     "room": 0, "balcony": 0, "nexus": 3,
     "hall5": 0, "hall4": 0, "hall3": 0, "hall2": 0, "lobby": 0,
+    **{key: 0 for key in HIDDEN_ORDER},
     "pink": 20, "numbers": 20, "blocks": 16, "stairs": 0, "sand": 15,
     "faces": 19, "hands": 0, "checker": 17, "toys": 20, "neon": 20,
     "umbrellas": 16, "stars": 16,
@@ -255,7 +287,8 @@ ASCENT_ORDER = ["umbrellas2", "umbrellas3", "umbrellas4", "umbrellas5"]
 BLOCK_ORDER = ["hall5", "hall4", "hall3", "hall2", "lobby"]
 HOME_FLOOR = "hall4"
 
-WORLD_ORDER = ["room", "balcony", *BLOCK_ORDER, "nexus", *DREAM_ORDER, *STAIR_FLOORS,
+
+WORLD_ORDER = ["room", "balcony", *BLOCK_ORDER, "nexus", *HIDDEN_ORDER, *DREAM_ORDER, *STAIR_FLOORS,
                *FACE_CHANNELS[1:], *MURAL_INSIDE_ORDER,
                *ASCENT_ORDER]
 
@@ -2006,9 +2039,19 @@ def _face_channel(channel: int):
     return build
 
 
+def _hidden_build(key: str):
+    """One of the grove's secret rooms.  Imported late: ``hidden`` needs the
+    world helpers in this module, so it cannot be imported at the top of it."""
+    def make(map_id: int):
+        from . import hidden
+        return hidden.build(key)(map_id)
+    return make
+
+
 BUILD = {
     "room": build_room, "balcony": build_balcony, "nexus": build_nexus,
-    **{key: _build_floor(key) for key in BLOCK_ORDER}, "pink": build_pink,
+    **{key: _build_floor(key) for key in BLOCK_ORDER},
+    **{key: _hidden_build(key) for key in HIDDEN_ORDER}, "pink": build_pink,
     "numbers": build_numbers, "blocks": build_blocks, "stairs": build_stairs,
     "sand": build_sand, "faces": build_faces, "hands": build_hands,
     "checker": build_checker, "toys": build_toys, "neon": build_neon,

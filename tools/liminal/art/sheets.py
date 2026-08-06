@@ -1335,6 +1335,93 @@ def _grove_common(cb: ChipsetBuilder, pal: Palette, look, world: str,
     return ground
 
 
+def build_under() -> ChipsetBuild:
+    """Under the grove: rock, brick and standing water.
+
+    One chipset for all eight rooms beneath the town — the four caves behind
+    the cracks and the four runs under the manholes — because they are the
+    same substance seen from two entrances.  What tells a cave from a sewer is
+    which walls a map uses, not which chipset it loaded.
+    """
+    pal = PALETTES["faces"]
+    cb = ChipsetBuilder("under", pal)
+    look = gv.CAVE
+
+    floor = gv.cave_floor(look)
+    cb.add("ground", floor)
+    cb.add("ground_b", gv.cave_floor(look))
+    cb.add("path", gv.cave_floor(look, wet=True))
+    cb.add("water", gv.water_pool(look), passable=False)
+    cb.add("glow", gv.cave_floor(look, wet=True))
+    cb.add("rug", gv.cave_floor(look, wet=True))
+    cb.add("void", ct.flat((0, 0, 0)), passable=False)
+    cb.add("black", ct.flat((0, 0, 0)), passable=False)
+    cb.add("rock", gv.rock_face(look), passable=False)
+    cb.add("rock_crack", gv.rock_face(look, cracked=True), passable=False)
+    cb.add("brick", gv.brick_wall(look), passable=False)
+    for side in ("n", "s", "w", "e"):
+        cb.add(f"cut_{side}", gv.rock_face(look), passable=False)
+        cb.add(f"face_{side}", gv.rock_face(look), passable=False)
+    cb.add("face_n_low", gv.rock_face(look), passable=False)
+    cb.add("face_s_low", gv.rock_face(look), passable=False)
+
+    cb.add_object("crate", gv.crate(look, 2, 2), solid="all")
+    cb.add_object("rack", gv.rack(look, 2, 3), solid="all")
+    cb.add_object("lamp", gv.traffic_light(look, 1, 4), solid="bottom",
+                  upper=True)
+    cb.add_object("mirror", ct.door_frame(pal, 2, 3, reflect="faces"),
+                  solid="all")
+    cb.add_object("way_out", ct.door_frame(pal, 2, 3, reflect="faces"))
+    _shadows(cb, pal)
+    _animate(cb, pal, "faces")
+    return _finish(cb, floor)
+
+
+def build_premises() -> ChipsetBuild:
+    """Inside the grove's buildings, and the small rooms above them.
+
+    Board, paint and equipment.  Every one of these is somewhere the town used
+    to do something from, and the giveaway is that none of them have been
+    cleared out — the racks are still racked, the desks are still stacked, and
+    the only thing missing is anybody to be doing it.
+    """
+    pal = PALETTES["faces"]
+    cb = ChipsetBuilder("premises", pal)
+    look = gv.PREM
+
+    floor = gv.boards(look, 0)
+    cb.add("ground", floor)
+    cb.add("ground_b", gv.boards(look, 7))
+    cb.add("path", gv.boards(look, 11))
+    cb.add("rug", gv.paving(look))
+    cb.add("glow", gv.boards(look, 3))
+    cb.add("void", ct.flat((0, 0, 0)), passable=False)
+    cb.add("black", ct.flat((0, 0, 0)), passable=False)
+    PLASTER = mt.Material("plaster", (104, 98, 112), grain="v")
+    CORE = mt.Material("core", (74, 76, 92))
+    mats = {"plaster": PLASTER, "core": CORE,
+            "skin": mt.Material("skin", (48, 48, 64))}
+    for side in ("n", "s", "w", "e"):
+        cb.add(f"cut_{side}", _wall_cut(mats, side), passable=False)
+        cb.add(f"face_{side}", _wall_face(mats, side), passable=False)
+    cb.add("face_n_low", _wall_face(mats, "n", low=True), passable=False)
+    cb.add("face_s_low", _wall_face(mats, "s", low=True), passable=False)
+
+    cb.add_object("rack", gv.rack(look, 2, 3), solid="all")
+    cb.add_object("crate", gv.crate(look, 2, 2), solid="all")
+    cb.add_object("counter", gv.dead_car(look, 3, 2), solid="all", upper=True)
+    cb.add_object("machine", gv.vending_machine(look, 2, 3), solid="bottom",
+                  upper=True)
+    cb.add_object("board", gv.road_sign(look, 2, 3), solid="bottom",
+                  upper=True)
+    cb.add_object("mirror", ct.door_frame(pal, 2, 3, reflect="faces"),
+                  solid="all")
+    cb.add_object("way_out", ct.door_frame(pal, 2, 3, reflect="faces"))
+    _shadows(cb, pal)
+    _animate(cb, pal, "faces")
+    return _finish(cb, floor)
+
+
 def build_faces() -> ChipsetBuild:
     """A CITY THE FOREST GREW THROUGH.
 
@@ -1922,6 +2009,8 @@ BUILDERS: dict[str, Callable[[], ChipsetBuild]] = {
     "room": build_room,
     "balcony": build_balcony,
     "hall5": build_hall,
+    "cave1": build_under,
+    "box1": build_premises,
     "nexus": build_nexus,
     "pink": build_pink,
     "numbers": build_numbers,

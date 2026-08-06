@@ -120,7 +120,12 @@ VR_MURAL_MAP = 57
 VR_MURAL_X = 58
 VR_MURAL_Y = 59
 # How far round the star's tips you have got, and in which order.
-VR_AMBIENCE = 62          # counts down to the grove's next ambient sound
+VR_AMBIENCE = 62
+# The debug readout's own three, kept clear of everything the atmosphere
+# watcher touches every frame -- it runs in parallel and shares nothing.
+VR_DEBUG_KEY = 63
+VR_DEBUG_X = 64
+VR_DEBUG_Y = 65          # counts down to the grove's next ambient sound
 
 VR_STAR_ORDER = 60
 VR_STAR_STEP = 61
@@ -243,6 +248,8 @@ def variable_names(world_names: list[str]) -> dict[int, str]:
                   VR_RING_X: "ring x", VR_RING_Y: "ring y",
                   VR_RING_WAIT: "until the ring",
                   VR_AMBIENCE: "until the next sound",
+                  VR_DEBUG_KEY: "debug key", VR_DEBUG_X: "debug x",
+                  VR_DEBUG_Y: "debug y",
                   VR_MURAL_MAP: "the way back", VR_MURAL_X: "back x",
                   VR_MURAL_Y: "back y", VR_STAR_ORDER: "the order",
                   VR_STAR_STEP: "how many points"})

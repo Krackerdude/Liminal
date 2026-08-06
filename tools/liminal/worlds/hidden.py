@@ -233,8 +233,13 @@ def build(key: str):
         m, t = world.map, cs.tiles
         rng = random.Random(hash(key) & 0xffff)
         m.fill_rect(0, 0, m.width, m.height, t["black"])
-        {"crack": _cave, "cover": _sewer}.get(area.family, _room)(
-            m, t, cs, rng, area)
+        LAYOUTS[key](m, t, cs, rng, gen)
+        # The tile you arrive on, kept clear in every room.  Two of them
+        # buried it -- one under a crossing channel and one behind a wall --
+        # and a hidden room you cannot stand up in is not a hidden room.
+        for ax in (8, 9, 10):
+            m.set_lower(ax, m.height - 4, t["ground"])
+            m.set_lower(ax, m.height - 5, t["ground"])
         world.landmarks = {"out": [(9, m.height - 5)], "prize": [(15, 5)],
                            "npc": [(5, 6)]}
         world.spawn = (9, m.height - 4)
@@ -244,55 +249,139 @@ def build(key: str):
     return make
 
 
-def _cave(m, t, cs, rng, area) -> None:
-    """No straight edges anywhere, and nothing in it that was carried in."""
-    from . import gen
+# --- sixteen rooms, sixteen layouts -------------------------------------------
+# Four family templates with a per-room tint gave sixteen rooms that were four
+# rooms.  A room is its own place when its *walls* and its *contents* are its
+# own, not when the same six things have been shuffled round it.  So each of
+# these is written out.  They share two chipsets and nothing else.
 
-    # the rock, with a ragged inner edge: each row of the chamber is a
-    # different width, so the wall never runs true for more than a tile or two
+
+def _shell(m, t, walls: str, floor: str, *, inset: int = 2,
+           ragged: bool = False) -> None:
+    """The box a room sits in.  Ragged for anything nobody built."""
     for y in range(m.height):
-        inset = 2 + (0, 1, 0, 2, 1, 0, 1, 2, 0, 1)[y % 10]
+        give = (0, 1, 0, 2, 1, 0, 1, 2, 0, 1)[y % 10] if ragged else 0
+        left, right = inset + give, m.width - inset - give
         for x in range(m.width):
-            if x < inset or x >= m.width - inset or y < 2 or y >= m.height - 2:
-                m.set_lower(x, y, t[f"rock_{(x + y) % 3}"])
-            else:
-                m.set_lower(x, y, t["ground" if (x * 3 + y * 5) % 4
-                                    else f"path"])
-    # water, lying where the floor is lowest, in a shape nothing cut
-    for y in range(7, 11):
-        run = (5, 7, 6, 4)[y - 7]
-        for x in range(6, 6 + run):
-            m.set_lower(x, y, t[f"pool_{(x + y) % 3}"])
-    for n, (bx, by) in enumerate(((4, 4), (14, 9), (12, 3), (6, 11))):
-        gen.stamp(m, cs.obj("boulder" if n % 2 else "boulder_small"), bx, by)
-    for cx in (3, 16):
-        gen.stamp(m, cs.obj("column"), cx, 2, overlap=True)
+            solid = x < left or x >= right or y < inset or y >= m.height - inset
+            m.set_lower(x, y, t[walls if solid else floor])
+
+
+def _cave1(m, t, cs, rng, gen) -> None:
+    """THE CULVERT.  Where the storm drain gives out into the rock.
+
+    Half built and half not: brick for as far as somebody bothered, and then
+    the tunnel simply stops being a tunnel.
+    """
+    _shell(m, t, "rock_0", "ground", ragged=True)
+    for y in range(3, m.height - 3):                # the brick half, west
+        for x in range(2, 9):
+            m.set_lower(x, y, t["brick"] if y < 5 or y > m.height - 6
+                        else t["ground_b"])
+    for x in range(2, 12):                          # the drain, still running
+        m.set_lower(x, 7, t["channel"])
+        m.set_lower(x, 8, t["channel"])
+    for x in range(12, m.width - 3):                # and where it soaks away
+        m.set_lower(x, 7, t["pool_1"])
+        m.set_lower(x, 8, t["pool_2"])
+    gen.stamp(m, cs.obj("boulder"), 14, 4)
+    gen.stamp(m, cs.obj("column"), 16, 2, overlap=True)
     gen.stamp(m, cs.obj("mouth"), 9, m.height - 6, overlap=True)
 
 
-def _sewer(m, t, cs, rng, area) -> None:
-    """Somebody built this one, so it is allowed to run true."""
-    from . import gen
+def _cave2(m, t, cs, rng, gen) -> None:
+    """THE ROOT HOLLOW.  A shaft the roots came down and kept going."""
+    _shell(m, t, "rock_1", "ground_b", ragged=True)
+    for cx in (4, 6, 9, 11, 14, 16):                # a forest of them
+        gen.stamp(m, cs.obj("column"), cx, 1 + (cx % 3), overlap=True)
+    for x in range(6, 14):                          # soft ground under it all
+        for y in range(9, 12):
+            m.set_lower(x, y, t["path"])
+    gen.stamp(m, cs.obj("boulder_small"), 3, 10)
+    gen.stamp(m, cs.obj("mouth"), 9, m.height - 6, overlap=True)
 
-    for y in range(m.height):
-        for x in range(m.width):
-            if y < 3 or y >= m.height - 3 or x < 2 or x >= m.width - 2:
-                m.set_lower(x, y, t["brick"])
-            else:
-                m.set_lower(x, y, t["ground_b" if (x + y) % 5 == 0
-                                    else "ground"])
-    for x in range(2, m.width - 2):          # the invert, running one way
+
+def _cave3(m, t, cs, rng, gen) -> None:
+    """THE DRY CAVE.  A wide flat nothing, and one clean patch on it.
+
+    The emptiest room in the game.  Everything has been pushed to the walls
+    and the middle is bare, which is what somebody does to a room they sit in.
+    """
+    _shell(m, t, "rock_2", "ground", inset=2, ragged=True)
+    for n, (bx, by) in enumerate(((3, 3), (16, 3), (3, 11), (16, 10),
+                                  (5, 2), (13, 12))):
+        gen.stamp(m, cs.obj("boulder" if n % 3 else "boulder_small"), bx, by)
+    for y in range(7, 10):                          # the clean patch
+        for x in range(8, 12):
+            m.set_lower(x, y, t["smooth"])
+    gen.stamp(m, cs.obj("mouth"), 9, m.height - 6, overlap=True)
+
+
+def _cave4(m, t, cs, rng, gen) -> None:
+    """THE ANECHOIC.  The only room down here with no fault in it.
+
+    Perfectly rectangular, wedges floor to ceiling, a poured floor and not one
+    loose stone.  Everywhere else underground is irregular on purpose; this
+    one repeats exactly, and that is the whole of what is wrong with it.
+    """
+    _shell(m, t, "wedge", "smooth", inset=2)
+    for y in range(2, m.height - 2):                # wedges on the inside too
+        m.set_lower(2, y, t["wedge"])
+        m.set_lower(m.width - 3, y, t["wedge"])
+    for x in range(2, m.width - 2):
+        m.set_lower(x, 2, t["wedge"])
+        m.set_lower(x, m.height - 3, t["wedge"])
+    gen.stamp(m, cs.obj("mouth"), 9, m.height - 6, overlap=True)
+
+
+def _under1(m, t, cs, rng, gen) -> None:
+    """THE SEWERS.  Four runs meeting under the crossroads."""
+    _shell(m, t, "brick", "ground", inset=2)
+    for x in range(2, m.width - 2):                 # the east-west main
         m.set_lower(x, 7, t["channel"])
         m.set_lower(x, 8, t["channel"])
+    for y in range(2, m.height - 2):                # and the one crossing it
+        m.set_lower(9, y, t["channel"])
+        m.set_lower(10, y, t["channel"])
+    for x in range(8, 12):                          # a slab over the junction
+        for y in range(7, 9):
+            m.set_lower(x, y, t["ground_b"])
     gen.stamp(m, cs.obj("ladder"), 9, m.height - 6, overlap=True)
-    for bx in (4, 15):
-        gen.stamp(m, cs.obj("boulder_small"), bx, 11)
 
 
-def _room(m, t, cs, rng, area) -> None:
-    """A room above ground, which is the only kind allowed furniture."""
-    from . import gen
+def _under2(m, t, cs, rng, gen) -> None:
+    """THE FLOODED RUN.  Water bank to bank, and a ledge along one wall."""
+    _shell(m, t, "brick", "deep", inset=2)
+    for x in range(2, m.width - 2):                 # the ledge, and only it
+        m.set_lower(x, m.height - 4, t["ground"])
+        m.set_lower(x, m.height - 3, t["ground_b"])
+    for x in range(3, 8):
+        m.set_lower(x, 3, t["ground"])              # a step down at the far end
+    gen.stamp(m, cs.obj("ladder"), 9, m.height - 6, overlap=True)
 
+
+def _under3(m, t, cs, rng, gen) -> None:
+    """THE DRY MAIN.  Swept, and kept, by somebody who has not been up."""
+    _shell(m, t, "brick", "ground", inset=3)
+    for x in range(3, m.width - 3):                 # the invert, with nothing
+        m.set_lower(x, 7, t["dry"])
+        m.set_lower(x, 8, t["dry"])
+    for n, bx in enumerate((4, 6, 14, 16)):         # stacked against the wall
+        gen.stamp(m, cs.obj("boulder_small"), bx, 4 if n % 2 else 10)
+    gen.stamp(m, cs.obj("ladder"), 9, m.height - 6, overlap=True)
+
+
+def _under4(m, t, cs, rng, gen) -> None:
+    """THE CABLE DUCT.  Low, narrow, and going one way only."""
+    _shell(m, t, "brick", "ground", inset=4)
+    for y in (4, m.height - 5):                     # trays on both walls
+        for x in range(4, m.width - 6, 3):
+            gen.stamp(m, cs.obj("cable"), x, y, overlap=True)
+    gen.stamp(m, cs.obj("ladder"), 9, m.height - 6, overlap=True)
+
+
+def _room_shell(m, t) -> None:
+    """The four walls every room above ground has."""
     for x in range(1, m.width - 1):
         m.set_lower(x, 0, t["cut_n"])
         m.set_lower(x, 1, t["face_n"])
@@ -308,32 +397,128 @@ def _room(m, t, cs, rng, area) -> None:
         for x in range(3, m.width - 3):
             m.set_lower(x, y, t["ground_b" if (x * 3 + y * 5) % 7 == 0
                                 else "ground"])
-    # Every room is furnished differently.  The first pass stamped the same
-    # six things in the same six places, so the signal box and the exchange
-    # were the same photograph with a different caption on it.
-    # Spread by set *and* by position: the rooms are indexed 8-15 and a
-    # plain modulo four gave the signal box and the exchange the same
-    # plan, which is how they ended up being the same photograph.
-    index = AREAS.index(area)
-    index = index + index // 4
-    plans = (
-        (("rack", 3, 3), ("rack", 6, 3), ("board", 10, 3), ("machine", 15, 3),
-         ("crate", 3, 10), ("counter", 13, 9)),
-        (("counter", 4, 3), ("board", 8, 3), ("rack", 14, 3),
-         ("crate", 3, 9), ("crate", 15, 10), ("machine", 11, 9)),
-        (("rack", 3, 3), ("rack", 3, 8), ("rack", 15, 3), ("rack", 15, 8),
-         ("board", 9, 3), ("crate", 9, 10)),
-        (("machine", 3, 3), ("board", 7, 3), ("board", 12, 3),
-         ("counter", 5, 9), ("rack", 15, 3), ("crate", 15, 10)),
-    )
-    mats = ((7, 9, 7, 12), (5, 8, 6, 11), (8, 10, 9, 14), (6, 7, 8, 13))
-    y0, y1, x0, x1 = mats[index % len(mats)]
-    for y in range(y0, y1 + 1):
-        for x in range(x0, x1 + 1):
-            m.set_lower(x, y, t["rug"])
-    for name, ox, oy in plans[index % len(plans)]:
-        gen.stamp(m, cs.obj(name), ox, oy, overlap=name == "board")
+
+
+def _box1(m, t, cs, rng, gen) -> None:
+    """THE SIGNAL BOX.  One long bank of levers and a view of nothing."""
+    _room_shell(m, t)
+    for x in range(3, m.width - 3):                 # the operating floor
+        m.set_lower(x, 9, t["stone"])
+        m.set_lower(x, 10, t["stone"])
+    for lx in (4, 7, 10, 13):
+        gen.stamp(m, cs.obj("levers"), lx, 6)
+    gen.stamp(m, cs.obj("board"), 15, 3, overlap=True)
+    gen.stamp(m, cs.obj("desk"), 3, 3)
     gen.stamp(m, cs.obj("way_out"), 9, m.height - 6, overlap=True)
+
+
+def _box2(m, t, cs, rng, gen) -> None:
+    """THE SUNKEN GREENHOUSE.  Glass on every side and beds down both."""
+    _room_shell(m, t)
+    for x in range(1, m.width - 1):                 # glass, not plaster
+        m.set_lower(x, 1, t["glass"])
+        m.set_lower(x, 2, t["glass"])
+    for y in range(3, m.height - 3):
+        m.set_lower(2, y, t["glass"])
+        m.set_lower(m.width - 3, y, t["glass"])
+    for y in range(4, m.height - 4):                # the beds
+        for x in list(range(3, 7)) + list(range(13, 17)):
+            m.set_lower(x, y, t["bed"])
+    for x in range(7, 13):                          # the path between them
+        for y in range(3, m.height - 3):
+            m.set_lower(x, y, t["stone"])
+    gen.stamp(m, cs.obj("crate"), 9, 4)
+    gen.stamp(m, cs.obj("way_out"), 9, m.height - 6, overlap=True)
+
+
+def _box3(m, t, cs, rng, gen) -> None:
+    """THE SUBSTATION.  Live, fenced, and you are not going to touch it."""
+    _room_shell(m, t)
+    for y in range(4, 11):                          # a poured slab
+        for x in range(5, 15):
+            m.set_lower(x, y, t["stone"])
+    gen.stamp(m, cs.obj("transformer"), 8, 4)
+    for fx in (6, 8, 10, 12):                       # the fence round it
+        gen.stamp(m, cs.obj("fence"), fx, 8, overlap=True)
+    gen.stamp(m, cs.obj("rack"), 3, 3)
+    gen.stamp(m, cs.obj("machine"), 15, 3)
+    gen.stamp(m, cs.obj("way_out"), 9, m.height - 6, overlap=True)
+
+
+def _box4(m, t, cs, rng, gen) -> None:
+    """THE CONTINUITY SUITE.  A desk, a light, and a window into the dark."""
+    _room_shell(m, t)
+    for x in range(6, 14):                          # the booth beyond the glass
+        for y in range(3, 6):
+            m.set_lower(x, y, t["glass"])
+    for y in range(7, 11):                          # the studio floor
+        for x in range(4, 16):
+            m.set_lower(x, y, t["rug"])
+    gen.stamp(m, cs.obj("desk"), 8, 7)
+    gen.stamp(m, cs.obj("board"), 3, 3, overlap=True)
+    gen.stamp(m, cs.obj("rack"), 15, 6)
+    gen.stamp(m, cs.obj("way_out"), 9, m.height - 6, overlap=True)
+
+
+def _prem1(m, t, cs, rng, gen) -> None:
+    """THE EXCHANGE.  Frames in rows, and one aisle down the middle."""
+    _room_shell(m, t)
+    for fx in (3, 6, 12, 15):
+        gen.stamp(m, cs.obj("frame"), fx, 3)
+        gen.stamp(m, cs.obj("frame"), fx, 8)
+    for y in range(3, m.height - 3):                # the aisle
+        for x in range(9, 12):
+            m.set_lower(x, y, t["stone"])
+    gen.stamp(m, cs.obj("way_out"), 9, m.height - 6, overlap=True)
+
+
+def _prem2(m, t, cs, rng, gen) -> None:
+    """THE NURSERY OFFICE.  One plan on the wall and stock along the sides."""
+    _room_shell(m, t)
+    for x in range(3, m.width - 3):                 # the plan, floor to eye
+        m.set_lower(x, 3, t["rug"])
+    for y in range(5, m.height - 4):                # stock, both walls
+        for x in (3, 4, 15, 16):
+            m.set_lower(x, y, t["bed"])
+    gen.stamp(m, cs.obj("board"), 8, 1, overlap=True)
+    gen.stamp(m, cs.obj("desk"), 8, 9)
+    gen.stamp(m, cs.obj("crate"), 12, 5)
+    gen.stamp(m, cs.obj("way_out"), 9, m.height - 6, overlap=True)
+
+
+def _prem3(m, t, cs, rng, gen) -> None:
+    """THE DEPOT.  Deep racking in aisles, and four of everything."""
+    _room_shell(m, t)
+    for ry in (3, 8):
+        for rx in (3, 6, 9, 12, 15):
+            gen.stamp(m, cs.obj("rack"), rx, ry)
+    for x in range(3, m.width - 3):                 # the picking aisle
+        m.set_lower(x, 7, t["stone"])
+    gen.stamp(m, cs.obj("way_out"), 9, m.height - 6, overlap=True)
+
+
+def _prem4(m, t, cs, rng, gen) -> None:
+    """THE TRANSMITTER HUT.  Too small for what is in it."""
+    _room_shell(m, t)
+    for y in range(3, m.height - 3):                # the hut is narrower
+        for x in list(range(3, 6)) + list(range(14, 17)):
+            m.set_lower(x, y, t["cut_w" if x < 6 else "cut_e"])
+    for y in range(6, 11):
+        for x in range(6, 14):
+            m.set_lower(x, y, t["stone"])
+    gen.stamp(m, cs.obj("transmitter"), 6, 3)
+    gen.stamp(m, cs.obj("rack"), 12, 3)
+    gen.stamp(m, cs.obj("desk"), 11, 9)
+    gen.stamp(m, cs.obj("way_out"), 9, m.height - 6, overlap=True)
+
+
+LAYOUTS = {
+    "cave1": _cave1, "cave2": _cave2, "cave3": _cave3, "cave4": _cave4,
+    "under1": _under1, "under2": _under2, "under3": _under3,
+    "under4": _under4,
+    "box1": _box1, "box2": _box2, "box3": _box3, "box4": _box4,
+    "prem1": _prem1, "prem2": _prem2, "prem3": _prem3, "prem4": _prem4,
+}
 
 
 # --- what happens in them -----------------------------------------------------

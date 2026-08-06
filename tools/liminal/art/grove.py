@@ -855,3 +855,213 @@ def water_pool(look: Look) -> Canvas:
     art.hline(2, 1, 8, w.lit)
     art.hline(9, 5, TILE - 2, w.lit)
     return art
+
+
+# --- what the sixteen are actually made of ------------------------------------
+# One template per family and a per-room tint gave sixteen rooms that were four
+# rooms.  These are the substances and fittings that let each of them be its
+# own place: a room is bespoke when its *walls* and its *contents* are, not
+# when its furniture has been shuffled.
+
+def wedge_wall(look: Look) -> Canvas:
+    """Anechoic foam: wedges, floor to ceiling, perfectly regular.
+
+    The one wall in the world with no fault in it.  Everywhere else down here
+    is irregular on purpose, so a wall that repeats exactly is the most
+    unnatural surface the game has.
+    """
+    m = mt.Material("foam", (58, 54, 68))
+    art = Canvas(TILE, TILE, m.mid)
+    for row in range(0, TILE, 8):
+        for col in range(0, TILE, 4):
+            for step in range(4):
+                shade = (m.lit, m.mid, m.shade, m.deep)[step]
+                art.rect(col + step, row, 1, 8, shade)
+        art.hline(row, 0, TILE - 1, m.deep)
+    return art
+
+
+def flat_floor(look: Look, mat: mt.Material) -> Canvas:
+    """A poured floor.  No aggregate, no chips, nothing lying on it."""
+    art = Canvas(TILE, TILE, mat.mid)
+    mt.plane(art, 0, 0, TILE, TILE, mat.mid)
+    mt.seam(art, 0, 6, TILE, 4, mat.mid, mat.shade)
+    return art
+
+
+def deep_water(look: Look) -> Canvas:
+    """Water bank to bank, and no bottom visible."""
+    w = look.glass
+    art = Canvas(TILE, TILE, w.deep)
+    mt.plane(art, 0, 0, TILE, TILE, w.deep)
+    mt.seam(art, 0, 4, TILE, 5, w.shade, w.deep)
+    art.hline(2, 2, 10, w.mid)
+    art.hline(11, 5, TILE - 2, w.shade)
+    return art
+
+
+def dry_channel(look: Look) -> Canvas:
+    """The invert with nothing in it, swept."""
+    b = mt.Material("brick", (104, 70, 60))
+    art = Canvas(TILE, TILE, b.shade)
+    mt.plane(art, 0, 0, TILE, TILE, b.shade)
+    mt.plane(art, 0, 3, TILE, 10, b.deep)
+    art.hline(3, 0, TILE - 1, b.mid)
+    art.hline(12, 0, TILE - 1, b.mid)
+    return art
+
+
+def glass_wall(look: Look) -> Canvas:
+    """Greenhouse glazing, green with the inside of itself."""
+    g, f = look.glass, look.leaf
+    art = Canvas(TILE, TILE, g.shade)
+    mt.plane(art, 0, 0, TILE, TILE, g.shade)
+    mt.plane(art, 0, 0, TILE, 5, g.mid)
+    mt.seam(art, 0, 5, TILE, 3, g.mid, g.shade)
+    for x in range(0, TILE, 8):
+        art.vline(x, 0, TILE - 1, f.shade)
+        art.vline(x + 1, 0, TILE - 1, f.mid)
+    art.hline(0, 0, TILE - 1, g.lit)
+    return art
+
+
+def planting_bed(look: Look) -> Canvas:
+    """Soil, in a raised bed, with things coming out of it."""
+    s = mt.Material("soil", (72, 54, 44))
+    f = look.leaf
+    art = Canvas(TILE, TILE, s.mid)
+    mt.plane(art, 0, 0, TILE, TILE, s.mid)
+    mt.plane(art, 0, 0, TILE, 2, s.lit)
+    mt.plane(art, 0, TILE - 2, TILE, 2, s.deep)
+    for x in range(2, TILE, 5):
+        art.vline(x, 4, 12, f.mid)
+        art.dot(x - 1, 5, f.lit)
+        art.dot(x + 1, 7, f.shade)
+    return art
+
+
+def _panel(look: Look, cols: int, rows: int, mat: mt.Material,
+           lamps: int, colour: mt.Material) -> Canvas:
+    """A standing unit with something readable on the front of it."""
+    art = _canvas(cols, rows)
+    w, h = cols * TILE, rows * TILE
+    solid(art, 1, 2, w - 2, h - 4, mat, top=5)
+    for row in range(9, h - 8, 7):
+        mt.plane(art, 4, row, w - 10, 5, mat.shade)
+        for index in range(lamps):
+            lx = 6 + index * ((w - 14) // max(1, lamps))
+            art.rect(lx, row + 1, 2, 2,
+                     colour.mid if (row + index) % 3 else colour.hot)
+    foot(art, 0, h - 2, w, mat)
+    return art
+
+
+def lever_bank(look: Look, cols: int, rows: int) -> Canvas:
+    """A frame of signal levers, every one of them pulled over."""
+    art = _canvas(cols, rows)
+    w, h = cols * TILE, rows * TILE
+    m, p = look.metal, look.plastic
+    mt.plane(art, 0, h - 12, w, 8, m.shade)
+    mt.plane(art, 0, h - 12, w, 2, m.lit)
+    for index, lx in enumerate(range(3, w - 3, 5)):
+        lean = -2 if index % 2 else 2
+        for step in range(14):
+            art.dot(lx + (lean * step) // 14, h - 14 - step,
+                    m.mid if step > 2 else p.mid)
+        art.rect(lx - 1, h - 12, 3, 5, m.deep)
+    foot(art, 0, h - 3, w, m)
+    return art
+
+
+def desk(look: Look, cols: int, rows: int) -> Canvas:
+    """A working surface with something on it."""
+    art = _canvas(cols, rows)
+    w, h = cols * TILE, rows * TILE
+    d, g = look.bark, look.glass
+    mt.plane(art, 0, h - 18, w, 8, d.mid)
+    mt.plane(art, 0, h - 18, w, 2, d.lit)
+    mt.plane(art, 1, h - 10, w - 2, 3, d.deep)
+    for lx in (2, w - 5):
+        mt.plane(art, lx, h - 8, 3, 7, d.shade)
+    mt.plane(art, 5, h - 28, 12, 10, g.shade)     # a screen on it
+    mt.plane(art, 6, h - 27, 10, 4, g.mid)
+    foot(art, 0, h - 2, w, d)
+    return art
+
+
+def jack_frame(look: Look, cols: int, rows: int) -> Canvas:
+    """A telephone exchange frame: rows of jacks, all of them patched."""
+    art = _canvas(cols, rows)
+    w, h = cols * TILE, rows * TILE
+    m, p = look.metal, look.plastic
+    solid(art, 0, 1, w, h - 3, m, top=4)
+    for row in range(8, h - 6, 5):
+        for col in range(3, w - 3, 3):
+            art.rect(col, row, 2, 2, m.deep)
+            if (row + col) % 4 == 0:
+                art.dot(col, row + 2, p.mid)
+                art.dot(col, row + 3, p.shade)
+    foot(art, 0, h - 2, w, m)
+    return art
+
+
+def transformer(look: Look, cols: int, rows: int) -> Canvas:
+    """Something live, behind a fence, that you are not going to touch."""
+    art = _canvas(cols, rows)
+    w, h = cols * TILE, rows * TILE
+    m, p = look.metal, look.plastic
+    solid(art, 2, 6, w - 4, h - 10, m, top=6)
+    for fin in range(4, w - 4, 4):                 # cooling fins
+        art.vline(fin, 12, h - 8, m.shade)
+        art.vline(fin + 1, 12, h - 8, m.lit)
+    for bx in (5, w - 8):                          # bushings on top
+        mt.plane(art, bx, 1, 3, 6, p.mid)
+        art.dot(bx + 1, 1, p.hot)
+    foot(art, 1, h - 3, w - 2, m)
+    return art
+
+
+def mesh_fence(look: Look, cols: int, rows: int) -> Canvas:
+    """Chain link.  You can see all of it and reach none of it."""
+    art = _canvas(cols, rows)
+    w, h = cols * TILE, rows * TILE
+    m = look.metal
+    for x in range(0, w, 3):
+        art.vline(x, 4, h - 3, m.shade)
+    for y in range(4, h - 2, 3):
+        art.hline(y, 0, w - 1, m.mid)
+    mt.plane(art, 0, 2, w, 2, m.lit)
+    for px in range(0, w, 12):
+        mt.plane(art, px, 2, 2, h - 4, m.mid)
+    return art
+
+
+def transmitter(look: Look, cols: int, rows: int) -> Canvas:
+    """The thing itself, running, on all four carriers."""
+    art = _canvas(cols, rows)
+    w, h = cols * TILE, rows * TILE
+    m, p, g = look.metal, look.plastic, look.glass
+    solid(art, 1, 3, w - 2, h - 5, m, top=6)
+    for row, tone in enumerate((p, g, p, g)):      # four carriers, four lamps
+        art.rect(4 + row * 5, 12, 3, 3, tone.hot if row % 2 else tone.mid)
+    mt.plane(art, 4, 18, w - 10, h - 26, g.shade)  # the meter window
+    for tick in range(6, w - 10, 4):
+        art.vline(tick, 20, h - 12, g.mid)
+    art.hline(h - 14, 5, w - 8, p.hot)
+    foot(art, 0, h - 2, w, m)
+    return art
+
+
+def cable_tray(look: Look, cols: int, rows: int) -> Canvas:
+    """Bundles going one way, and one of them carrying nothing."""
+    art = _canvas(cols, rows)
+    w, h = cols * TILE, rows * TILE
+    m, p = look.metal, look.plastic
+    mt.plane(art, 0, 2, w, h - 6, m.shade)
+    mt.plane(art, 0, 2, w, 2, m.lit)
+    for index, row in enumerate(range(6, h - 8, 5)):
+        tone = p if index == 1 else m
+        mt.plane(art, 2, row, w - 4, 3, tone.mid)
+        art.hline(row, 2, w - 3, tone.lit)
+    foot(art, 0, h - 3, w, m)
+    return art

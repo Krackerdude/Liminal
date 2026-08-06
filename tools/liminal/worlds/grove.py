@@ -262,12 +262,28 @@ def _receiver(world) -> None:
     kept = Script()
     kept.se("PhoneNear", volume=26)
     kept.msg("the handset is warm and it has not stopped.")
-    world.map.add_event("the phone", (jx + 5) % world.map.width,
-                        (jy + 3) % world.map.height, [
+    # It says "the phone in the box is ringing", so there has to be a box.
+    #
+    # This is the one event the entire world hangs off -- nothing rings, no
+    # channel ever changes and none of the four receptions are reachable until
+    # it has been used -- and it was a bare sparkle lying on a carpet at the
+    # first junction, with the nearest actual phone box twenty-seven tiles
+    # away.  Easy to walk straight past, and once you had, the grove was a
+    # town with a broken mechanic in it.
+    from . import gen
+    from .events import _place_object
+
+    pages = [
         gleam(script=take, trigger=TRIGGER_ACTION),
         Page(script=kept, trigger=TRIGGER_ACTION, layer=LAYER_SAME,
              switch_a=SW_FACE_HEARD),
-    ])
+    ]
+    bx, by = (jx + 5) % world.map.width, (jy + 2) % world.map.height
+    if gen.stamp(world.map, world.chipset.obj("phone_box"), bx, by, pad=1):
+        _place_object(world, "phone_box", pages, at=(bx, by))
+    else:
+        world.map.add_event("the phone", bx, (by + 1) % world.map.height,
+                            pages)
 
 
 # --- what is in the yards -----------------------------------------------------

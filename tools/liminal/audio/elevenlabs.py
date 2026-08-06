@@ -110,6 +110,31 @@ MUSIC: list[Music] = [
           "have carved smiling faces. Soft nylon guitar harmonics and warm flute "
           "pad in lydian mode, gentle tape hiss, birdsong far away and slightly "
           f"wrong. Peaceful, nostalgic, faintly uncanny. {_NO}."),
+    # The grove's other three receptions.  One town, four carriers, and the
+    # music is the fastest thing the player will read: it tells them what kind
+    # of reception this is before they have looked at a single tile.
+    Music("Overgrown",
+          "Bright pastoral lo-fi ambient loop for a town the forest has taken "
+          "back completely, and which is delighted about it. Warm nylon guitar "
+          "and flute in lydian, major and unclouded, layered birdsong, sun "
+          "through leaves. Upbeat and liminal — a little too pleased with "
+          "itself, slightly too sweet, as though it is performing "
+          f"contentment. Never sinister, never loud. {_NO}."),
+    Music("OffColour",
+          "Sad, sparse ambient loop for the same town with the colour going "
+          "out of it. One muted felt piano figure repeating with long gaps, "
+          "faint tape hiss, distant room tone, a low pad that never resolves. "
+          "Empty corridors, fluorescent afternoons, the feeling of a place "
+          "still running with nobody left to run it. Quietly grieving rather "
+          f"than frightening. {_NO}.", seconds=35),
+    Music("NoSignal",
+          "Dark oppressive ambient loop for a broadcast that has stopped "
+          "carrying a picture. Heavy detuned sub drone, slow metallic groan "
+          "far below, brief bursts of filtered static swelling and receding, "
+          "hollow reverb, occasional low sustained horn-like tone that sounds "
+          "almost like a voice. Dread, wrongness, something aware on the "
+          f"other end. Never a jumpscare — a long unbroken threat. {_NO}.",
+          seconds=40),
     Music("Hands",
           "Slow monumental ambient loop for a grassy plain with enormous stone "
           "hands rising out of the earth. Deep slow choir pad and low strings "

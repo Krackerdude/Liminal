@@ -120,6 +120,8 @@ VR_MURAL_MAP = 57
 VR_MURAL_X = 58
 VR_MURAL_Y = 59
 # How far round the star's tips you have got, and in which order.
+VR_AMBIENCE = 62          # counts down to the grove's next ambient sound
+
 VR_STAR_ORDER = 60
 VR_STAR_STEP = 61
 
@@ -228,6 +230,7 @@ def variable_names(world_names: list[str]) -> dict[int, str]:
                   VR_CHASE_FROM: "chased from", VR_RING_DIR: "the ring",
                   VR_RING_X: "ring x", VR_RING_Y: "ring y",
                   VR_RING_WAIT: "until the ring",
+                  VR_AMBIENCE: "until the next sound",
                   VR_MURAL_MAP: "the way back", VR_MURAL_X: "back x",
                   VR_MURAL_Y: "back y", VR_STAR_ORDER: "the order",
                   VR_STAR_STEP: "how many points"})

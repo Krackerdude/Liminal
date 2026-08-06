@@ -156,7 +156,9 @@ MUSIC: dict[str, str] = {
     "blocks": "Blocks", "stairs": "Stairs", "sand": "Sand", "faces": "Faces",
     "hands": "Hands", "checker": "Checker", "toys": "Toys", "neon": "Neon",
     "umbrellas": "Umbrellas", "stars": "Stars",
-    "faces2": "Faces", "faces3": "Deep", "faces4": "Wrong",
+    # each reception has its own: upbeat-and-too-pleased, sad, and
+    # something on the other end that knows you are there
+    "faces2": "Overgrown", "faces3": "OffColour", "faces4": "NoSignal",
     "neon2": "Neon", "neon3": "Neon", "neon4": "Wrong", "neon5": "Deep",
     "umbrellas2": "Umbrellas", "umbrellas3": "Umbrellas",
     "umbrellas4": "Deep", "umbrellas5": "Wrong",

@@ -88,6 +88,104 @@ PLAYER_SLOTS_B = [
 ]
 
 
+# --- the grove: sixteen people, four receptions -------------------------------
+# Four designs per channel meant a broadcast only ever showed you four people,
+# and a town with four people in it is a diagram.  There are sixteen now and
+# every one of them is on every channel — the same sixteen, because the whole
+# claim the grove makes is that it is one town received four ways.  Tuning is
+# not supposed to change who lives here.  It changes how they are coming
+# through.
+#
+# Nobody is redrawn.  A reception is a transform over the finished cell, which
+# is the honest way to build it: if a channel could redraw a person then the
+# channels would be four places, and the phone would be a teleport rather than
+# a tuner.
+#
+#     the grove     as recorded
+#     overgrown     saturated and lifted — everything is louder and more alive
+#     off-colour    the chroma pulled almost out, the value dropping with it
+#     no signal     driven red, posterised, and torn
+#
+# The last one is the only one that damages the picture, and it damages it the
+# way a transmitter does: whole rows displaced sideways, not pixels scattered.
+
+RECEPTIONS = ("faces", "faces2", "faces3", "faces4")
+CHANNEL_SUFFIX = {"faces": "", "faces2": "_g", "faces3": "_y", "faces4": "_r"}
+
+
+def _tune(cell: Canvas, channel: str, facing: int, frame: int) -> None:
+    """Receive an already-drawn figure on one of the four channels."""
+    import numpy as np
+    from .canvas import TRANSPARENT
+
+    if channel == "faces":
+        return
+    solid = np.any(cell.px != np.array(TRANSPARENT, np.uint8), axis=-1)
+    if not solid.any():
+        return
+    a = cell.px[solid].astype(np.float32)
+    grey = (a @ np.array([0.30, 0.59, 0.11], np.float32))[:, None]
+
+    if channel == "faces2":
+        # happier: chroma up, a push into the green, and the whole figure
+        # lifted a little, which is what "still growing" looks like
+        a = grey + (a - grey) * 1.40
+        a[:, 1] *= 1.09
+        a = a * 1.05 + 7
+    elif channel == "faces3":
+        # sad: almost all the colour gone and the value going with it.  Not
+        # black and white — a fifth of the chroma survives, and the little
+        # that is left is what makes it read as loss rather than as a filter.
+        a = grey + (a - grey) * 0.20
+        a = a * 0.90
+        a[:, 2] += 9
+    else:
+        # corrupted: driven into the red, then posterised, because a channel
+        # carrying too few levels is exactly what this is
+        a = grey + (a - grey) * 0.85
+        a[:, 0] = a[:, 0] * 1.34 + 24
+        a[:, 1] *= 0.70
+        a[:, 2] *= 0.66
+        a = np.clip(a, 0, 255)
+        a = np.floor(a / 26.0) * 26.0
+    cell.px[solid] = np.clip(a, 0, 255).astype(np.uint8)
+
+    if channel == "faces4":
+        # the tear.  Two rows per cell, displaced sideways, chosen from the
+        # facing and the frame so it is stable rather than flickering — a
+        # figure whose damage moves every frame is a special effect, and a
+        # figure whose damage stays put is a fault in the signal.
+        for step in range(2):
+            row = (facing * 7 + frame * 5 + step * 11) % cell.h
+            shift = (1, -2)[step]
+            cell.px[row] = np.roll(cell.px[row], shift, axis=0)
+
+
+def _received(draw, channel: str):
+    """One design, as it comes through on one channel."""
+    def render(cell: Canvas, facing: int, frame: int) -> None:
+        draw(cell, facing, frame)
+        _tune(cell, channel, facing, frame)
+    return render
+
+
+# The roster: every design the grove has, on every channel it has.
+GROVE_ROSTER: dict[str, object] = {**kin.FACES, **kin.FACES2, **kin.FACES3,
+                                   **kin.FACES4}
+
+GROVE_SHEETS: dict[str, list[tuple[str, object]]] = {}
+GROVE_CAST: dict[str, list[str]] = {}
+for _channel in RECEPTIONS:
+    _suffix = CHANNEL_SUFFIX[_channel]
+    _entries = [(f"{_base}{_suffix}", _received(_draw, _channel))
+                for _base, _draw in GROVE_ROSTER.items()]
+    GROVE_CAST[_channel] = [name for name, _ in _entries]
+    # eight to a sheet, so sixteen designs is two sheets per channel
+    for _half in range(2):
+        GROVE_SHEETS[f"Grove{RECEPTIONS.index(_channel)}{'AB'[_half]}"] = \
+            _entries[_half * 8:(_half + 1) * 8]
+
+
 CAST: dict[str, list[tuple[str, object]]] = {
     # pink / numbers / blocks / stairs
     "KinA": [
@@ -318,17 +416,12 @@ BESPOKE: dict[str, dict] = {"pink": kin.PINK, "numbers": kin.NUMBERS,
                             "neon": kin.NEON,
                             "checker": kin.CHECKER,
                             "sand": kin.SAND,
-                            "faces": kin.FACES,
                             "umbrellas": kin.UMBRELLAS,
                             "stars": kin.STARS,
                             "room": kin.ROOM,
                             "nexus": kin.NEXUS,
                             "stairs": kin.STAIRS,
                             "hands": kin.HANDS,
-                            # the grove's other three channels
-                            "faces2": kin.FACES2,
-                            "faces3": kin.FACES3,
-                            "faces4": kin.FACES4,
                             # two per painting, made of the painting
                             "neon2": kin.NEON_EYE,
                             "neon3": kin.NEON_SPIRAL,
@@ -347,6 +440,7 @@ def _sheets() -> dict[str, list[tuple[str, object]]]:
     written in.
     """
     out = dict(CAST)
+    out.update(GROVE_SHEETS)
     for world, entries in EXTRA.items():
         out[f"Kin{world.title()}"] = list(entries)
     for world, designs in BESPOKE.items():
@@ -358,6 +452,10 @@ for _world, _entries in EXTRA.items():
     WORLD_CAST[_world] = WORLD_CAST[_world] + [n for n, _ in _entries]
 for _world, _designs in BESPOKE.items():
     WORLD_CAST[_world] = list(_designs)
+# the grove's four channels are set last and outright: they do not take the
+# scattered extras, because sixteen residents placed by hand is already the
+# whole population of a town
+WORLD_CAST.update(GROVE_CAST)
 
 
 def build_sheets() -> dict[str, Canvas]:

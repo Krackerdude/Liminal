@@ -42,7 +42,8 @@ from ..maps import (ANIM_CONTINUOUS, LAYER_BELOW, LAYER_SAME, MOVE_RANDOM,
                     TRIGGER_PARALLEL, Page)
 from ..state import (SW_FACE_BULB, SW_FACE_COIN, SW_FACE_ENDED, SW_FACE_HEARD,
                      SW_FACE_MAST, SW_FACE_SEED, SW_FACE_TAPE, VR_CHANNEL,
-                     VR_RING_DIR, VR_RING_WAIT, VR_RING_X, VR_RING_Y)
+                     VR_AMBIENCE, VR_RING_DIR, VR_RING_WAIT, VR_RING_X,
+                     VR_RING_Y)
 from ..art.cast import WORLD_CAST
 from . import atmosphere
 from . import systems as sys
@@ -474,202 +475,248 @@ def _signs(world) -> None:
 
 # --- who is here --------------------------------------------------------------
 
-# Four per channel, and none of them are the same four.  A channel's residents
-# are the strongest single statement it makes about what kind of reception it
-# is, so these are placed by hand at named landmarks rather than scattered.
+# Sixteen people, and all sixteen live on all four channels.
 #
-# Each design carries a *pool* of things to say and every copy of it takes a
-# different one.  Five gardeners repeating one line is one gardener printed
-# five times; five gardeners each saying their own thing is a place where
-# gardening is a job several people have.  Nothing in a pool contradicts
-# anything else in it — they are the same person's range, not four opinions.
+# The town is one town.  If tuning changed who was in it, the receiver would
+# be a teleport rather than a tuner, and the whole conceit would collapse into
+# four maps that happen to share a street plan.  So the roster is fixed and
+# what moves is *how everyone is*:
 #
-# Some of these know something.  The mast is transmitting, the supply is still
-# on, there are four ways of receiving this town and one of them is not a
-# reception at all — none of it is ever stated, and the residents who are
-# closest to it are the ones least able to say so.  The rest are just people,
-# and some of them are idiots.
-RESIDENTS: dict[str, tuple[tuple[str, str, tuple[tuple[str, ...], ...]], ...]] = {
-    "faces": (
-        ("commuter", "junctions", (
-            ("the 7 is due.", "", "it has been due."),
-            ("i have a season ticket.", "", "i renew it."),
-            ("there's a timetable on the post.", "",
-             "it's the right timetable.", "it's just not for now."),
-            ("i'm not waiting.", "", "i'm early."),
-            ("if you see it coming,", "don't flag it down for me.", "",
-             "i'd like to be the one who does that."),
-        )),
-        ("gardener", "glades", (
-            ("i keep the verge.", "", "the verge is now most of it."),
-            ("this one's doing well.", "",
-             "it's a traffic light, but it's doing well."),
-            ("i water everything the same.", "",
-             "that's the trick. no favourites."),
-            ("there used to be a rota.", "", "i am the rota."),
-            ("don't stand there, i've just done that bit."),
-        )),
-        ("leaf_head", "glades", (
-            ("something is coming up.", "", "i am not going to look."),
-            ("it's been three years.", "", "i think it's a nice one."),
-            ("people ask if it hurts.", "", "people ask that a lot."),
-            ("i can feel the weather in it.",),
-            ("HELLO.", "", "sorry. i can't tell how loud i am any more."),
-        )),
-        ("seedling", "junctions", (
-            ("i was planted at the wrong scale.",),
-            ("i followed you.", "", "i've forgotten why."),
-            ("hello!", "", "hello!", "", "sorry, i do that."),
-            ("i'm supposed to be somewhere.", "",
-             "it's fine. i'll be somewhere eventually."),
-            ("the big ones don't talk to me.", "", "they don't talk at all,",
-             "so i'm not taking it personally."),
-        )),
-    ),
-    "faces2": (
-        ("ranger", "junctions", (
-            ("management plan's still current.", "",
-             "it says: allow to develop."),
-            ("i log the changes.", "", "the log is longer than the road now."),
-            ("everything here's still on the map.", "",
-             "the map's just underneath about four feet of it."),
-            ("nothing's been removed.", "", "remember that. nothing."),
-            ("you can get anywhere you could before.", "",
-             "not on foot, obviously."),
-        )),
-        ("grafter", "glades", (
-            ("i joined a few things up.", "", "they took better than i did."),
-            ("that lamp post has buds on it.", "", "i did that. me."),
-            ("wood wants to join.", "", "that's all a graft is.",
-             "you just hold two things together and wait."),
-            ("i numbered the good ones.", "",
-             "the numbers go up as you leave the road."),
-            ("don't touch that one.", "", "...it's not ready.", "",
-             "it will be."),
-        )),
-        ("swarm", "glades", (
-            ("we are all of us here.", "", "we were fewer."),
-            ("we agreed to look like this.", "", "it was close."),
-            ("do not count us.", "", "the number changes when you do."),
-            ("we remember the shape of one.",),
-            ("hello. hello. hello.", "", "sorry — that was all of us at once."),
-        )),
-        ("bough_sleeper", "junctions", (
-            ("...the 7 is due...",),
-            ("...leave it on...", "", "...i can hear it better asleep..."),
-            ("...tell the one at the stop...", "", "...tell them i said..."),
-            ("...four of them...", "", "...four of them and one of us..."),
-            ("zzz", "", "zzz", "", "...i'm awake. i was listening."),
-        )),
-    ),
-    "faces3": (
-        ("staffholder", "junctions", (
-            ("i'm sighting the new road.", "", "it goes through all of this."),
-            ("levels are out by a foot.", "",
-             "not the ground. the readings."),
-            ("i've surveyed this junction eleven times.", "",
-             "it's a different size every time and i'm the only one bothered."),
-            ("we're waiting on a colour.",),
-            ("hold this. don't move.", "", "...that's it. that's the job."),
-        )),
-        ("meter_reader", "junctions", (
-            ("supply's still on.", "",
-             "nobody's drawing on it but the mast."),
-            ("house four's been empty since before the trees.", "",
-             "it used four units last month."),
-            ("i read them all.", "", "somebody has to have the numbers."),
-            ("if the mast stops i'll know before you do.",),
-            ("estimated readings are a form of lying.", "",
-             "i want that understood."),
-        )),
-        ("ash_walker", "glades", (
-            ("it comes down at the same rate", "whatever the weather is."),
-            ("it isn't ash.", "", "i call it ash."),
-            ("i've stopped brushing it off.", "", "you will too."),
-            ("it's thicker near the mast.",),
-            ("don't breathe through your mouth here.", "", "no reason."),
-        )),
-        ("last_engineer", "glades", (
-            ("it's transmitting.", "", "i checked. i keep checking."),
-            ("four carriers off one mast.", "",
-             "that's not how many we built it for."),
-            ("something answers on the fourth one.", "",
-             "i'd rather it didn't."),
-            ("i've got a key to the compound.", "",
-             "i've never used it. i'm not going to."),
-            ("if you hear a phone,", "", "walk towards it.", "",
-             "that's the last thing i'll say about it."),
-        )),
-    ),
-    "faces4": (
-        ("presenter", "junctions", (
-            ("GOOD EVENING.", "", "TONIGHT, AS EVERY NIGHT—"),
-            ("—AND WE'LL BE BACK AFTER THIS.", "", "WE WON'T."),
-            ("PLEASE DO NOT ADJUST YOUR SET.", "",
-             "THERE IS NOTHING WRONG WITH YOUR SET.", "",
-             "THERE IS NOTHING WRONG."),
-            ("COMING UP: THE SAME.",),
-            ("I HAVE BEEN TOLD I AM VERY EASY TO WATCH."),
-        )),
-        ("caption", "junctions", (
-            ("[ INAUDIBLE ]", "", "[ INAUDIBLE ]"),
-            ("[ FOOTSTEPS APPROACHING ]",),
-            ("[ SILENCE ]", "", "[ SILENCE CONTINUES ]"),
-            ("[ SPEAKER UNIDENTIFIED ]", "", "[ SPEAKER IS YOU ]"),
-            ("[ LAUGHTER ]", "", "( there is no laughter )"),
-        )),
-        ("test_tone", "glades", (
-            ("————————————————",),
-            ("————————————", "", "( it has not stopped for you )"),
-            ("——————", "", "——————", "", "( that was two )"),
-            ("————————————————————————",),
-            ("...", "", "————————————————", "",
-             "( it was waiting for you to say something )"),
-        )),
-        ("continuity", "glades", (
-            ("WE APOLOGISE FOR THE INTERRUPTION.", "",
-             "NORMAL SERVICE WILL NOT BE RESUMED."),
-            ("THIS CHANNEL IS NOT BROADCASTING.", "",
-             "THIS CHANNEL HAS NEVER BROADCAST."),
-            ("YOU ARE WATCHING.", "", "THAT IS THE PROGRAMME."),
-            ("THE OTHER THREE ARE STILL RUNNING.", "",
-             "THEY ARE NOT AWARE OF THIS ONE."),
-            ("WE HOPE YOU ARE ENJOYING YOUR EVENING.", "",
-             "WE HAVE NO WAY OF CHECKING."),
-        )),
-    ),
+#     the grove     as they are
+#     overgrown     happier, and a bit too happy — nothing here is worried
+#     off-colour    sad, tired, and much more honest for it
+#     no signal     angry, corrupted, and talking to you rather than at you
+#
+# Which is also how you find things out.  A person who will not tell you
+# something on one channel says it on another because they are not being
+# careful any more, and the red channel says it because it wants to hurt.
+PEOPLE: dict[str, dict[str, tuple[str, ...]]] = {
+    "gardener": {
+        "faces": ("i keep the verge.", "", "the verge is now most of it."),
+        "faces2": ("everything took!", "", "everything i put in took.", "",
+                   "i have never had a year like it."),
+        "faces3": ("nothing needs me now.", "",
+                   "i come out anyway. it's a habit with a shape."),
+        "faces4": ("I WATERED IT AND IT DIED ANYWAY.", "",
+                   "DO YOU WANT TO KNOW WHAT ELSE I DID."),
+    },
+    "seedling": {
+        "faces": ("i was planted at the wrong scale.",),
+        "faces2": ("look at me!", "", "look at me. LOOK—", "",
+                   "sorry. sorry."),
+        "faces3": ("i stopped.", "", "not died. stopped."),
+        "faces4": ("PUT ME BACK.",),
+    },
+    "commuter": {
+        "faces": ("the 7 is due.", "", "it has been due."),
+        "faces2": ("i walked instead!", "",
+                   "it took nine hours and it was lovely."),
+        "faces3": ("i've stopped checking the timetable.", "",
+                   "i still stand here. i don't know what that is."),
+        "faces4": ("IT CAME.", "", "IT CAME AND IT DIDN'T STOP."),
+    },
+    "leaf_head": {
+        "faces": ("something is coming up.", "", "i am not going to look."),
+        "faces2": ("IT FLOWERED.", "", "sorry. i can't tell how loud i am."),
+        "faces3": ("it's bare now.", "", "i miss the weight of it."),
+        "faces4": ("IT'S STILL GROWING.", "", "IT'S GROWING INWARDS."),
+    },
+    "ranger": {
+        "faces": ("management plan's still current.",),
+        "faces2": ("allow to develop!", "", "and it did! look at it!"),
+        "faces3": ("there's nothing left to manage.", "",
+                   "i log that. every day. nothing left to manage."),
+        "faces4": ("I SIGNED IT OFF.", "", "ALL OF THIS. I SIGNED IT OFF."),
+    },
+    "grafter": {
+        "faces": ("i joined a few things up.", "", "they took better than i did."),
+        "faces2": ("that lamp post has buds on it!", "", "i did that. me."),
+        "faces3": ("wood wants to join.", "",
+                   "that's all a graft is. two things held together.", "",
+                   "nobody held me anywhere."),
+        "faces4": ("I NUMBERED THEM.", "", "14. 16. 18.", "",
+                   "GO AND COUNT. GO ON."),
+    },
+    "swarm": {
+        "faces": ("we are all of us here.", "", "we were fewer."),
+        "faces2": ("we are MANY now!", "", "we agreed to be pleased about it."),
+        "faces3": ("we are fewer again.", "",
+                   "we do not talk about which ones."),
+        "faces4": ("DO NOT COUNT US.", "",
+                   "THE NUMBER CHANGES WHEN YOU DO."),
+    },
+    "bough_sleeper": {
+        "faces": ("...the 7 is due...",),
+        "faces2": ("...i can hear all four of them from up here...", "",
+                   "...it's lovely..."),
+        "faces3": ("...leave it on...", "", "...i sleep better with it on..."),
+        "faces4": ("I AM NOT ASLEEP.", "", "I HAVE NEVER BEEN ASLEEP."),
+    },
+    "staffholder": {
+        "faces": ("i'm sighting the new road.", "", "it goes through all of this."),
+        "faces2": ("the new road's beautiful!", "",
+                   "you can't see it yet. that's fine."),
+        "faces3": ("we're waiting on a colour.", "",
+                   "we've been waiting on a colour for a long time."),
+        "faces4": ("HOLD THIS. DON'T MOVE.", "",
+                   "I SAID DON'T MOVE."),
+    },
+    "meter_reader": {
+        "faces": ("supply's still on.", "",
+                  "nobody's drawing on it but the mast."),
+        "faces2": ("readings are up!", "", "everything's up!"),
+        "faces3": ("house four's been empty since before the trees.", "",
+                   "it used four units last month.", "",
+                   "i write it down. somebody has to have the numbers."),
+        "faces4": ("ESTIMATED READINGS ARE A FORM OF LYING.", "",
+                   "I WANT THAT UNDERSTOOD."),
+    },
+    "ash_walker": {
+        "faces": ("it comes down at the same rate", "whatever the weather is."),
+        "faces2": ("it's not falling today!", "", "isn't that lovely."),
+        "faces3": ("i've stopped brushing it off.", "", "you will too."),
+        "faces4": ("IT ISN'T ASH.", "", "YOU KNOW IT ISN'T ASH."),
+    },
+    "last_engineer": {
+        "faces": ("it's transmitting.", "", "i checked. i keep checking."),
+        "faces2": ("four carriers off one mast!", "",
+                   "she's never run better. never."),
+        "faces3": ("that's not how many we built it for.", "",
+                   "if you hear a phone, walk towards it.", "",
+                   "that's the last thing i'll say about it."),
+        "faces4": ("SOMETHING ANSWERS ON THE FOURTH ONE.", "",
+                   "YOU'RE STANDING IN IT."),
+    },
+    "presenter": {
+        "faces": ("good evening.", "", "tonight, as every night—"),
+        "faces2": ("AND WHAT A LOVELY EVENING IT IS.",),
+        "faces3": ("we'll be back after this.", "", "we won't."),
+        "faces4": ("PLEASE DO NOT ADJUST YOUR SET.", "",
+                   "THERE IS NOTHING WRONG WITH YOUR SET.", "",
+                   "THERE IS NOTHING WRONG."),
+    },
+    "caption": {
+        "faces": ("[ SPEAKER UNIDENTIFIED ]",),
+        "faces2": ("[ LAUGHTER ]", "", "[ LAUGHTER CONTINUES ]"),
+        "faces3": ("[ SILENCE ]", "", "[ SILENCE CONTINUES ]"),
+        "faces4": ("[ SPEAKER IS YOU ]",),
+    },
+    "test_tone": {
+        "faces": ("————————————————",),
+        "faces2": ("——————♪——————", "", "( it is trying )"),
+        "faces3": ("——————", "", "( it stops. it starts again. )"),
+        "faces4": ("————————————————————————", "",
+                   "( it does not stop while you read this )"),
+    },
+    "continuity": {
+        "faces": ("normal service will be resumed.",),
+        "faces2": ("NORMAL SERVICE!", "", "ISN'T IT MARVELLOUS."),
+        "faces3": ("normal service will not be resumed.", "",
+                   "we are sorry. we are actually sorry."),
+        "faces4": ("YOU ARE WATCHING.", "", "THAT IS THE PROGRAMME.", "",
+                   "THE OTHER THREE ARE NOT AWARE OF THIS ONE."),
+    },
 }
 
-# How many copies of each design stand about, and how far apart.  The grove is
-# the busiest reception and the dead channel is the emptiest, which is the
-# arithmetic version of what the four of them are for.
-CROWD = {"faces": 5, "faces2": 4, "faces3": 3, "faces4": 2}
+# Where each of them stands.  Junctions are where the town still works and
+# glades are where it has stopped, and which of the two somebody is found in
+# says as much about them as anything they say.
+STANDS = {
+    "gardener": "glades", "seedling": "junctions", "commuter": "junctions",
+    "leaf_head": "glades", "ranger": "junctions", "grafter": "glades",
+    "swarm": "glades", "bough_sleeper": "junctions",
+    "staffholder": "junctions", "meter_reader": "junctions",
+    "ash_walker": "glades", "last_engineer": "glades",
+    "presenter": "junctions", "caption": "junctions",
+    "test_tone": "glades", "continuity": "glades",
+}
+
+# What each channel's designs are called on its own charset.
+SUFFIX = {"faces": "", "faces2": "_g", "faces3": "_y", "faces4": "_r"}
+
+
+# --- what each reception sounds like when nothing is happening -----------------
+# Music says what kind of place this is; ambience says whether anything is in
+# it with you.  One parallel process per channel, playing one sound at long
+# and uneven intervals, panned somewhere you are not looking.
+#
+# The gaps matter more than the sounds.  A noise every four seconds is a
+# soundtrack and stops being heard; a noise somewhere between eight and thirty
+# seconds cannot be predicted, so the player keeps listening for it, and on
+# the dead channel that is the whole effect.
+AMBIENCE: dict[str, tuple[tuple[str, int, int], ...]] = {
+    # birds, leaves, and a car radio a long way off
+    "faces": (("Rustle", 26, 100), ("WindGust", 20, 100), ("Carrier", 14, 40)),
+    # too many birds, too pleased, too often — the channel performing health
+    "faces2": (("Rustle", 34, 100), ("ChimeFar", 22, 100),
+               ("Rustle", 30, 100), ("WaterDrop", 18, 100)),
+    # a fluorescent tube, wind through something empty, and long nothing
+    "faces3": (("Filament", 18, 100), ("WindGust", 24, 100),
+               ("TapeRoll", 14, 100)),
+    # something large, below, that is not in a hurry.  The heartbeat is the
+    # only sound in the game that is centred rather than panned: it is not
+    # coming from anywhere in the town.
+    "faces4": (("LowThud", 34, 50), ("Heartbeat", 26, 50),
+               ("StaticBurst", 30, 100), ("LowThud", 22, 50),
+               ("Buzzer", 20, 100)),
+}
+
+# How long between them, in tenths of a second: from, to.
+AMBIENCE_GAP = {"faces": (90, 260), "faces2": (70, 200),
+                "faces3": (140, 340), "faces4": (80, 300)}
+
+
+def _ambience(world) -> Page:
+    """One sound, at an interval nobody can learn, from somewhere off-screen."""
+    sounds = AMBIENCE[world.key]
+    low, high = AMBIENCE_GAP[world.key]
+
+    s = Script()
+    s.comment("what this reception sounds like when nothing is happening")
+    with s.loop():
+        s.var_random(VR_AMBIENCE, low, high)
+        with s.loop():
+            s.wait(1)
+            s.var(VR_AMBIENCE, 1, 2)
+            with s.if_var(VR_AMBIENCE, 0, 2):
+                s.break_loop()
+        s.var_random(VR_AMBIENCE, 0, len(sounds) - 1)
+        for index, (name, volume, spread) in enumerate(sounds):
+            with s.if_var(VR_AMBIENCE, index):
+                # panned hard when it belongs to the town and centred when it
+                # does not belong to anything
+                s.se(name, volume=volume,
+                     balance=50 + spread // 2 if index % 2 else 50 - spread // 2,
+                     tempo=100 - spread // 8)
+    return Page(script=s, trigger=TRIGGER_PARALLEL, layer=LAYER_BELOW)
 
 
 def _residents(world, rng: random.Random) -> None:
+    """All sixteen, once each, wherever this channel keeps them.
+
+    One copy per design rather than five, because there are four times as many
+    designs as there used to be: sixteen people standing about is a town, and
+    sixteen designs at five copies each would be eighty events on a map that
+    also has to hold a road network.
+    """
     m = world.map
-    copies = CROWD[world.key]
-    for design, where, lines in RESIDENTS[world.key]:
-        sheet, slot = charset_slot(design)
-        spots = list(world.landmarks.get(where, []))
-        rng.shuffle(spots)
-        for n in range(copies):
-            if not spots:
-                break
-            ax, ay = spots[n % len(spots)]
-            ax = (ax + rng.randint(-5, 5)) % m.width
-            ay = (ay + rng.randint(-4, 4)) % m.height
-            s = Script()
-            s.move_route(0, [MV_FACE_HERO], frequency=8)
-            # every copy of a design takes a different line out of its pool:
-            # five of somebody saying one thing is one of them printed five
-            # times, and the town stops being a place people live in
-            s.msg(*lines[n % len(lines)])
-            m.add_event(f"{design} {n}", ax, ay, [
-                Page(script=s, charset=sheet, charset_index=slot,
-                     move_type=MOVE_STATIONARY if n % 3 == 0 else MOVE_RANDOM,
-                     move_speed=2, move_frequency=3, trigger=TRIGGER_ACTION,
-                     animation_type=ANIM_CONTINUOUS)])
+    suffix = SUFFIX[world.key]
+    for index, (design, registers) in enumerate(PEOPLE.items()):
+        sheet, slot = charset_slot(f"{design}{suffix}")
+        spots = list(world.landmarks.get(STANDS[design], []))
+        if not spots:
+            continue
+        ax, ay = spots[index % len(spots)]
+        ax = (ax + rng.randint(-6, 6)) % m.width
+        ay = (ay + rng.randint(-5, 5)) % m.height
+        s = Script()
+        s.move_route(0, [MV_FACE_HERO], frequency=8)
+        s.msg(*registers[world.key])
+        m.add_event(design, ax, ay, [
+            Page(script=s, charset=sheet, charset_index=slot,
+                 move_type=MOVE_STATIONARY if index % 3 == 0 else MOVE_RANDOM,
+                 move_speed=2, move_frequency=3, trigger=TRIGGER_ACTION,
+                 animation_type=ANIM_CONTINUOUS)])
 
 
 # --- what is only here --------------------------------------------------------
@@ -802,6 +849,7 @@ def grove_events(world, worlds: dict, rng: random.Random) -> None:
     world.map.add_event("ringer", 1, 1, [_ringer(world)])
     _signs(world)
     _residents(world, rng)
+    world.map.add_event("ambience", 2, 1, [_ambience(world)])
     _easter(world, rng)
     if channel == 0:
         _receiver(world)

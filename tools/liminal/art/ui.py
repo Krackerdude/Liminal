@@ -123,46 +123,204 @@ def system_graphic(*, back: RGB = (44, 38, 66), back_edge: RGB = (30, 26, 48),
 
 # --- title and game over -----------------------------------------------------
 
+# The title's palette.  Deliberately much wider than anything in the game
+# proper: every world lends it one colour, so the menu is the only screen in
+# LIMINAL where all fourteen dreams are in the same picture at once.  They are
+# never named and never explained — the player meets them again later and does
+# not know why they are familiar.
+TITLE_PALETTE = {
+    "void":     (13, 11, 22),      # the nexus
+    "void_lit": (30, 25, 46),
+    "haze":     (46, 38, 66),
+    "brick":    (198, 122, 150),   # pink
+    "digit":    (176, 196, 190),   # numbers
+    "block":    (226, 176, 92),    # blocks
+    "step":     (150, 158, 196),   # stairs
+    "dune":     (208, 190, 154),   # sand
+    "leaf":     (108, 176, 104),   # the grove
+    "stone":    (144, 140, 148),   # hands
+    "square":   (214, 212, 218),   # checker
+    "toy":      (232, 150, 168),   # toys
+    "neon":     (128, 236, 220),   # scrawl
+    "brolly":   (196, 106, 118),   # umbrellas
+    "star":     (156, 190, 236),   # the shallows
+    "lamp":     (250, 226, 168),   # the one warm light in the room
+    "glass":    (176, 206, 226),
+    "silver":   (232, 232, 240),
+    "frame":    (86, 74, 108),
+    "frame_lit": (128, 112, 156),
+    "frame_dark": (44, 36, 60),
+    "ink":      (246, 240, 226),
+    "sub":      (150, 140, 178),
+}
+
+
+def _sky(art: Canvas) -> None:
+    """The dark, dithered three ways so it is never flat and never noisy.
+
+    Three matrices doing three jobs: an eight-by-eight ordered dither carries
+    the long vertical fall from violet to black, a four-by-four breaks the
+    band edges where the eye would otherwise find a step, and a two-by-two
+    checker lifts the very top so the corners do not close up.  A gradient
+    this long done with one matrix bands visibly at this bit depth.
+    """
+    P = TITLE_PALETTE
+    ys, xs = np.mgrid[0:SCREEN_H, 0:SCREEN_W]
+    # distance from the mirror, which is what everything here is lit by
+    cx, cy = SCREEN_W / 2, 92.0
+    d = np.sqrt(((xs - cx) / 190) ** 2 + ((ys - cy) / 150) ** 2)
+    glow = np.clip(1.0 - d, 0, 1) ** 1.7
+
+    coarse = BAYER8[ys % 8, xs % 8]
+    fine = BAYER4[ys % 4, xs % 4]
+    for y in range(SCREEN_H):
+        for x in range(SCREEN_W):
+            t = glow[y, x]
+            if t > coarse[y, x] * 0.92:
+                tone = P["haze"] if t > 0.62 else P["void_lit"]
+            elif t > fine[y, x] * 0.55:
+                tone = P["void_lit"]
+            else:
+                tone = P["void"]
+            art.px[y, x] = tone
+    # the very top, lifted with a two-pixel checker so the corners stay open
+    for y in range(0, 34):
+        for x in range(SCREEN_W):
+            if (x + y) % 2 == 0 and (y % 3) == 0:
+                art.dot(x, y, blend(P["void"], P["haze"], 0.5))
+
+
+def _relics(art: Canvas) -> None:
+    """One thing from every dream, standing in the dark around the mirror.
+
+    None of them is drawn in full and none of them is lit — they are
+    silhouettes at the edge of what the mirror is throwing, at the size they
+    would be if they were a long way off.  The point is that a player who has
+    finished the game recognises all fourteen and a player who has not sees
+    furniture in a dark room.
+    """
+    P = TITLE_PALETTE
+
+    def ghost(colour, amount=0.34):
+        return blend(P["void_lit"], colour, amount)
+
+    # far left to far right, ordered so nothing overlaps its neighbour
+    art.rect(6, 96, 22, 58, ghost(P["brick"], 0.30))          # a brick wall
+    for row in range(100, 152, 6):
+        art.hline(row, 6, 27, ghost(P["brick"], 0.16))
+    art.rect(34, 118, 3, 36, ghost(P["step"]))                 # a flight, edge on
+    for step in range(5):
+        art.rect(34, 148 - step * 7, 5 + step * 2, 3, ghost(P["step"], 0.26))
+    art.ellipse(58, 150, 18, 6, ghost(P["dune"], 0.22))        # a dune
+    art.rect(76, 108, 3, 46, ghost(P["leaf"], 0.30))           # a tree
+    art.blob(77, 104, 13, ghost(P["leaf"], 0.26))
+    art.blob(70, 110, 8, ghost(P["leaf"], 0.20))
+    art.rect(96, 132, 14, 22, ghost(P["stone"], 0.24))         # a hand
+    for finger in range(3):
+        art.rect(98 + finger * 5, 118, 3, 16, ghost(P["stone"], 0.24))
+    art.rect(208, 128, 16, 26, ghost(P["block"], 0.26))        # a block
+    art.rect(212, 132, 8, 8, ghost(P["block"], 0.14))
+    for sq in range(4):                                        # a checkerboard
+        art.rect(230 + (sq % 2) * 9, 138 + (sq // 2) * 9, 9, 9,
+                 ghost(P["square"], 0.20 if sq % 3 else 0.08))
+    art.rect(258, 96, 3, 58, ghost(P["brolly"]))               # an umbrella
+    for rib in range(-3, 4):
+        art.line(259, 96, 259 + rib * 7, 106, ghost(P["brolly"], 0.28))
+    art.rect(282, 116, 22, 38, ghost(P["toy"], 0.22))          # a toy
+    art.blob(293, 112, 7, ghost(P["toy"], 0.16))
+    for scrawl in range(3):                                    # a scrawl
+        art.line(276 + scrawl * 6, 76, 290 + scrawl * 4, 92,
+                 ghost(P["neon"], 0.30))
+    for spark in ((20, 40), (52, 26), (88, 58), (240, 34), (272, 52),
+                  (300, 76), (14, 70), (196, 22), (152, 16), (128, 34)):
+        art.dot(spark[0], spark[1], ghost(P["star"], 0.55))    # the shallows
+        art.dot(spark[0] + 1, spark[1], ghost(P["star"], 0.28))
+    for digit in range(4):                                     # a number
+        art.rect(120 + digit * 3, 24 + digit % 2 * 4, 2, 9,
+                 ghost(P["digit"], 0.24))
+
+
 def title_screen() -> Canvas:
-    """A door, ajar, in the dark.  The only thing the game asks of you."""
-    art = Canvas(SCREEN_W, SCREEN_H, (16, 14, 26))
+    """A standing mirror in the dark, and everywhere else in the game around it.
 
-    # a very soft floor, so the door has something to stand on
-    for y in range(150, SCREEN_H):
-        t = (y - 150) / (SCREEN_H - 150)
-        art.rect(0, y, SCREEN_W, 1, blend((24, 21, 36), (14, 12, 22), t))
+    This was a door, and a door is the wrong object: every threshold in
+    LIMINAL is a mirror, the room you wake up in has one, the nexus is a ring
+    of them, and the four ways down out of the grove are four more.  A title
+    screen showing a door was advertising a different game.
+    """
+    P = TITLE_PALETTE
+    art = Canvas(SCREEN_W, SCREEN_H, P["void"])
+    _sky(art)
+    _relics(art)
 
-    # the light spilling out of the gap, as a wedge on the floor
-    for y in range(148, 214):
-        t = (y - 148) / 66
-        span = int(6 + t * 52)
-        amount = (1 - t) ** 1.6
+    # The engine draws its own command window in the middle of the lower half
+    # and will not be moved, so the mirror has to end above it.  Sitting at
+    # fifty-eight the plinth came out directly underneath "begin", and the
+    # menu looked like it was resting on the frame.
+    mx, my, mw, mh = SCREEN_W // 2 - 30, 48, 60, 80
+
+    # the pool of light the mirror throws, dithered rather than blended, so it
+    # reads as light in a dark room rather than as a soft brush
+    for y in range(my + mh - 6, SCREEN_H):
+        t = (y - (my + mh - 6)) / max(1, SCREEN_H - my - mh + 6)
+        span = int(14 + t * 96)
         for x in range(SCREEN_W // 2 - span, SCREEN_W // 2 + span):
+            if not 0 <= x < SCREEN_W:
+                continue
             edge = abs(x - SCREEN_W // 2) / max(span, 1)
-            strength = amount * (1 - edge * 0.75)
-            if strength > BAYER8[y % 8, x % 8] * 0.9:
-                art.dot(x, y, blend((24, 21, 36), (250, 226, 168),
-                                    min(0.85, strength)))
+            strength = ((1 - t) ** 1.5) * (1 - edge * edge)
+            if strength > BAYER8[y % 8, x % 8]:
+                art.dot(x, y, blend(P["void_lit"], P["lamp"],
+                                    min(0.72, strength)))
+            elif strength > BAYER4[y % 4, x % 4] * 1.35:
+                art.dot(x, y, blend(P["void_lit"], P["lamp"], 0.16))
 
-    # the door itself
-    dx, dy, dw, dh = SCREEN_W // 2 - 34, 62, 68, 92
-    art.round_rect(dx - 4, dy - 4, dw + 8, dh + 8, 30, (40, 34, 54))
-    art.round_rect(dx, dy, dw, dh, 26, (58, 50, 76))
-    art.round_rect(dx + 3, dy + 3, 8, dh - 6, 4, (74, 64, 96))
-    # the gap: a bright vertical sliver down the right-hand edge
-    art.rect(dx + dw - 13, dy + 8, 9, dh - 8, (250, 226, 168))
-    art.rect(dx + dw - 13, dy + 8, 3, dh - 8, (255, 248, 226))
-    art.round_rect(dx + 16, dy + 20, dw - 34, 26, 3, (48, 41, 64))
-    art.round_rect(dx + 16, dy + 54, dw - 34, 26, 3, (48, 41, 64))
-    art.blob(dx + dw - 20, dy + dh // 2, 3, (226, 196, 140))
+    # the frame: square-shouldered with a plinth, exactly as every mirror in
+    # the game is built, so the title object and the game object are one object
+    art.rect(mx - 5, my - 5, mw + 10, mh + 12, P["frame_dark"])
+    art.rect(mx - 3, my - 3, mw + 6, mh + 8, P["frame"])
+    art.rect(mx - 3, my - 3, mw + 6, 3, P["frame_lit"])
+    art.rect(mx - 3, my - 3, 3, mh + 8, P["frame_lit"])
+    art.rect(mx + mw, my - 3, 3, mh + 8, P["frame_dark"])
+    art.rect(mx - 8, my + mh + 5, mw + 16, 6, P["frame"])       # the plinth
+    art.rect(mx - 8, my + mh + 5, mw + 16, 2, P["frame_lit"])
 
-    draw_text_centered(art, "LIMINAL", 26, (246, 240, 226), scale=4, spacing=2,
-                       shadow=(30, 26, 44))
+    # the glass.  Lit from inside, and the light in it is *not* the light in
+    # the room: it falls the other way, which is the whole idea of the game.
+    for y in range(mh):
+        t = y / (mh - 1)
+        for x in range(mw):
+            u = x / (mw - 1)
+            depth = ((1 - t) ** 1.2) * (0.45 + 0.55 * (1 - abs(u - 0.42) * 1.6))
+            if depth > BAYER8[(my + y) % 8, (mx + x) % 8] * 0.88:
+                tone = blend(P["glass"], P["silver"], min(1.0, depth * 0.9))
+            elif depth > BAYER4[(my + y) % 4, (mx + x) % 4] * 0.7:
+                tone = blend(P["haze"], P["glass"], 0.55)
+            else:
+                tone = blend(P["frame_dark"], P["haze"], 0.6)
+            art.dot(mx + x, my + y, tone)
+
+    # what is standing in it.  Not the player: a doorway, a long way back,
+    # with somebody in it who has not turned round.
+    art.rect(mx + 20, my + 26, 20, 62, blend(P["haze"], P["void"], 0.5))
+    art.rect(mx + 22, my + 30, 16, 58, blend(P["void_lit"], P["lamp"], 0.30))
+    art.rect(mx + 27, my + 44, 7, 34, P["frame_dark"])          # the figure
+    art.blob(mx + 30, my + 40, 4, P["frame_dark"])
+    art.rect(mx + 27, my + 44, 2, 34, blend(P["frame_dark"], P["lamp"], 0.22))
+    # a checkerboard sheen across the glass, two values, on the diagonal
+    for y in range(mh):
+        for x in range(mw):
+            if (x + y * 2) % 23 < 2 and (x + y) % 2 == 0:
+                art.dot(mx + x, my + y,
+                        blend(art.px[my + y, mx + x], P["silver"], 0.34))
+
+    draw_text_centered(art, "LIMINAL", 12, P["ink"], scale=4, spacing=2,
+                       shadow=(24, 20, 38))
     # Right at the bottom edge.  The engine puts its own command window in the
     # middle of the lower half and will not be moved, so anything written
     # there is written underneath "begin / return / leave".
-    draw_text_centered(art, "A PLACE THAT WAS ALREADY HERE", 228,
-                       (128, 120, 148), scale=1, spacing=1)
+    draw_text_centered(art, "WALK TO THE OTHER SIDE OF THE LOOKING GLASS", 228,
+                       P["sub"], scale=1, spacing=1)
     return art
 
 

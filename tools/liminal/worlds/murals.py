@@ -39,6 +39,7 @@ from ..art.cast import WORLD_CAST
 from . import atmosphere
 from . import systems as sys
 from .cast_lookup import charset_slot
+from .events import gleam
 
 INSIDES = ("neon2", "neon3", "neon4", "neon5")
 PAINTING = {"neon2": "eye", "neon3": "spiral", "neon4": "mouth",
@@ -250,7 +251,7 @@ def entrances(neon, worlds: dict, rng: random.Random) -> None:
     after.msg("the four of them are still lying on it.")
 
     m.add_event("the middle painting", px % m.width, (py - 6) % m.height, [
-        Page(script=shut, trigger=TRIGGER_ACTION, layer=LAYER_SAME),
+        gleam(script=shut, trigger=TRIGGER_ACTION),
         Page(script=given, trigger=TRIGGER_ACTION, layer=LAYER_SAME,
              switch_a=SW_MURAL_LENS, switch_b=SW_MURAL_THREAD),
         Page(script=after, trigger=TRIGGER_ACTION, layer=LAYER_SAME,
@@ -331,7 +332,7 @@ def _mouth_secret(world, index: int) -> None:
     seen = Script()
     seen.msg("the lamp is still on.")
     m.add_event("the far end", (x + 3) % m.width, y % m.height, [
-        Page(script=room, trigger=TRIGGER_ACTION, layer=LAYER_SAME),
+        gleam(script=room, trigger=TRIGGER_ACTION),
         Page(script=seen, trigger=TRIGGER_ACTION, layer=LAYER_SAME,
              switch_a=SW_MURAL_SECRET + index),
     ])
@@ -431,7 +432,7 @@ def inside_events(world, worlds: dict, rng: random.Random) -> None:
     got.msg(*lines)
     got.switch(switch, True)
     m.add_event(name, ix, iy, [
-        Page(script=got, trigger=TRIGGER_ACTION, layer=LAYER_SAME),
+        gleam(script=got, trigger=TRIGGER_ACTION),
         Page(script=Script(), trigger=TRIGGER_ACTION, switch_a=switch),
     ])
 
@@ -440,7 +441,7 @@ def inside_events(world, worlds: dict, rng: random.Random) -> None:
     lore.msg(*LORE[key])
     lx, ly = _spot(world, where, offset + 1)
     m.add_event("written here", (lx + 2) % m.width, (ly - 1) % m.height,
-                [Page(script=lore, trigger=TRIGGER_ACTION, layer=LAYER_SAME)])
+                [gleam(script=lore, trigger=TRIGGER_ACTION)])
 
     # who is in it
     place, copies = CROWD[key]

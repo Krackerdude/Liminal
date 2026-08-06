@@ -43,13 +43,33 @@ from . import systems as sys
 from .cast_lookup import charset_slot
 from ..art.cast import WORLD_CAST
 from .layout import solid_ids
-from .worlds import DREAM_ORDER, POPULATION, WORLD_ORDER, World
+from .worlds import (BLOCK_ORDER, DREAM_ORDER, HOME_DOOR, HOME_FLOOR,
+                     NEXUS_ORDER, POPULATION, WORLD_ORDER, World)
 
 # Interactables draw as the world's own door graphic at a small size, which
 # reads as "part of the architecture" rather than as an item lying about.
 # Interactables wear a faint pulsing gleam rather than nothing at all.  They
 # were on the Blank charset, which made every one of them literally invisible.
 _ICON_SHEET, _ICON_SLOT = "Gleam", 0
+
+
+def gleam(**kwargs) -> Page:
+    """A page for something the player can interact with, wearing the gleam.
+
+    Every interactable in the game goes through here.  Two separate mistakes
+    made the gleam invisible in the shipped build and both were "somebody
+    forgot a keyword": the pages that had the charset did not set
+    ``animation_type``, so the sprite never cycled and RPG Maker showed its
+    middle frame forever, and the hand-authored items in the grove, the
+    paintings and the ascent never got the charset at all and stayed on
+    ``Blank``.  Neither is possible now without going out of your way.
+    """
+    kwargs.setdefault("charset", _ICON_SHEET)
+    kwargs.setdefault("charset_index", _ICON_SLOT)
+    kwargs.setdefault("animation_type", ANIM_CONTINUOUS)
+    kwargs.setdefault("move_type", MOVE_STATIONARY)
+    kwargs.setdefault("layer", LAYER_SAME)
+    return Page(**kwargs)
 
 # Each interactable owns a switch for the whole playthrough; this hands them
 # out in order across every world.
@@ -61,24 +81,57 @@ EFFECT_INDEX = {key: index for index, (key, _, _) in enumerate(EFFECTS, start=1)
 EFFECT_HOME = dict(zip(DREAM_ORDER, [key for key, _, _ in EFFECTS]))
 
 
-def _free_tile(world: World, x: int, y: int, *, radius: int = 6) -> tuple[int, int]:
-    """Nudge a placement off any tile another event is already standing on.
+_PAVED: dict[str, set[int]] = {}
 
-    Two events sharing a tile is legal, and the engine will happily run one of
-    them forever while the other can never be talked to.  Landmark-relative
-    placements (the keeper beside the bench, a door beside its frame) are the
-    ones that collide, because two landmarks can end up next to each other.
+
+def _carriageway(world: World) -> set[int]:
+    """Every tile id in this world that is a road surface or a kerb.
+
+    Only the grove has any, and only the grove needs this: it is the one
+    world with a *road* in it, and a road is as walkable as a verge as far as
+    the engine is concerned, so nothing else stops an object being scattered
+    into the middle of a carriageway.
+    """
+    if world.key not in _PAVED:
+        _PAVED[world.key] = {tid for name, tid in world.chipset.tiles.items()
+                             if name.startswith(("road", "kerb"))}
+    return _PAVED[world.key]
+
+
+def _free_tile(world: World, x: int, y: int, *, radius: int = 6) -> tuple[int, int]:
+    """Nudge a placement off any tile it has no business standing on.
+
+    Two things disqualify a tile.  Another event is already there — two events
+    sharing a tile is legal, and the engine will happily run one of them
+    forever while the other can never be talked to.  Or it is road: a thing
+    lying in the carriageway reads as a mistake rather than as litter, and
+    the grove was scattering sixteen of them per channel straight down the
+    middle of its own avenues.
     """
     m = world.map
     taken = {(e.x, e.y) for e in m.events}
+    paved = _carriageway(world)
     x, y = x % m.width, y % m.height
-    if (x, y) not in taken:
+
+    def free(spot: tuple[int, int]) -> bool:
+        return (spot not in taken
+                and m.get_lower(spot[0], spot[1]) not in paved)
+
+    if free((x, y)):
         return x, y
     for step in range(1, radius + 1):
         for dy in range(-step, step + 1):
             for dx in range(-step, step + 1):
                 if max(abs(dx), abs(dy)) != step:
                     continue
+                spot = ((x + dx) % m.width, (y + dy) % m.height)
+                if free(spot):
+                    return spot
+    # nothing clear within reach: take any tile no other event is on, so a
+    # crowded corner loses its road check rather than losing its event
+    for step in range(1, radius + 1):
+        for dy in range(-step, step + 1):
+            for dx in range(-step, step + 1):
                 spot = ((x + dx) % m.width, (y + dy) % m.height)
                 if spot not in taken:
                     return spot
@@ -172,12 +225,24 @@ def _place_wide(world: World, name: str, x: int, y: int, pages, *,
     The relays are the identical page list, which means they share the switch
     the real one sets: using any of them marks the object used, and every
     other relay flips to the used page with it.
+
+    They are invisible, though, and that is not a detail.  A relay carrying
+    the same pages as the real event also carries the same *graphic*, so
+    every wide object in the game was wearing one gleam per relay — a phone
+    box on a corner put nine of them on the ground around itself, five of
+    which were out in the road.  The gleam belongs to the object; the relays
+    only exist so that the object answers when you walk up to any part of it.
     """
+    from dataclasses import replace
+
     m = world.map
     ox, oy = _free_tile(world, x, y)
     m.add_event(name, ox, oy, pages)
+    quiet = [replace(page, charset="Blank", charset_index=0)
+             for page in pages]
     taken = {(e.x, e.y) for e in m.events}
     solid = solid_ids(world.chipset)
+    paved = _carriageway(world)
     for dy in range(-reach, reach + 1):
         for dx in range(-reach, reach + 1):
             if dx == 0 and dy == 0:
@@ -187,7 +252,7 @@ def _place_wide(world: World, name: str, x: int, y: int, pages, *,
                 continue
             if (m.get_lower(px, py) in solid or m.get_upper(px, py) in solid):
                 continue
-            m.add_event(f"{name} reach {dx},{dy}", px, py, pages)
+            m.add_event(f"{name} reach {dx},{dy}", px, py, quiet)
             taken.add((px, py))
 
 
@@ -284,7 +349,7 @@ def room_events(world: World, worlds: dict[str, World]) -> None:
             sleep.msg_options(MSG_BOTTOM)
     # the head of the bed, against the back wall: the tile you reach if you
     # walk into the corner, which is how anyone actually crosses a room
-    _place(world, "bed", 2, 3, [Page(script=sleep, trigger=TRIGGER_ACTION)])
+    _place(world, "bed", 7, 6, [Page(script=sleep, trigger=TRIGGER_ACTION)])
 
     # The television: shows the world you were last in.
     tv = Script()
@@ -297,7 +362,7 @@ def room_events(world: World, worlds: dict[str, World]) -> None:
                "it stops when you look directly at it.")
     with tv.if_var(VR_DREAM_DISTANCE, 0):
         tv.msg("it is not plugged in.")
-    _place(world, "television", 2, 11, [Page(script=tv, trigger=TRIGGER_ACTION)])
+    _place(world, "television", 11, 5, [Page(script=tv, trigger=TRIGGER_ACTION)])
 
     # The mirror: after you have been away long enough, it is late.
     mirror = Script()
@@ -306,7 +371,7 @@ def room_events(world: World, worlds: dict[str, World]) -> None:
         mirror.msg("you are still there.", "", "you look tired.")
     with mirror.if_var(VR_DREAM_DISTANCE, 3, 2):
         mirror.msg("you are still there.")
-    _place(world, "mirror", 18, 13, [Page(script=mirror, trigger=TRIGGER_ACTION)])
+    _place(world, "mirror", 5, 9, [Page(script=mirror, trigger=TRIGGER_ACTION)])
 
     # The wardrobe: a deep layer, and the only thing in the game with a lock.
     wardrobe = Script()
@@ -315,13 +380,13 @@ def room_events(world: World, worlds: dict[str, World]) -> None:
             wardrobe.se("DoorOpen", volume=60)
             wardrobe.msg("it opens.")
             wardrobe.fade_out(30)      # zoom in
-            wardrobe.teleport(worlds["room"].map_id, 10, 11)
+            wardrobe.teleport(worlds["room"].map_id, *worlds["room"].spawn)
             wardrobe.switch(SW_WORLD_MEMORY_BASE, True)
             wardrobe.fade_in(30)
         with arm(True):
             wardrobe.msg("it does not open.",
                          "it has never opened.")
-    _place(world, "wardrobe", 18, 4, [Page(script=wardrobe, trigger=TRIGGER_ACTION)])
+    _place(world, "wardrobe", 14, 6, [Page(script=wardrobe, trigger=TRIGGER_ACTION)])
 
     # The window: nothing outside, unless you are wearing the eye.
     window = Script()
@@ -335,19 +400,211 @@ def room_events(world: World, worlds: dict[str, World]) -> None:
             window.msg("none of it is lit from anywhere.")
         with arm(True):
             window.msg("it is too dark to see out.")
-    _place(world, "window", 5, 2, [Page(script=window, trigger=TRIGGER_ACTION)])
+    _place(world, "window", 5, 3, [Page(script=window, trigger=TRIGGER_ACTION)])
 
     desk = Script()
     desk.msg("there is nothing written on it.")
-    _place(world, "desk", 18, 8, [Page(script=desk, trigger=TRIGGER_ACTION)])
+    _place(world, "desk", 3, 7, [Page(script=desk, trigger=TRIGGER_ACTION)])
 
-    # The room's door.  Every world has exactly one, and this is the only one
-    # in the game that does not lead anywhere — the way out of here is the bed.
-    # Nobody ever says so.
-    door = Script()
-    door.se("Wrong", volume=40)
-    door.msg("it does not open.")
-    _place(world, "door", 9, 2, [Page(script=door, trigger=TRIGGER_ACTION)])
+    # The flat's front door.  It used to be the one door in the game that
+    # went nowhere; there is a building on the other side of it now.
+    _place(world, "door", 3, 3,
+           [_door(worlds["hall4"].map_id, *worlds["hall4"].spawn,
+                  sound="Latch", leaving="room", entering="hall4")])
+
+    stand = Script()
+    stand.msg("a glass of water you do not remember pouring.")
+    _place(world, "nightstand", 10, 5,
+           [Page(script=stand, trigger=TRIGGER_ACTION)])
+
+    # The way out to the balcony.  The only door in the room that opens.
+    _place(world, "slider", 14, 3,
+           [_door(worlds["balcony"].map_id, *worlds["balcony"].spawn,
+                  sound="DoorOpen", leaving="room", entering="balcony")])
+
+
+def balcony_events(world: World, worlds: dict[str, World]) -> None:
+    """Outside: a horizon, and four things nobody has moved in a while."""
+    m = world.map
+    m.add_event("arrive", 0, 0, [_arrival_event(world)])
+
+    _place(world, "slider", 10, 12,
+           [_door(worlds["room"].map_id, 14, 3, sound="DoorOpen",
+                  leaving="balcony", entering="room")])
+
+    rail = Script()
+    rail.se("Watch", volume=40)
+    rail.msg("the city is on.", "", "not all of it. enough of it.")
+    with rail.if_var(VR_DREAM_DISTANCE, 3, 1):
+        rail.wait(8)
+        rail.msg("some of those windows are the wrong colour",
+                 "and you know which ones.")
+    for spot in (5, 10, 15):
+        _place(world, f"the rail {spot}", spot, 11,
+               [Page(script=rail, trigger=TRIGGER_ACTION)])
+
+    chair = Script()
+    chair.msg("a plastic chair, facing out.", "",
+              "it has been rained on since anybody sat in it.")
+    _place(world, "chair", 5, 12, [Page(script=chair, trigger=TRIGGER_ACTION)])
+
+    unit = Script()
+    unit.se("Carrier", volume=30)
+    unit.msg("it is running.", "", "nothing in the flat is cold.")
+    _place(world, "aircon", 14, 11, [Page(script=unit, trigger=TRIGGER_ACTION)])
+
+    bucket = Script()
+    bucket.msg("there is water in it.", "", "it has not rained.")
+    _place(world, "bucket", 7, 11, [Page(script=bucket, trigger=TRIGGER_ACTION)])
+
+
+# --- the building -------------------------------------------------------------
+
+# What is written on the doors that do not open.  One line each, none of them
+# about the player, and the same door says the same thing on every floor —
+# which is how you find out there are only so many kinds of neighbour.
+BEHIND = (
+    ("a television, turned down.",),
+    ("nothing at all.",),
+    ("something being moved, slowly, across a floor.",),
+    ("two people who stop when you stop.",),
+    ("a tap running.",),
+    ("nothing. it has been nothing every time.",),
+    ("a chain on the inside.",),
+)
+
+# Going down, the corridor says less and means more by it.
+FLOOR_NOTE = {
+    0: ("the top floor.", "", "the ceiling is very close up here."),
+    1: (),
+    2: ("the third floor.", "", "one of these was yours once."),
+    3: ("the second floor.", "", "the carpet stops halfway along."),
+    4: ("the ground floor.", "", "it is much colder down here."),
+}
+
+
+def _locked(index: int) -> Script:
+    s = Script()
+    s.se("Latch", volume=38)
+    with s.if_else_switch(SW_EARS_ACTIVE) as arm:
+        with arm(True):
+            s.msg("it does not open.")
+        with arm(False):
+            s.msg("it does not open.")
+            s.wait(6)
+            s.msg("through it:", "", *BEHIND[index % len(BEHIND)])
+    return s
+
+
+def block_events(world: World, worlds: dict[str, World]) -> None:
+    """One floor of the apartment block.
+
+    Every door but two is locked, and the two are the stairs.  Nothing here
+    is a puzzle: the building is a real place that happens to have exactly
+    one thing you can do in it, and the point of the locked doors is that
+    somebody is behind each one.
+    """
+    m = world.map
+    depth = BLOCK_ORDER.index(world.key)
+    m.add_event("arrive", 0, 0, [_arrival_event(world)])
+
+    # the stairs.  Up is nearer the far wall, down nearer the near one, on
+    # every floor without exception.
+    if depth > 0:
+        above = worlds[BLOCK_ORDER[depth - 1]]
+        _place(world, "stair up", 4, 8,
+               [_door(above.map_id, 4, 9, sound="StepStone",
+                      leaving=world.key, entering=above.key)])
+    if world.key != "lobby":
+        below = worlds[BLOCK_ORDER[depth + 1]]
+        _place(world, "stair down", 15, 8,
+               [_door(below.map_id, 15, 9, sound="StepStone",
+                      leaving=world.key, entering=below.key)])
+
+    # the flats
+    index = 0
+    for side, row, front in (("north", 2, 4), ("south", 10, 9)):
+        for x, _ in world.landmarks.get(side, []):
+            if world.key == HOME_FLOOR and side == "north" and x == HOME_DOOR:
+                _place(world, "your door", x, front,
+                       [_door(worlds["room"].map_id, *worlds["room"].spawn,
+                              sound="Latch", leaving=world.key,
+                              entering="room")])
+            else:
+                _place(world, f"{side} {x}", x, front,
+                       [Page(script=_locked(index + depth),
+                             trigger=TRIGGER_ACTION)])
+            index += 1
+
+    lift = Script()
+    lift.se("Buzzer", volume=34)
+    lift.msg("the button lights.")
+    lift.wait(20)
+    lift.msg("the indicator does not change.")
+    with lift.if_var(VR_DREAM_DISTANCE, 2, 1):
+        lift.wait(10)
+        lift.msg("it has read the same floor since you moved in",
+                 "and you have never once wondered which one.")
+    _place(world, "the lift", 15, 9, [Page(script=lift, trigger=TRIGGER_ACTION)])
+
+    if world.key != "lobby":
+        board = Script()
+        board.msg("a board of notices behind glass.", "",
+                  "none of them are new",
+                  "and none of them are about anybody you know.")
+        _place(world, "the board", 3, 9,
+               [gleam(script=board, trigger=TRIGGER_ACTION)])
+
+    note = FLOOR_NOTE.get(depth)
+    if note:
+        landing = Script()
+        landing.msg(*note)
+        _place(world, "the landing", 4, 9,
+               [gleam(script=landing, trigger=TRIGGER_ACTION)])
+
+    if world.key == "lobby":
+        _lobby(world)
+
+
+def _lobby(world: World) -> None:
+    """The ground floor.  Same corridor, none of the light, and the only
+    door in the building that is meant to lead outside."""
+    out = Script()
+    out.se("Latch", volume=44)
+    out.msg("locked.")
+    out.wait(8)
+    out.msg("there is glass in it and nothing behind the glass.")
+    with out.if_var(VR_DREAM_DISTANCE, 4, 1):
+        out.wait(10)
+        out.se("Watch", volume=40)
+        out.msg("you have never been outside this building.", "",
+                "you have never once thought about that until now.")
+    _place(world, "the way out", 10, 9,
+           [Page(script=out, trigger=TRIGGER_ACTION)])
+
+    boxes = Script()
+    boxes.msg("a wall of little brass doors.", "",
+              "one of them has your number on it",
+              "and it has never had anything in it.")
+    _place(world, "the boxes", 8, 4,
+           [Page(script=boxes, trigger=TRIGGER_ACTION)])
+
+    notice = Script()
+    notice.msg("four notices, all of them curled.", "",
+               "the newest one is about the lift.")
+    with notice.if_var(VR_DREAM_DISTANCE, 3, 1):
+        notice.wait(8)
+        notice.msg("it is dated, and the date is wrong",
+                   "in a way you cannot put a number on.")
+    _place(world, "the notices", 13, 4,
+           [gleam(script=notice, trigger=TRIGGER_ACTION)])
+
+    dark = Script()
+    dark.se("Heartbeat", volume=30)
+    dark.msg("the last light down here is at the far end", "",
+             "and it is behind you.")
+    _place(world, "the dark", 16, 8,
+           [Page(script=dark, trigger=TRIGGER_ACTION)])
 
 
 # --- the nexus ---------------------------------------------------------------
@@ -357,7 +614,7 @@ def nexus_events(world: World, worlds: dict[str, World]) -> None:
     m.add_event("arrive", 1, 1, [_arrival_event(world)])
 
     for index, (x, y) in enumerate(world.landmarks["doors"]):
-        key = DREAM_ORDER[index]
+        key = NEXUS_ORDER[index]
         target = worlds[key]
         # on the door's own bottom tile, so you use it by facing it rather
         # than by standing on top of it
@@ -455,7 +712,7 @@ def dream_events(world: World, worlds: dict[str, World],
     # the hub keeps its shape: each world has a fixed place in the ring and
     # returning tells you where you have been without anything saying so.
     nexus = worlds["nexus"]
-    nx, ny = nexus.landmarks["doors"][DREAM_ORDER.index(key)]
+    nx, ny = nexus.landmarks["doors"][NEXUS_ORDER.index(key)]
     back = Script()
     back.se("DoorShut", volume=60)
     back.bgm_fadeout(10)
@@ -598,11 +855,9 @@ def dream_events(world: World, worlds: dict[str, World],
             after.msg(*system.after)
 
             _place_wide(world, f"{system.thing} {n}", ix, iy, [
-                Page(script=touch, trigger=TRIGGER_ACTION,
-                     charset=_ICON_SHEET, charset_index=_ICON_SLOT),
-                Page(script=after, trigger=TRIGGER_ACTION, switch_a=switch,
-                     charset=_ICON_SHEET, charset_index=_ICON_SLOT,
-                     translucent=True),
+                gleam(script=touch, trigger=TRIGGER_ACTION),
+                gleam(script=after, trigger=TRIGGER_ACTION, switch_a=switch,
+                      translucent=True),
             ])
 
             if not live:
@@ -778,7 +1033,8 @@ def _numbers_system(world: World, worlds: dict[str, World],
                  "it is showing something different now.")
         _place(world, f"plinth {REG_NAMES[reg]} {n}", *spot(n),
                [Page(script=step, trigger=TRIGGER_ACTION,
-                     charset=_ICON_SHEET, charset_index=_ICON_SLOT)])
+                     charset=_ICON_SHEET, charset_index=_ICON_SLOT,
+                     animation_type=ANIM_CONTINUOUS)])
 
     # -- the readout.  One monument in the world states all six at once, and
     # it is the only place the whole state is legible.
@@ -877,7 +1133,7 @@ def floor_events(world: World, worlds: dict[str, World],
         _stairs_system(world, worlds, rng, index)
 
     nexus = worlds["nexus"]
-    nx, ny = nexus.landmarks["doors"][DREAM_ORDER.index("stairs")]
+    nx, ny = nexus.landmarks["doors"][NEXUS_ORDER.index("stairs")]
     back = Script()
     back.se("DoorShut", volume=60)
     back.bgm_fadeout(10)
@@ -956,7 +1212,8 @@ def _stairs_system(world: World, worlds: dict[str, World],
 
         _place(world, f"edge {n}", *at,
                [Page(script=fall, trigger=TRIGGER_ACTION,
-                     charset=_ICON_SHEET, charset_index=_ICON_SLOT)])
+                     charset=_ICON_SHEET, charset_index=_ICON_SLOT,
+                     animation_type=ANIM_CONTINUOUS)])
 
 
 # --- what the residents say --------------------------------------------------
@@ -981,6 +1238,31 @@ NPC_LINES: dict[str, list[str]] = {
                     "they were very far away when you started walking."],
     "gardener": ["\"they are all doing fine.\"", "",
                  "they water something that is already wet."],
+    # The other twelve of the grove's cast.  They speak at length on their own
+    # channel; this is the one line each of them gets when they turn up in
+    # somebody else's scattering, and it is the shortest true thing about them.
+    "ranger": ["\"allow to develop.\"", "",
+               "they say it like it is a decision that was made."],
+    "grafter": ["they are holding two branches together.", "",
+                "they have been holding them for a while."],
+    "swarm": ["\"we are all of us here.\"", "",
+              "you do not count them. you know better than to count them."],
+    "bough_sleeper": ["asleep, in a tree, in the middle of the afternoon.", "",
+                      "they are still listening. you can tell."],
+    "staffholder": ["\"hold this. don't move.\"", "",
+                    "there is nothing in their hands."],
+    "meter_reader": ["\"supply's still on.\"", "",
+                     "they write it down. they write all of it down."],
+    "ash_walker": ["it settles on them and they do not brush it off.",],
+    "last_engineer": ["\"it's transmitting.\"", "",
+                      "\"i checked. i keep checking.\""],
+    "presenter": ["\"GOOD EVENING.\"", "",
+                  "there is no evening. there is no set. they say it anyway."],
+    "caption": ["[ SPEAKER UNIDENTIFIED ]",],
+    "test_tone": ["————————————————", "",
+                  "it does not stop while you are reading this."],
+    "continuity": ["\"NORMAL SERVICE WILL NOT BE RESUMED.\"", "",
+                   "\"WE HOPE YOU ARE ENJOYING YOUR EVENING.\""],
     "seedling": ["it follows you for three steps and then forgets."],
     "walking_hand": ["it walks around you, not away from you."],
     "ring_keeper": ["\"it is not mine.\"", "", "they do not put it down."],

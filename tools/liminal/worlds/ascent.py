@@ -34,6 +34,7 @@ from ..art.cast import WORLD_CAST
 from . import atmosphere
 from . import systems as sys
 from .cast_lookup import charset_slot
+from .events import gleam
 
 # The forest at the bottom, then four planes.
 PLANES = ("umbrellas", "umbrellas2", "umbrellas3", "umbrellas4", "umbrellas5")
@@ -210,7 +211,7 @@ def lifts(world, worlds: dict, rng: random.Random) -> None:
         shut.se("Rustle", volume=34)
         shut.msg("it is furled.", "", "it has never once been needed.")
         m.add_event(f"furled {n}", ux, uy, [
-            Page(script=shut, trigger=TRIGGER_ACTION, layer=LAYER_SAME),
+            gleam(script=shut, trigger=TRIGGER_ACTION),
         ] if n % 4 else [
             Page(script=_open_it(height), trigger=TRIGGER_ACTION,
                  layer=LAYER_SAME),
@@ -268,8 +269,7 @@ def plane_events(world, worlds: dict, rng: random.Random) -> None:
     written.msg(*WRITTEN[height])
     written.switch(SW_WORLD_SECRET_BASE + index, True)
     m.add_event("written here", lx, ly,
-                [Page(script=written, trigger=TRIGGER_ACTION,
-                      layer=LAYER_SAME)])
+                [gleam(script=written, trigger=TRIGGER_ACTION)])
 
     if height == len(PLANES) - 1:
         _the_top(world, index)
@@ -288,8 +288,7 @@ def _the_top(world, index: int) -> None:
             s.se("ChimeFar", volume=44)
             s.switch(SW_WORLD_STATE_BASE + index, True)
         m.add_event(f"the top {n}", tx, ty,
-                    [Page(script=s, trigger=TRIGGER_ACTION,
-                          layer=LAYER_SAME)])
+                    [gleam(script=s, trigger=TRIGGER_ACTION)])
 
 
 def _index(key: str) -> int:

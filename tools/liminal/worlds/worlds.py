@@ -65,12 +65,35 @@ class World:
         return gen.free_spot(self.map, self.placer, rng, **kwargs)
 
 
+# The grove's hidden half: twelve secret rooms and four locked buildings, all
+# of them one screen and all of them behind something.
+HIDDEN_ORDER = ["cave1", "cave2", "cave3", "cave4",
+                "under1", "under2", "under3", "under4",
+                "box1", "box2", "box3", "box4",
+                "prem1", "prem2", "prem3", "prem4"]
+
 # Colour grading per world, as a screen tint: (red, green, blue, saturation),
 # where 100 is neutral and the range is 0..200.  This is the single strongest
 # tool the engine gives for making a place feel a particular way before the
 # player has consciously registered why.
 TINTS: dict[str, tuple[int, int, int, int]] = {
     "room": (104, 100, 94, 96),          # warm, slightly faded
+    "balcony": (96, 98, 110, 84),        # night air, colder than indoors
+    # Down the block the light fails by degrees and the colour goes with it.
+    # The ground floor is not merely darker: it is the one floor where the
+    # grading stops pretending there is any light source at all.
+    "hall5": (88, 88, 104, 74),
+    "hall4": (92, 90, 104, 78),
+    "hall3": (84, 84, 100, 70),
+    "hall2": (74, 74, 92, 60),
+    "lobby": (58, 58, 76, 40),
+    # Under the town it is colder than the town, and inside its buildings it
+    # is warmer.  Each room also keeps a trace of the channel it belongs to,
+    # so a cave found on the red reception is still a red place.
+    **{f"cave{n}": (86 + n * 6, 84, 96 - n * 4, 62 + n * 8) for n in (1, 2, 3, 4)},
+    **{f"under{n}": (72 + n * 5, 74, 96 - n * 3, 54 + n * 9) for n in (1, 2, 3, 4)},
+    **{f"box{n}": (104 - n * 2, 98, 92, 78 + n * 6) for n in (1, 2, 3, 4)},
+    **{f"prem{n}": (100 + n * 3, 96, 88, 84 + n * 5) for n in (1, 2, 3, 4)},
     "nexus": (86, 88, 108, 78),          # cold, desaturated, low
     "pink": (110, 96, 102, 104),         # pushed towards its own pink
     "numbers": (96, 104, 102, 92),       # clinical
@@ -108,6 +131,13 @@ TINTS: dict[str, tuple[int, int, int, int]] = {
 # 0..100 where 100 is invisible, so these are all whispers.
 OVERLAYS: dict[str, tuple[str, int]] = {
     "room": ("Grain", 88),
+    "balcony": ("Grain", 84),
+    "hall5": ("Grain", 84), "hall4": ("Grain", 86), "hall3": ("Grain", 80),
+    "hall2": ("VignetteSoft", 72), "lobby": ("Vignette", 58),
+    **{f"cave{n}": ("Vignette", 60) for n in (1, 2, 3, 4)},
+    **{f"under{n}": ("VignetteSoft", 56) for n in (1, 2, 3, 4)},
+    **{f"box{n}": ("Grain", 82) for n in (1, 2, 3, 4)},
+    **{f"prem{n}": ("Grain", 78) for n in (1, 2, 3, 4)},
     "nexus": ("Vignette", 62),
     "pink": ("HazePink", 90),
     "numbers": ("Grain", 92),
@@ -138,11 +168,20 @@ OVERLAYS: dict[str, tuple[str, int]] = {
 }
 
 MUSIC: dict[str, str] = {
-    "room": "Room", "nexus": "Nexus", "pink": "Pink", "numbers": "Numbers",
+    "room": "Room", "balcony": "Room", "nexus": "Nexus",
+    "hall5": "Room", "hall4": "Room", "hall3": "Room", "hall2": "Deep",
+    "lobby": "Deep", "pink": "Pink", "numbers": "Numbers",
     "blocks": "Blocks", "stairs": "Stairs", "sand": "Sand", "faces": "Faces",
     "hands": "Hands", "checker": "Checker", "toys": "Toys", "neon": "Neon",
     "umbrellas": "Umbrellas", "stars": "Stars",
-    "faces2": "Faces", "faces3": "Deep", "faces4": "Wrong",
+    # each reception has its own: upbeat-and-too-pleased, sad, and
+    # something on the other end that knows you are there
+    "faces2": "Overgrown", "faces3": "OffColour", "faces4": "NoSignal",
+    **{f"cave{n}": "Deep" for n in (1, 2, 3, 4)},
+    **{f"under{n}": "Deep" for n in (1, 2, 3, 4)},
+    **{f"box{n}": "Faces" for n in (1, 2, 3, 4)},
+    "prem1": "Faces", "prem2": "Overgrown", "prem3": "OffColour",
+    "prem4": "NoSignal",
     "neon2": "Neon", "neon3": "Neon", "neon4": "Wrong", "neon5": "Deep",
     "umbrellas2": "Umbrellas", "umbrellas3": "Umbrellas",
     "umbrellas4": "Deep", "umbrellas5": "Wrong",
@@ -150,6 +189,18 @@ MUSIC: dict[str, str] = {
 
 TITLES: dict[str, str] = {
     "room": "the room",
+    "balcony": "outside",
+    "hall5": "the fifth floor", "hall4": "the fourth floor",
+    "hall3": "the third floor", "hall2": "the second floor",
+    "lobby": "the ground floor",
+    "cave1": "the culvert", "cave2": "the root hollow",
+    "cave3": "the dry cave", "cave4": "the anechoic",
+    "under1": "the sewers", "under2": "the flooded run",
+    "under3": "the dry main", "under4": "the cable duct",
+    "box1": "the signal box", "box2": "the sunken greenhouse",
+    "box3": "the substation", "box4": "the continuity suite",
+    "prem1": "the exchange", "prem2": "the nursery office",
+    "prem3": "the depot", "prem4": "the transmitter hut",
     "nexus": "the doors",
     "pink": "brick",
     "numbers": "counting",
@@ -181,15 +232,28 @@ TITLES: dict[str, str] = {
 # Two dreams have nobody at all — the stairwell and the field of hands are
 # meant to read as *emptied*, not as unfinished — and the room is yours.
 POPULATION: dict[str, int] = {
-    "room": 0, "nexus": 3,
+    "room": 0, "balcony": 0, "nexus": 3,
+    "hall5": 0, "hall4": 0, "hall3": 0, "hall2": 0, "lobby": 0,
+    **{key: 0 for key in HIDDEN_ORDER},
     "pink": 20, "numbers": 20, "blocks": 16, "stairs": 0, "sand": 15,
     "faces": 19, "hands": 0, "checker": 17, "toys": 20, "neon": 20,
     "umbrellas": 16, "stars": 16,
 }
 
-# Which door in the nexus leads where, in the order they stand.
+# The twelve dreams, in their canonical order.  This is identity, not
+# geography: map ids, world indices and which effect is hidden in which dream
+# all hang off it, so it does not get shuffled to move a door.
 DREAM_ORDER = ["pink", "numbers", "blocks", "stairs", "sand", "faces", "hands",
                "checker", "toys", "neon", "umbrellas", "stars"]
+
+# Where each door actually stands in the ring, clockwise from the top — which
+# is a separate question, because the hub opens on the first of them.  The
+# player arrives in front of position zero and the ring curves away either
+# side, so whatever sits there is the dream the game is about until you decide
+# otherwise.  Swapping two entries here moves two doors and nothing else.
+NEXUS_ORDER = ["faces", "numbers", "blocks", "stairs", "sand", "pink", "hands",
+               "checker", "toys", "neon", "umbrellas", "stars"]
+assert sorted(NEXUS_ORDER) == sorted(DREAM_ORDER)
 
 # The stairwell is five floors deep.  These are *layers*, not subworlds: the
 # same world continuing downward, sharing its chipset, cast and music family,
@@ -216,7 +280,15 @@ MURAL_OF = {"neon2": "eye", "neon3": "spiral", "neon4": "mouth",
 # you the whole way to the bottom.
 ASCENT_ORDER = ["umbrellas2", "umbrellas3", "umbrellas4", "umbrellas5"]
 
-WORLD_ORDER = ["room", "nexus", *DREAM_ORDER, *STAIR_FLOORS,
+
+# The apartment block.  Five floors of the same corridor: the flat is on the
+# fourth, there is one above it, two below, and then the ground floor, which
+# is the only one that is different and the only one you cannot leave from.
+BLOCK_ORDER = ["hall5", "hall4", "hall3", "hall2", "lobby"]
+HOME_FLOOR = "hall4"
+
+
+WORLD_ORDER = ["room", "balcony", *BLOCK_ORDER, "nexus", *HIDDEN_ORDER, *DREAM_ORDER, *STAIR_FLOORS,
                *FACE_CHANNELS[1:], *MURAL_INSIDE_ORDER,
                *ASCENT_ORDER]
 
@@ -225,9 +297,19 @@ DEPTH = {"stairs": 0, "stairs2": 1, "stairs3": 2, "stairs4": 3, "stairs5": 4}
 
 
 def _new(key: str, map_id: int, width: int, height: int, *,
-         loop: bool = True) -> tuple[World, ChipsetBuild, random.Random]:
-    build = BUILDERS[key]()
-    chipset_id = WORLD_ORDER.index(key) + 1
+         loop: bool = True,
+         art: str | None = None) -> tuple[World, ChipsetBuild, random.Random]:
+    """A world, its chipset and its seeded generator.
+
+    ``art`` names a *different* world to take the chipset from, which is how
+    every floor of the apartment block shares one corridor sheet while still
+    being its own map with its own grading.  The stair floors did this by
+    building under the wrong key and then overwriting ``world.key``
+    afterwards; this says it out loud instead.
+    """
+    art = art or key
+    build = BUILDERS[art]()
+    chipset_id = WORLD_ORDER.index(art) + 1
     m = Map(width, height, chipset_id,
             scroll_type=SCROLL_BOTH if loop else SCROLL_NONE,
             fill=build.tiles["ground"])
@@ -245,55 +327,279 @@ def _new(key: str, map_id: int, width: int, height: int, *,
 
 # --- the two places that are not dreams --------------------------------------
 
-def build_room(map_id: int) -> World:
-    """A small room with one bed, one door and one window.  Does not loop.
+def _walls(m, t) -> None:
+    """Cut a room out of a building, on a map exactly one screen across.
 
-    Four walls, not one.  A room with a single back wall gives furniture only
-    one place to stand, and everything lines up along it like a showroom — so
-    the near and side walls are real, and the furniture is grouped the way a
-    person's things actually collect: the sleeping corner on one side, the
-    everything-else corner on the other, and the middle left alone.
+    The border of an interior is not a texture, it is the wall in section:
+    skin outside, core in the middle, plaster turned toward you.  Laying it as
+    bands rather than as one repeated tile is the whole reason a top-down room
+    reads as having thickness.
+
+    Outside the wall is black.  The map is twenty by fifteen — one screen, no
+    scrolling — so the room ends exactly where the room ends and nothing of
+    the engine's backdrop is ever visible past it.
     """
-    world, cs, rng = _new("room", map_id, 21, 17, loop=False)
+    m.fill_rect(0, 0, m.width, m.height, t["black"])
+    for x in range(1, m.width - 1):
+        m.set_lower(x, 0, t["cut_n"])
+        m.set_lower(x, 1, t["face_n"])
+        m.set_lower(x, 2, t["face_n_low"])
+        m.set_lower(x, m.height - 2, t["face_s"])
+        m.set_lower(x, m.height - 1, t["cut_s"])
+    for y in range(3, m.height - 2):
+        m.set_lower(1, y, t["cut_w"])
+        m.set_lower(2, y, t["face_w"])
+        m.set_lower(m.width - 3, y, t["face_e"])
+        m.set_lower(m.width - 2, y, t["cut_e"])
+
+
+def build_room(map_id: int) -> World:
+    """One room, one screen, and a door out to the balcony.
+
+    Fourteen tiles by eight of actual floor — about four of the player's own
+    height corner to corner — so the furniture is always in shot and crossing
+    it takes three seconds rather than ten.
+
+    Everything with a back has that back against a wall and is drawn flush to
+    it; nothing stands out in the floor facing another piece of furniture.
+    There is no painted pool of light anywhere on the boards either: the lamp
+    is lit, the room is not, and a stain of warm tiles under it only ever read
+    as a stain.
+    """
+    world, cs, rng = _new("room", map_id, 20, 15, loop=False)
     m, t = world.map, cs.tiles
 
-    m.fill_rect(0, 0, m.width, m.height, t["ground"])
+    _walls(m, t)
+    for y in range(3, m.height - 2):            # the boards, with the joints
+        for x in range(3, m.width - 3):         # falling in different places
+            key = ("ground_b" if (x * 5 + y * 3) % 7 == 0
+                   else "path" if (x * 3 + y * 7) % 11 == 0 else "ground")
+            m.set_lower(x, y, t[key])
 
-    # the back wall, three tiles deep, and the other three one tile deep
-    for x in range(m.width):
-        gen.stamp(m, cs.obj("wall"), x, 0)
-    for y in range(3, m.height):
-        m.set_lower(0, y, t["skirt"])
-        m.set_lower(m.width - 1, y, t["skirt"])
-    for x in range(m.width):
-        m.set_lower(x, m.height - 1, t["skirt"])
+    # --- set into the far wall.  The wall is rows 0-2: the cut across its
+    # top, then two rows of plaster.  These sit on the plaster and nowhere
+    # else, which is what makes them read as part of the wall — one row lower
+    # and the bottom half of every door lands on floorboards.
+    gen.stamp(m, cs.obj("door"), 3, 1, overlap=True)       # never opens
+    gen.stamp(m, cs.obj("window"), 5, 1, overlap=True)
+    gen.stamp(m, cs.obj("slider"), 13, 1, overlap=True)    # out to the balcony
+    gen.stamp(m, cs.obj("clock"), 16, 1, overlap=True)     # hung, not standing
 
-    # -- the sleeping corner, left
-    gen.stamp(m, cs.obj("bed"), 1, 3)
-    gen.stamp(m, cs.obj("television"), 1, 11)
+    # --- along the far wall, on the first row of floor and flush to it: the
+    # bed, the lamp, and the nightstand the lamp stands beside
+    gen.stamp(m, cs.obj("bed"), 7, 3)
+    gen.stamp(m, cs.obj("lamp_lit"), 9, 3)
+    gen.stamp(m, cs.obj("nightstand"), 10, 3)
+    gen.stamp(m, cs.obj("television"), 11, 3)
 
-    # -- the rest of a life, right.  Spread down the wall rather than lined up
-    # along the back one, so crossing the room passes each of them in turn.
-    gen.stamp(m, cs.obj("wardrobe"), 18, 3)
-    gen.stamp(m, cs.obj("desk"), 18, 8)
-    gen.stamp(m, cs.obj("mirror"), 18, 12)
+    # --- along the side walls
+    gen.stamp(m, cs.obj("desk"), 3, 5)
+    gen.stamp(m, cs.obj("mirror"), 3, 8)
+    gen.stamp(m, cs.obj("wardrobe"), 15, 5)
+    gen.stamp(m, cs.obj("shelf"), 15, 9)
+    gen.stamp(m, cs.obj("plant"), 5, 11)
+    gen.stamp(m, cs.obj("bin"), 7, 12)
+    gen.stamp(m, cs.obj("slippers"), 8, 6)
 
-    # -- the back wall itself: the door you cannot use, and the window
-    gen.stamp(m, cs.obj("door"), 9, 0)
-    gen.stamp(m, cs.obj("window"), 5, 1)
-    m.set_upper(14, 1, t["lamp"])
-
-    # The rug sits in front of the television, not filling a corner.
-    m.fill_rect(5, 9, 6, 4, t["rug"])
+    for y in range(8, 12):                      # one rug, in the middle
+        for x in range(8, 14):
+            m.set_lower(x, y, t["rug_edge"] if y == 8 else t["rug"])
 
     world.landmarks = {
-        "bed": [(1, 3)], "desk": [(18, 8)], "wardrobe": [(18, 3)],
-        "television": [(1, 11)], "mirror": [(18, 12)], "window": [(5, 1)],
-        "door": [(9, 0)],
+        "bed": [(7, 3)], "desk": [(3, 5)], "wardrobe": [(15, 5)],
+        "television": [(11, 3)], "mirror": [(3, 8)], "window": [(5, 1)],
+        "door": [(3, 1)], "shelf": [(15, 9)], "clock": [(16, 1)],
+        "plant": [(5, 11)], "slider": [(13, 1)], "nightstand": [(10, 3)],
     }
-    world.spawn = (10, 11)
+    world.spawn = (10, 7)
     world.npcs = []
     return world
+
+
+def build_balcony(map_id: int) -> World:
+    """Three paces of concrete, and the only horizon in the waking half.
+
+    Its own screen rather than a strip along the top of the bedroom: the room
+    is somewhere you are kept, and this is the one place you can see out of.
+    Sharing a map would have made the view a border.
+
+    What you can see is water, a far shore with towers on it, and snow lying
+    on everything including the rail you are holding.  The towers are objects
+    rather than tiles so they can be genuinely large — the point of the view
+    is the difference in scale between them and the flat.
+    """
+    world, cs, rng = _new("balcony", map_id, 20, 15, loop=False)
+    m, t = world.map, cs.tiles
+
+    # --- the view, far to near
+    m.fill_rect(0, 0, m.width, 2, t["sky"])
+    m.fill_rect(0, 2, m.width, 1, t["sky_low"])
+    m.fill_rect(0, 3, m.width, 3, t["sky_low"])
+    m.fill_rect(0, 6, m.width, 1, t["bank_far"])
+    m.fill_rect(0, 7, m.width, 2, t["water"])
+    for x in range(0, m.width, 3):              # the towers' light on it
+        m.set_lower(x, 7, t["water_lit"])
+    m.fill_rect(0, 9, m.width, 1, t["bank_near"])
+
+    # the far shore, standing on the bank.  Bases on row 5 so every tower
+    # meets the snow at the same waterline.
+    for name, x, rows in (("tower_c", 0, 4), ("tower_a", 3, 6),
+                          ("tower_d", 5, 6), ("tower_b", 9, 5),
+                          ("tower_a", 12, 6), ("tower_d", 14, 6),
+                          ("tower_c", 17, 4)):
+        gen.stamp(m, cs.obj(name), x, 6 - rows, overlap=True)
+
+    # --- the parapet you lean on, and the rail standing on it
+    m.fill_rect(0, 10, m.width, 1, t["parapet"])
+    for x in range(m.width):
+        gen.stamp(m, cs.obj("rail"), x, 10, overlap=True)
+
+    # --- the deck
+    m.fill_rect(0, 11, m.width, 2, t["ground"])
+    for x in range(m.width):
+        if x % 3 == 1:
+            m.set_lower(x, 11, t["ground_b"])
+        if x % 5 == 2:
+            m.set_lower(x, 12, t["path"])
+
+    # --- the building at your back, in the same section as the room's walls
+    for x in range(m.width):
+        m.set_lower(x, 13, t["render"])
+        m.set_lower(x, 14, t["cut_s"])
+    for y in range(11, 13):                     # the returns, either side
+        m.set_lower(0, y, t["cut_w"])
+        m.set_lower(m.width - 1, y, t["cut_e"])
+
+    gen.stamp(m, cs.obj("slider"), 9, 13, overlap=True)
+    gen.stamp(m, cs.obj("aircon"), 15, 11)
+    gen.stamp(m, cs.obj("chair"), 5, 11)
+    gen.stamp(m, cs.obj("pot"), 3, 12)
+    gen.stamp(m, cs.obj("pot"), 13, 12)
+    gen.stamp(m, cs.obj("bucket"), 7, 12)
+
+    world.landmarks = {
+        "slider": [(9, 13)], "rail": [(10, 10)], "chair": [(5, 11)],
+        "aircon": [(15, 11)], "bucket": [(7, 12)],
+    }
+    world.spawn = (10, 12)
+    world.npcs = []
+    return world
+
+
+# --- the building ------------------------------------------------------------
+
+# Where every fitting stands.  One table, used by all five floors, because a
+# corridor whose doors move between storeys is not a building — it is five
+# corridors.  Only the *state* of the fittings changes as you go down.
+NORTH_DOORS = (6, 9, 12)          # the flats on the far side
+SOUTH_DOORS = (6, 9, 13)          # and on the near side
+LIFT_AT = 15                      # which never comes
+HOME_DOOR = 9                     # the player's own, on the fourth floor
+
+
+def _corridor(m, t) -> None:
+    """One storey of the block, cut the same way the flat is.
+
+    Far wall on rows 1-3, near wall on rows 10-12, and a door fits in either
+    because both carry two rows of plaster.  A corridor with doors on only
+    one side is a service passage; a corridor with doors on both is somewhere
+    people live, and that is the whole difference the geometry has to carry.
+    """
+    m.fill_rect(0, 0, m.width, m.height, t["black"])
+    for x in range(1, m.width - 1):
+        m.set_lower(x, 1, t["cut_n"])
+        m.set_lower(x, 2, t["face_n"])
+        m.set_lower(x, 3, t["face_n_low"])
+        m.set_lower(x, 10, t["face_s"])
+        m.set_lower(x, 11, t["face_s_low"])
+        m.set_lower(x, 12, t["cut_s"])
+    for y in range(4, 10):
+        m.set_lower(1, y, t["cut_w"])
+        m.set_lower(2, y, t["face_w"])
+        m.set_lower(m.width - 3, y, t["face_e"])
+        m.set_lower(m.width - 2, y, t["cut_e"])
+        for x in range(3, m.width - 3):
+            key = ("ground_b" if (x * 5 + y * 3) % 9 == 0
+                   else "path" if (x * 3 + y * 7) % 13 == 0 else "ground")
+            m.set_lower(x, y, t[key])
+    for x in range(5, m.width - 3):             # the runner down the middle
+        m.set_lower(x, 6, t["runner_w"])
+        m.set_lower(x, 7, t["runner_e"])
+
+
+def _floor_of(key: str) -> int:
+    return BLOCK_ORDER.index(key)
+
+
+def _build_floor(key: str):
+    """One storey.  Everything shared is in ``_corridor``; this is what is
+    different about being on this particular one."""
+
+    def build(map_id: int) -> World:
+        world, cs, rng = _new(key, map_id, 20, 15, loop=False, art="hall5")
+        m, t = world.map, cs.tiles
+        _corridor(m, t)
+        depth = _floor_of(key)
+        ground = key == "lobby"
+
+        # The stairwell, at the west end of every floor.  Up is nearer the
+        # far wall and down is nearer the near one, on every storey, so which
+        # way you are going is a thing you learn once.
+        # Stairs at both ends, so which way you are going is a place rather
+        # than a choice made at one spot.
+        if depth > 0:
+            gen.stamp(m, cs.obj("stair_up"), 3, 4)
+        if not ground:
+            gen.stamp(m, cs.obj("stair_down"), 14, 4)
+
+        landmarks: dict[str, list[tuple[int, int]]] = {}
+        if ground:
+            # The ground floor keeps the geometry and loses everything that
+            # made the others residential.  No flats, one way out, and it does
+            # not open.
+            gen.stamp(m, cs.obj("mailboxes"), 7, 2, overlap=True)
+            gen.stamp(m, cs.obj("notice"), 12, 2, overlap=True)
+            gen.stamp(m, cs.obj("entrance"), 9, 10, overlap=True)
+            gen.stamp(m, cs.obj("lift"), LIFT_AT, 10, overlap=True)
+            gen.stamp(m, cs.obj("dead_plant"), 6, 8)
+            gen.stamp(m, cs.obj("radiator"), 11, 4)
+            landmarks["entrance"] = [(9, 10)]
+            landmarks["mailboxes"] = [(7, 2)]
+            landmarks["notice"] = [(12, 2)]
+        else:
+            for x in NORTH_DOORS:
+                home = key == HOME_FLOOR and x == HOME_DOOR
+                gen.stamp(m, cs.obj("flat_door" if home else "flat_door_plain"),
+                          x, 2, overlap=True)
+                landmarks.setdefault("north", []).append((x, 2))
+            for x in SOUTH_DOORS:
+                gen.stamp(m, cs.obj("flat_door_plain"), x, 10, overlap=True)
+                landmarks.setdefault("south", []).append((x, 10))
+            gen.stamp(m, cs.obj("lift"), LIFT_AT, 10, overlap=True)
+            gen.stamp(m, cs.obj("radiator"), 11, 4)
+            gen.stamp(m, cs.obj("dead_plant"), 13, 8)
+            gen.stamp(m, cs.obj("notice"), 3, 10, overlap=True)
+            landmarks["notice"] = [(3, 10)]
+        landmarks["lift"] = [(LIFT_AT, 10)]
+
+        # The light.  Every floor loses one more of them, and the ground
+        # floor has one left, which is the only reason anything down there is
+        # visible at all.
+        # The lights go where nothing else is fixed to the wall.  Stamped
+        # over the doors and the mailboxes they simply drew on top of them,
+        # because everything on a wall shares two rows of plaster.
+        lit = (4, 3, 3, 2, 1)[depth]
+        for index, x in enumerate((5, 11, 15, 16, 4) if ground
+                                  else (5, 8, 11, 14, 16)):
+            gen.stamp(m, cs.obj("sconce" if index < lit else "sconce_dead"),
+                      x, 2, overlap=True)
+
+        world.landmarks = landmarks
+        world.spawn = (HOME_DOOR, 4) if key == HOME_FLOOR else (7, 5)
+        world.npcs = []
+        return world
+
+    return build
 
 
 def build_nexus(map_id: int) -> World:
@@ -311,8 +617,8 @@ def build_nexus(map_id: int) -> World:
         x = int(m.width / 2 + math.cos(angle) * 15) - 1
         y = int(m.height / 2 + math.sin(angle) * 11) - 1
         # each portal wears the mirror of the world it opens onto
-        gen.stamp(m, cs.obj(f"door_{DREAM_ORDER[index]}"), x, y)
-        world.placer.mark(x, y, 2, 3, f"door_{DREAM_ORDER[index]}")
+        gen.stamp(m, cs.obj(f"door_{NEXUS_ORDER[index]}"), x, y)
+        world.placer.mark(x, y, 2, 3, f"door_{NEXUS_ORDER[index]}")
         doors.append((x, y))
         gen.patch(m, t["glow"], x + 1, y + 3, 2.4, rng, ragged=0.2)
 
@@ -702,20 +1008,49 @@ def _faces_layout(world: World, cs) -> None:
         layout.carpet(m, fld, zone, t, rng, "full")
 
     # Lay the actual road surface back over the avenues, lane markings and all.
-    for x in avenues_x:
-        for y in range(m.height):
-            for o in range(-2, 3):
-                if fld.is_floor(x + o, y):
-                    m.set_lower(x + o, y, t["kerb"] if abs(o) == 2 else
-                                (t["road_line"] if o == 0 and y % 4 < 2
-                                 else t["road"]))
-    for y in avenues_y:
+    #
+    # One pass over every cell rather than one pass per axis, because the
+    # interesting cases are all where two carriageways meet and a per-axis
+    # pass cannot see them.  Three things came out of the old two-pass
+    # version and all three are the same bug: it did not know what a junction
+    # was.  Kerbs ran straight through crossings, so every intersection had a
+    # pavement across the middle of it; the north-south avenues were kerbed
+    # with the east-west stone, so their pavements ran at right angles to
+    # their own road; and both axes used the same centre line, so half the
+    # town had its lane markings painted across the lane.
+    def _near(value: int, centres, wrap: int) -> int | None:
+        for centre in centres:
+            delta = ((value - centre + wrap // 2) % wrap) - wrap // 2
+            if abs(delta) <= 2:
+                return delta
+        return None
+
+    for y in range(m.height):
+        row = _near(y, avenues_y, m.height)
         for x in range(m.width):
-            for o in range(-2, 3):
-                if fld.is_floor(x, y + o):
-                    m.set_lower(x, y + o, t["kerb"] if abs(o) == 2 else
-                                (t["road_line"] if o == 0 and x % 4 < 2
-                                 else t["road"]))
+            col = _near(x, avenues_x, m.width)
+            if col is None and row is None:
+                continue
+            if not fld.is_floor(x, y):
+                continue
+            if col is not None and row is not None:
+                # a crossing: all carriageway, no stone, and no centre line
+                # running through the middle of it
+                m.set_lower(x, y, t["road"])
+            elif col is not None:                   # a north-south avenue
+                if abs(col) == 2:
+                    m.set_lower(x, y, t["kerb_w" if col < 0 else "kerb_e"])
+                elif col == 0 and y % 4 < 2:
+                    m.set_lower(x, y, t["road_line"])
+                else:
+                    m.set_lower(x, y, t["road"])
+            else:                                   # an east-west avenue
+                if abs(row) == 2:
+                    m.set_lower(x, y, t["kerb_n" if row < 0 else "kerb_s"])
+                elif row == 0 and x % 4 < 2:
+                    m.set_lower(x, y, t["road_line_h"])
+                else:
+                    m.set_lower(x, y, t["road"])
 
     fur = Furnisher(m, fld, cs, rng)
     # Junctions get the municipal furniture: lights on every corner, a shelter,
@@ -742,8 +1077,13 @@ def _faces_layout(world: World, cs) -> None:
         for slot, (px, py) in enumerate(ring(zone, 4, inset=6)):
             _street_furniture(fur, m, t, street[(index + slot) % len(street)],
                               px, py, pad=1)
-        # a tree straight through the middle of the junction
-        fur.put("tree", zone.cx, zone.cy, pad=1)
+        # A tree on the verge at the corner of the crossing, not in the
+        # middle of it.  It used to stand on the centre line, which was the
+        # one thing in this world that read as a mistake rather than as a
+        # place: everything else the forest took, it took from the edges in.
+        for dx, dy in ((-6, -6), (6, 6)):
+            _street_furniture(fur, m, t, "tree", zone.cx + dx, zone.cy + dy,
+                              pad=1)
 
     # The glades are what the town looks like once the road has gone.
     for index, zone in enumerate(glades):
@@ -794,7 +1134,11 @@ def _street_furniture(fur, m, t: dict, name: str, x: int, y: int, *,
     grid = fur.cs.obj(name)
     ox = x - grid.cols // 2 if centred else x
     oy = y - grid.rows // 2 if centred else y
-    tarmac = {t[k] for k in ("road", "road_line") if k in t}
+    # Every road tile, kerbs included: a bus shelter standing on the
+    # kerb stone is standing in the gutter.
+    tarmac = {t[k] for k in ("road", "road_line", "road_line_h",
+                             "kerb", "kerb_n", "kerb_s", "kerb_w",
+                             "kerb_e") if k in t}
     for row in range(grid.rows):
         for col in range(grid.cols):
             if m.get_lower(ox + col, oy + row) in tarmac:
@@ -1695,8 +2039,19 @@ def _face_channel(channel: int):
     return build
 
 
+def _hidden_build(key: str):
+    """One of the grove's secret rooms.  Imported late: ``hidden`` needs the
+    world helpers in this module, so it cannot be imported at the top of it."""
+    def make(map_id: int):
+        from . import hidden
+        return hidden.build(key)(map_id)
+    return make
+
+
 BUILD = {
-    "room": build_room, "nexus": build_nexus, "pink": build_pink,
+    "room": build_room, "balcony": build_balcony, "nexus": build_nexus,
+    **{key: _build_floor(key) for key in BLOCK_ORDER},
+    **{key: _hidden_build(key) for key in HIDDEN_ORDER}, "pink": build_pink,
     "numbers": build_numbers, "blocks": build_blocks, "stairs": build_stairs,
     "sand": build_sand, "faces": build_faces, "hands": build_hands,
     "checker": build_checker, "toys": build_toys, "neon": build_neon,

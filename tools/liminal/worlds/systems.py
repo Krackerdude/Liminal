@@ -71,6 +71,7 @@ PIC_GLINT = 29
 PIC_DUST = 30
 PIC_MOTES = 31            # waves, forever
 PIC_FLASH = 40            # for anomalies: static, eye, white
+PIC_SHUDDER = 41          # the grove's ring, on the edge it came from
 
 EFFECT_KEYS = [key for key, _, _ in EFFECTS]
 

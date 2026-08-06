@@ -22,11 +22,66 @@ from __future__ import annotations
 
 import math
 
+from . import material as _mt
 from .canvas import Canvas, RGB, blend, cooler, warmer
 from .charsets import (CELL_W as CELL_W_FULL, DOWN, GROUND, LEFT,
                         RIGHT, UP, _small_legs)
 
 CX = 12
+
+
+# --- how everybody in the grove is lit ----------------------------------------
+# The remaster's shading, applied to drawings that already exist.  Every one of
+# these figures keeps its silhouette exactly: the change is that a mass is no
+# longer a flat fill.
+#
+# The rule is the player's own, and it is the same rule the room and the grove
+# chipset follow.  A mass gets the light — lit along the top and the left,
+# mid through the body, shade down the right-hand edge, and a value darker
+# where it meets whatever is under it.  A *detail* stays flat, because the
+# player's sprite has flat eyes and a flat mouth and shading them would turn a
+# face into a smudge at this size.
+#
+# Which is which is decided by size rather than by hand: anything under three
+# pixels across is a detail.  That is why these two functions can stand in for
+# ``rect`` and ``ellipse`` everywhere without every call site having to know.
+
+def _mass(cell: Canvas, x: int, y: int, w: int, h: int, colour: RGB, *,
+          top: int = 2) -> None:
+    """A rectangular mass, given the game's light."""
+    m = _mt.Material("part", colour)
+    if w < 3 or h < 3:                       # a detail: flat, on purpose
+        cell.rect(x, y, w, h, colour)
+        return
+    _mt.plane(cell, x, y, w, h, m.mid)
+    _mt.plane(cell, x, y, w, min(top, h), m.lit)
+    if h > top + 2:
+        _mt.seam(cell, x, y + top, w, 2, m.lit, m.mid)
+    cell.vline(x, y, y + h - 1, m.lit)
+    cell.vline(x + w - 1, y, y + h - 1, m.shade)
+    if w > 4:
+        cell.vline(x + w - 2, y + top, y + h - 1, m.shade)
+    cell.hline(y + h - 1, x, x + w - 1, m.shade)
+
+
+def _round(cell: Canvas, cx: float, cy: float, rx: float, ry: float,
+           colour: RGB, **kw) -> None:
+    """A rounded mass — a head, a canopy, a shoulder — given the same light.
+
+    ``filled=False`` means the call wanted a ring rather than a disc, and a
+    ring has no top or underside to speak of, so it passes straight through.
+    """
+    m = _mt.Material("part", colour)
+    if kw.get("filled", True) is False or rx < 2.5 or ry < 2.5:
+        cell.ellipse(cx, cy, rx, ry, colour, **kw)
+        return
+    cell.ellipse(cx, cy + 1, rx, ry, m.shade)          # the underside
+    cell.ellipse(cx, cy, rx - 0.5, ry - 0.5, m.mid)    # the body of it
+    cell.ellipse(cx - rx * 0.30, cy - ry * 0.34,
+                 rx * 0.58, ry * 0.54, m.lit)          # where the light lands
+    if rx >= 4:
+        cell.ellipse(cx - rx * 0.38, cy - ry * 0.44,
+                     rx * 0.24, ry * 0.22, m.hot)
 
 
 def _bob(frame: int) -> int:
@@ -1132,33 +1187,33 @@ def draw_gardener(cell: Canvas, facing: int, frame: int) -> None:
     top = 10 + b
     bw = 7 if side else 12
 
-    cell.rect(CX - bw // 2 + (lead if side else 0), top, bw,
+    _mass(cell, CX - bw // 2 + (lead if side else 0), top, bw,
               GROUND - top - 5, coat)
     _small_legs(cell, frame, CX, GROUND - 5, dark, spread=3 if side else 4)
 
     if facing == DOWN:
-        cell.ellipse(CX, top - 4, 5, 5, skin)
-        cell.ellipse(CX, top - 7, 6.5, 2.5, dark)
+        _round(cell, CX, top - 4, 5, 5, skin)
+        _round(cell, CX, top - 7, 6.5, 2.5, dark)
         for ex in (CX - 3, CX + 1):
-            cell.rect(ex, top - 4, 2, 2, (62, 48, 40))
-        cell.rect(CX + 2, top + 5, 7, 6, can)
-        cell.rect(CX + 8, top + 3, 2, 3, can)
+            _mass(cell, ex, top - 4, 2, 2, (62, 48, 40))
+        _mass(cell, CX + 2, top + 5, 7, 6, can)
+        _mass(cell, CX + 8, top + 3, 2, 3, can)
         for i in range(3):
             cell.dot(CX + 9, top + 8 + i * 2 + frame, water)
     elif facing == UP:
-        cell.ellipse(CX, top - 4, 5, 5, cooler(skin, 0.28))
-        cell.ellipse(CX, top - 7, 6.5, 2.5, cooler(dark, 0.2))
+        _round(cell, CX, top - 4, 5, 5, cooler(skin, 0.28))
+        _round(cell, CX, top - 7, 6.5, 2.5, cooler(dark, 0.2))
         # the can is on the far side; only its handle clears the shoulder
-        cell.rect(CX + 5, top + 3, 2, 4, can)
-        cell.rect(CX - 5, top + 1, 11, 3, cooler(coat, 0.25))
+        _mass(cell, CX + 5, top + 3, 2, 4, can)
+        _mass(cell, CX - 5, top + 1, 11, 3, cooler(coat, 0.25))
     else:
-        cell.ellipse(CX + lead, top - 4, 4, 5, skin)
-        cell.ellipse(CX + lead, top - 7, 5.5, 2.5, dark)
-        cell.rect(CX + (1 if lead > 0 else -2) + lead, top - 4, 2, 2,
+        _round(cell, CX + lead, top - 4, 4, 5, skin)
+        _round(cell, CX + lead, top - 7, 5.5, 2.5, dark)
+        _mass(cell, CX + (1 if lead > 0 else -2) + lead, top - 4, 2, 2,
                   (62, 48, 40))
         cx = CX + 2 * lead if lead > 0 else CX - 9
-        cell.rect(cx, top + 5, 7, 6, can)
-        cell.rect(CX + 8 * lead, top + 7, 2, 2, can)
+        _mass(cell, cx, top + 5, 7, 6, can)
+        _mass(cell, CX + 8 * lead, top + 7, 2, 2, can)
 
 
 def draw_seedling(cell: Canvas, facing: int, frame: int) -> None:
@@ -1171,28 +1226,28 @@ def draw_seedling(cell: Canvas, facing: int, frame: int) -> None:
     top = 6 + b
 
     pw = 7 if side else 11
-    cell.rect(CX - pw // 2 + (lead if side else 0), GROUND - 12, pw, 9, pot)
-    cell.rect(CX - pw // 2 - 1 + (lead if side else 0), GROUND - 13, pw + 2, 3,
+    _mass(cell, CX - pw // 2 + (lead if side else 0), GROUND - 12, pw, 9, pot)
+    _mass(cell, CX - pw // 2 - 1 + (lead if side else 0), GROUND - 13, pw + 2, 3,
               warmer(pot, 0.25))
-    cell.rect(CX - pw // 2 + 1 + (lead if side else 0), GROUND - 11, pw - 2, 2,
+    _mass(cell, CX - pw // 2 + 1 + (lead if side else 0), GROUND - 11, pw - 2, 2,
               soil)
     _small_legs(cell, frame, CX, GROUND - 3, soil, spread=3 if side else 4)
 
     cell.vline(CX + (lead if side else 0), top + 3, GROUND - 12, stem)
     if facing == DOWN:
-        cell.ellipse(CX - 4, top + 4, 4, 2.5, leaf)
-        cell.ellipse(CX + 4, top + 6, 4, 2.5, leaf)
-        cell.ellipse(CX, top + 1, 3, 3, leaf)
+        _round(cell, CX - 4, top + 4, 4, 2.5, leaf)
+        _round(cell, CX + 4, top + 6, 4, 2.5, leaf)
+        _round(cell, CX, top + 1, 3, 3, leaf)
         for ex in (CX - 2, CX + 1):
             cell.dot(ex, top + 1, soil)
     elif facing == UP:
         # from behind, the leaves fold together and the pot shows its base ring
-        cell.ellipse(CX, top + 3, 3, 5, cooler(leaf, 0.25))
+        _round(cell, CX, top + 3, 3, 5, cooler(leaf, 0.25))
         cell.vline(CX, top - 1, top + 8, stem)
-        cell.rect(CX - 4, GROUND - 5, 9, 2, cooler(pot, 0.35))
+        _mass(cell, CX - 4, GROUND - 5, 9, 2, cooler(pot, 0.35))
     else:
-        cell.ellipse(CX + 4 * lead + lead, top + 4, 5, 2, leaf)
-        cell.ellipse(CX - 2 * lead + lead, top + 7, 3, 1.5, cooler(leaf, 0.2))
+        _round(cell, CX + 4 * lead + lead, top + 4, 5, 2, leaf)
+        _round(cell, CX - 2 * lead + lead, top + 7, 3, 1.5, cooler(leaf, 0.2))
         cell.dot(CX + lead + (1 if lead > 0 else -1), top + 2, soil)
 
 
@@ -1207,29 +1262,29 @@ def draw_commuter(cell: Canvas, facing: int, frame: int) -> None:
     bw = 7 if side else 13
 
     # a long coat that reaches the ground
-    cell.rect(CX - bw // 2 + (lead if side else 0), top, bw,
+    _mass(cell, CX - bw // 2 + (lead if side else 0), top, bw,
               GROUND - top - 2, coat)
-    cell.rect(CX - bw // 2 + (lead if side else 0), top, bw, 3,
+    _mass(cell, CX - bw // 2 + (lead if side else 0), top, bw, 3,
               warmer(coat, 0.18))
 
     if facing == DOWN:
-        cell.ellipse(CX, top - 4, 5, 5, skin)
+        _round(cell, CX, top - 4, 5, 5, skin)
         for ex in (CX - 3, CX + 1):
-            cell.rect(ex, top - 5, 2, 2, (48, 40, 38))
+            _mass(cell, ex, top - 5, 2, 2, (48, 40, 38))
         cell.vline(CX, top + 4, GROUND - 4, dark)       # the coat's opening
-        cell.rect(CX + 5, top + 8, 5, 6, case)
+        _mass(cell, CX + 5, top + 8, 5, 6, case)
     elif facing == UP:
-        cell.ellipse(CX, top - 4, 5, 5, cooler(skin, 0.3))
-        cell.ellipse(CX, top - 5, 4.5, 3, dark)
+        _round(cell, CX, top - 4, 5, 5, cooler(skin, 0.3))
+        _round(cell, CX, top - 5, 4.5, 3, dark)
         # a vent up the back of the coat, and the case hidden entirely
         cell.vline(CX, GROUND - 12, GROUND - 3, dark)
-        cell.rect(CX - 6, top + 2, 13, 2, cooler(coat, 0.3))
+        _mass(cell, CX - 6, top + 2, 13, 2, cooler(coat, 0.3))
     else:
-        cell.ellipse(CX + lead, top - 4, 4, 5, skin)
-        cell.rect(CX + (1 if lead > 0 else -2) + lead, top - 5, 2, 2,
+        _round(cell, CX + lead, top - 4, 4, 5, skin)
+        _mass(cell, CX + (1 if lead > 0 else -2) + lead, top - 5, 2, 2,
                   (48, 40, 38))
         cx = CX + 3 * lead if lead > 0 else CX - 8
-        cell.rect(cx, top + 9, 5, 6, case)
+        _mass(cell, cx, top + 9, 5, 6, case)
         cell.vline(CX - bw // 2 * lead + lead, top, GROUND - 4, dark)
 
 
@@ -1243,30 +1298,30 @@ def draw_leaf_head(cell: Canvas, facing: int, frame: int) -> None:
     top = 11 + b
     bw = 7 if side else 12
 
-    cell.rect(CX - bw // 2 + (lead if side else 0), top, bw,
+    _mass(cell, CX - bw // 2 + (lead if side else 0), top, bw,
               GROUND - top - 5, coat)
     _small_legs(cell, frame, CX, GROUND - 5, dark, spread=3 if side else 4)
 
     hx = CX + (lead if side else 0)
-    cell.ellipse(hx, top - 4, 5 if side else 6, 5, skin)
+    _round(cell, hx, top - 4, 5 if side else 6, 5, skin)
     sway = (-1, 0, 1)[frame]
     if facing == DOWN:
         for ex in (CX - 3, CX + 1):
-            cell.rect(ex, top - 5, 2, 2, (56, 66, 50))
-        cell.rect(CX - 2, top - 1, 5, 1, dark)
+            _mass(cell, ex, top - 5, 2, 2, (56, 66, 50))
+        _mass(cell, CX - 2, top - 1, 5, 1, dark)
         cell.vline(CX + sway, top - 16, top - 8, dark)
-        cell.ellipse(CX - 3 + sway, top - 14, 3.5, 2, leaf)
-        cell.ellipse(CX + 3 + sway, top - 12, 3.5, 2, leaf)
+        _round(cell, CX - 3 + sway, top - 14, 3.5, 2, leaf)
+        _round(cell, CX + 3 + sway, top - 12, 3.5, 2, leaf)
     elif facing == UP:
-        cell.ellipse(hx, top - 4, 6, 5, cooler(skin, 0.3))
+        _round(cell, hx, top - 4, 6, 5, cooler(skin, 0.3))
         # the stem seen from behind: one furled leaf, no face
         cell.vline(CX + sway, top - 15, top - 8, dark)
-        cell.ellipse(CX + sway, top - 13, 2, 4, cooler(leaf, 0.25))
-        cell.rect(CX - 5, top + 1, 11, 2, cooler(coat, 0.3))
+        _round(cell, CX + sway, top - 13, 2, 4, cooler(leaf, 0.25))
+        _mass(cell, CX - 5, top + 1, 11, 2, cooler(coat, 0.3))
     else:
-        cell.rect(hx + (1 if lead > 0 else -2), top - 5, 2, 2, (56, 66, 50))
+        _mass(cell, hx + (1 if lead > 0 else -2), top - 5, 2, 2, (56, 66, 50))
         cell.vline(hx + sway, top - 15, top - 8, dark)
-        cell.ellipse(hx + 4 * lead + sway, top - 13, 4.5, 1.8, leaf)
+        _round(cell, hx + 4 * lead + sway, top - 13, 4.5, 1.8, leaf)
 
 
 FACES = {
@@ -2262,46 +2317,46 @@ def draw_ranger(cell: Canvas, facing: int, frame: int) -> None:
     top = 10 + b
     bw = 7 if side else 12
 
-    cell.rect(CX - bw // 2 + (lead if side else 0), top, bw,
+    _mass(cell, CX - bw // 2 + (lead if side else 0), top, bw,
               GROUND - top - 5, coat)
-    cell.rect(CX - bw // 2 + (lead if side else 0), top, bw, 2,
+    _mass(cell, CX - bw // 2 + (lead if side else 0), top, bw, 2,
               warmer(coat, 0.22))
     _small_legs(cell, frame, CX, GROUND - 5, dark, spread=3 if side else 4)
 
     hx = CX + (lead if side else 0)
     if facing == DOWN:
-        cell.ellipse(hx, top - 4, 5, 5, skin)
+        _round(cell, hx, top - 4, 5, 5, skin)
         # the peaked cap, brim toward you
-        cell.ellipse(hx, top - 7, 6, 3, dark)
-        cell.rect(hx - 7, top - 6, 15, 2, cooler(dark, 0.2))
+        _round(cell, hx, top - 7, 6, 3, dark)
+        _mass(cell, hx - 7, top - 6, 15, 2, cooler(dark, 0.2))
         for ex in (CX - 3, CX + 1):
-            cell.rect(ex, top - 4, 2, 2, (38, 44, 36))
+            _mass(cell, ex, top - 4, 2, 2, (38, 44, 36))
         # the clipboard, held flat, with the shoot standing out of it
-        cell.rect(CX - 5, top + 9, 11, 9, board)
-        cell.rect(CX - 3, top + 11, 7, 1, cooler(board, 0.4))
-        cell.rect(CX - 3, top + 14, 7, 1, cooler(board, 0.4))
+        _mass(cell, CX - 5, top + 9, 11, 9, board)
+        _mass(cell, CX - 3, top + 11, 7, 1, cooler(board, 0.4))
+        _mass(cell, CX - 3, top + 14, 7, 1, cooler(board, 0.4))
         cell.vline(CX, top + 2, top + 10, shoot)
-        cell.ellipse(CX - 3, top + 4, 3, 1.6, shoot)
-        cell.ellipse(CX + 3, top + 6, 3, 1.6, shoot)
+        _round(cell, CX - 3, top + 4, 3, 1.6, shoot)
+        _round(cell, CX + 3, top + 6, 3, 1.6, shoot)
     elif facing == UP:
-        cell.ellipse(hx, top - 4, 5, 5, cooler(skin, 0.35))
-        cell.ellipse(hx, top - 6, 6, 4, cooler(dark, 0.15))
+        _round(cell, hx, top - 4, 5, 5, cooler(skin, 0.35))
+        _round(cell, hx, top - 6, 6, 4, cooler(dark, 0.15))
         # from behind: no brim, no board — a pack, and the shoot over one
         # shoulder, which is the only part of him you can see is growing
-        cell.rect(CX - 5, top + 3, 11, 9, cooler(coat, 0.28))
-        cell.rect(CX - 5, top + 3, 11, 2, coat)
+        _mass(cell, CX - 5, top + 3, 11, 9, cooler(coat, 0.28))
+        _mass(cell, CX - 5, top + 3, 11, 2, coat)
         cell.line(CX + 4, top + 2, CX + 8, top - 8, shoot)
-        cell.ellipse(CX + 8, top - 9, 2.4, 3, cooler(shoot, 0.2))
+        _round(cell, CX + 8, top - 9, 2.4, 3, cooler(shoot, 0.2))
     else:
-        cell.ellipse(hx, top - 4, 4, 5, skin)
-        cell.ellipse(hx + lead, top - 7, 5, 3, dark)
-        cell.rect(hx + lead, top - 6, 8 * lead, 2, cooler(dark, 0.2))
-        cell.rect(hx + (1 if lead > 0 else -2), top - 4, 2, 2, (38, 44, 36))
+        _round(cell, hx, top - 4, 4, 5, skin)
+        _round(cell, hx + lead, top - 7, 5, 3, dark)
+        _mass(cell, hx + lead, top - 6, 8 * lead, 2, cooler(dark, 0.2))
+        _mass(cell, hx + (1 if lead > 0 else -2), top - 4, 2, 2, (38, 44, 36))
         # the board seen edge-on: a line, not a rectangle
         bx = CX + 5 * lead
-        cell.rect(bx - 1, top + 9, 3, 9, board)
+        _mass(cell, bx - 1, top + 9, 3, 9, board)
         cell.line(bx, top + 8, bx + 5 * lead, top - 3, shoot)
-        cell.ellipse(bx + 5 * lead, top - 4, 3, 1.6, shoot)
+        _round(cell, bx + 5 * lead, top - 4, 3, 1.6, shoot)
 
 
 def draw_grafter(cell: Canvas, facing: int, frame: int) -> None:
@@ -2315,42 +2370,42 @@ def draw_grafter(cell: Canvas, facing: int, frame: int) -> None:
     top = 11 + b
     bw = 6 if side else 12
 
-    cell.rect(CX - bw // 2 + (lead if side else 0), top, bw,
+    _mass(cell, CX - bw // 2 + (lead if side else 0), top, bw,
               GROUND - top - 5, shirt)
     _small_legs(cell, frame, CX, GROUND - 5, dark, spread=3 if side else 4)
     hx = CX + (lead if side else 0)
     sway = (0, 1, 0)[frame]
 
     if facing == DOWN:
-        cell.ellipse(hx, top - 4, 5, 5, skin)
+        _round(cell, hx, top - 4, 5, 5, skin)
         for ex in (CX - 3, CX + 1):
-            cell.rect(ex, top - 5, 2, 2, (46, 40, 34))
-        cell.rect(CX - 2, top - 1, 5, 1, cooler(skin, 0.4))
+            _mass(cell, ex, top - 5, 2, 2, (46, 40, 34))
+        _mass(cell, CX - 2, top - 1, 5, 1, cooler(skin, 0.4))
         # left arm ordinary, right arm bark from the elbow out
-        cell.rect(CX - 8, top + 2, 3, 9, skin)
-        cell.rect(CX + 5, top + 2, 3, 5, skin)
-        cell.rect(CX + 5, top + 7, 3, 7, bark)
+        _mass(cell, CX - 8, top + 2, 3, 9, skin)
+        _mass(cell, CX + 5, top + 2, 3, 5, skin)
+        _mass(cell, CX + 5, top + 7, 3, 7, bark)
         cell.line(CX + 6, top + 13, CX + 10 + sway, top + 18, bark)
-        cell.ellipse(CX + 10 + sway, top + 18, 3, 1.8, leaf)
-        cell.ellipse(CX + 7, top + 16, 2.4, 1.4, leaf)
+        _round(cell, CX + 10 + sway, top + 18, 3, 1.8, leaf)
+        _round(cell, CX + 7, top + 16, 2.4, 1.4, leaf)
     elif facing == UP:
-        cell.ellipse(hx, top - 4, 5, 5, cooler(skin, 0.35))
-        cell.ellipse(hx, top - 6, 5, 3, (62, 52, 44))
+        _round(cell, hx, top - 4, 5, 5, cooler(skin, 0.35))
+        _round(cell, hx, top - 6, 5, 3, (62, 52, 44))
         # from behind the splice is hidden and both arms read as one shape
-        cell.rect(CX - 8, top + 2, 3, 9, cooler(skin, 0.3))
-        cell.rect(CX + 5, top + 2, 3, 9, bark)
-        cell.rect(CX - 5, top + 1, 11, 2, cooler(shirt, 0.3))
+        _mass(cell, CX - 8, top + 2, 3, 9, cooler(skin, 0.3))
+        _mass(cell, CX + 5, top + 2, 3, 9, bark)
+        _mass(cell, CX - 5, top + 1, 11, 2, cooler(shirt, 0.3))
         cell.vline(CX, top + 3, GROUND - 7, cooler(shirt, 0.25))
     else:
-        cell.ellipse(hx, top - 4, 4, 5, skin)
-        cell.rect(hx + (1 if lead > 0 else -2), top - 5, 2, 2, (46, 40, 34))
+        _round(cell, hx, top - 4, 4, 5, skin)
+        _mass(cell, hx + (1 if lead > 0 else -2), top - 5, 2, 2, (46, 40, 34))
         # in profile only the grafted arm is visible, held straight out
         ax = CX + 3 * lead
-        cell.rect(ax - 1, top + 3, 3, 5, skin)
+        _mass(cell, ax - 1, top + 3, 3, 5, skin)
         cell.line(ax, top + 8, ax + 8 * lead, top + 9 + sway, bark)
         cell.line(ax, top + 9, ax + 7 * lead, top + 12 + sway, bark)
-        cell.ellipse(ax + 8 * lead, top + 8 + sway, 3, 1.6, leaf)
-        cell.ellipse(ax + 6 * lead, top + 13 + sway, 2.4, 1.4, leaf)
+        _round(cell, ax + 8 * lead, top + 8 + sway, 3, 1.6, leaf)
+        _round(cell, ax + 6 * lead, top + 13 + sway, 2.4, 1.4, leaf)
 
 
 def draw_swarm(cell: Canvas, facing: int, frame: int) -> None:
@@ -2380,19 +2435,19 @@ def draw_swarm(cell: Canvas, facing: int, frame: int) -> None:
     if facing == DOWN:
         # the face is where the swarm is *not*
         for ex in (CX - 3, CX + 2):
-            cell.rect(ex, top + 5, 2, 3, (24, 20, 16))
+            _mass(cell, ex, top + 5, 2, 3, (24, 20, 16))
         cell.hline(top + 12, CX - 3, CX + 3, (24, 20, 16))
-        cell.ellipse(CX, top + 2, 6, 5, body)
+        _round(cell, CX, top + 2, 6, 5, body)
         for ex in (CX - 3, CX + 2):
-            cell.rect(ex, top + 1, 2, 3, (24, 20, 16))
+            _mass(cell, ex, top + 1, 2, 3, (24, 20, 16))
     elif facing == UP:
         # from behind it closes up completely and reads as solid
-        cell.ellipse(CX, top + 2, 6, 5, dark)
-        cell.ellipse(CX, top + 1, 5, 4, cooler(dark, 0.2))
-        cell.rect(CX - 5, top + 8, 11, 2, dark)
+        _round(cell, CX, top + 2, 6, 5, dark)
+        _round(cell, CX, top + 1, 5, 4, cooler(dark, 0.2))
+        _mass(cell, CX - 5, top + 8, 11, 2, dark)
     else:
-        cell.ellipse(CX + lead, top + 2, 4.5, 5, body)
-        cell.rect(CX + lead + (1 if lead > 0 else -2), top + 1, 2, 3,
+        _round(cell, CX + lead, top + 2, 4.5, 5, body)
+        _mass(cell, CX + lead + (1 if lead > 0 else -2), top + 1, 2, 3,
                   (24, 20, 16))
         # streaming behind: the swarm trails the direction of travel
         for index in range(7):
@@ -2411,31 +2466,31 @@ def draw_bough_sleeper(cell: Canvas, facing: int, frame: int) -> None:
 
     if facing == DOWN:
         # seen from below: the soles of two boots and the branch behind
-        cell.rect(0, lie + 6, CELL_W_FULL, 4, bark)
-        cell.rect(0, lie + 6, CELL_W_FULL, 1, warmer(bark, 0.25))
-        cell.rect(CX - 7, lie - 4, 14, 10, cloth)
+        _mass(cell, 0, lie + 6, CELL_W_FULL, 4, bark)
+        _mass(cell, 0, lie + 6, CELL_W_FULL, 1, warmer(bark, 0.25))
+        _mass(cell, CX - 7, lie - 4, 14, 10, cloth)
         for bx in (CX - 6, CX + 1):
             cell.round_rect(bx, lie - 9, 6, 7, 2, dark)
-            cell.rect(bx + 1, lie - 8, 4, 3, cooler(dark, 0.3))
-        cell.ellipse(CX, lie + 12, 4, 3, skin)      # the top of the head, far
+            _mass(cell, bx + 1, lie - 8, 4, 3, cooler(dark, 0.3))
+        _round(cell, CX, lie + 12, 4, 3, skin)      # the top of the head, far
     elif facing == UP:
         # seen from above: the crown of the head, the branch in front
-        cell.rect(0, lie - 2, CELL_W_FULL, 4, bark)
-        cell.rect(CX - 7, lie + 2, 14, 10, cooler(cloth, 0.25))
-        cell.ellipse(CX, lie - 6, 5, 4, cooler(skin, 0.35))
-        cell.ellipse(CX, lie - 7, 4.5, 3, (58, 48, 40))
-        cell.rect(CX - 4, lie + 12, 9, 3, dark)
+        _mass(cell, 0, lie - 2, CELL_W_FULL, 4, bark)
+        _mass(cell, CX - 7, lie + 2, 14, 10, cooler(cloth, 0.25))
+        _round(cell, CX, lie - 6, 5, 4, cooler(skin, 0.35))
+        _round(cell, CX, lie - 7, 4.5, 3, (58, 48, 40))
+        _mass(cell, CX - 4, lie + 12, 9, 3, dark)
     else:
         # in profile the whole length of them is visible along the bough
-        cell.rect(0, lie + 4, CELL_W_FULL, 4, bark)
-        cell.rect(0, lie + 4, CELL_W_FULL, 1, warmer(bark, 0.25))
+        _mass(cell, 0, lie + 4, CELL_W_FULL, 4, bark)
+        _mass(cell, 0, lie + 4, CELL_W_FULL, 1, warmer(bark, 0.25))
         cell.round_rect(CX - 9, lie - 4, 18, 8, 3, cloth)
-        cell.ellipse(CX + 9 * lead, lie - 3, 4, 4, skin)
-        cell.rect(CX + 9 * lead + (0 if lead > 0 else -1), lie - 4, 3, 1,
+        _round(cell, CX + 9 * lead, lie - 3, 4, 4, skin)
+        _mass(cell, CX + 9 * lead + (0 if lead > 0 else -1), lie - 4, 3, 1,
                   (58, 48, 40))
         # one arm hanging off the branch, swinging very slightly
         sway = (0, 1, 0)[frame]
-        cell.rect(CX - 2 * lead, lie + 4, 2, 7 + sway, skin)
+        _mass(cell, CX - 2 * lead, lie + 4, 2, 7 + sway, skin)
         cell.dot(CX - 2 * lead, lie + 11 + sway, cooler(skin, 0.3))
 
 
@@ -2459,32 +2514,32 @@ def draw_staffholder(cell: Canvas, facing: int, frame: int) -> None:
     top = 10 + b
     bw = 6 if side else 12
 
-    cell.rect(CX - bw // 2 + (lead if side else 0), top, bw,
+    _mass(cell, CX - bw // 2 + (lead if side else 0), top, bw,
               GROUND - top - 5, coat)
     _small_legs(cell, frame, CX, GROUND - 5, dark, spread=3 if side else 4)
     hx = CX + (lead if side else 0)
 
     if facing == DOWN:
-        cell.ellipse(hx, top - 4, 5, 5, skin)
+        _round(cell, hx, top - 4, 5, 5, skin)
         for ex in (CX - 3, CX + 1):
-            cell.rect(ex, top - 5, 2, 2, (52, 54, 56))
+            _mass(cell, ex, top - 5, 2, 2, (52, 54, 56))
         # the staff held upright and square on: banded its whole length
-        cell.rect(CX + 6, top - 12, 4, GROUND - top + 8, staff)
+        _mass(cell, CX + 6, top - 12, 4, GROUND - top + 8, staff)
         for band in range(top - 11, GROUND - 2, 4):
-            cell.rect(CX + 6, band, 4, 2, dark)
+            _mass(cell, CX + 6, band, 4, 2, dark)
     elif facing == UP:
-        cell.ellipse(hx, top - 4, 5, 5, cooler(skin, 0.35))
-        cell.ellipse(hx, top - 5, 4.5, 3, (96, 98, 100))
+        _round(cell, hx, top - 4, 5, 5, cooler(skin, 0.35))
+        _round(cell, hx, top - 5, 4.5, 3, (96, 98, 100))
         # from behind: the staff is on the far side and mostly hidden
-        cell.rect(CX - 9, top - 6, 3, GROUND - top + 2, cooler(staff, 0.3))
-        cell.rect(CX - 5, top + 1, 11, 2, cooler(coat, 0.3))
+        _mass(cell, CX - 9, top - 6, 3, GROUND - top + 2, cooler(staff, 0.3))
+        _mass(cell, CX - 5, top + 1, 11, 2, cooler(coat, 0.3))
     else:
-        cell.ellipse(hx, top - 4, 4, 5, skin)
-        cell.rect(hx + (1 if lead > 0 else -2), top - 5, 2, 2, (52, 54, 56))
+        _round(cell, hx, top - 4, 4, 5, skin)
+        _mass(cell, hx + (1 if lead > 0 else -2), top - 5, 2, 2, (52, 54, 56))
         # edge-on the staff is one pixel wide and the bands vanish
         sx = CX + 5 * lead
-        cell.rect(sx, top - 12, 2, GROUND - top + 8, staff)
-        cell.rect(CX + 2 * lead, top + 4, 4 * lead, 2, skin)
+        _mass(cell, sx, top - 12, 2, GROUND - top + 8, staff)
+        _mass(cell, CX + 2 * lead, top + 4, 4 * lead, 2, skin)
 
 
 def draw_meter_reader(cell: Canvas, facing: int, frame: int) -> None:
@@ -2499,36 +2554,36 @@ def draw_meter_reader(cell: Canvas, facing: int, frame: int) -> None:
     bw = 7 if side else 13
     spin = (0, 2, 4)[frame]
 
-    cell.rect(CX - bw // 2 + (lead if side else 0), top, bw,
+    _mass(cell, CX - bw // 2 + (lead if side else 0), top, bw,
               GROUND - top - 4, coat)
-    cell.rect(CX - bw // 2 + (lead if side else 0), top, bw, 2,
+    _mass(cell, CX - bw // 2 + (lead if side else 0), top, bw, 2,
               warmer(coat, 0.2))
     hx = CX + (lead if side else 0)
 
     if facing == DOWN:
-        cell.ellipse(hx, top - 4, 5, 5, skin)
+        _round(cell, hx, top - 4, 5, 5, skin)
         for ex in (CX - 3, CX + 1):
-            cell.rect(ex, top - 5, 2, 2, (46, 48, 50))
+            _mass(cell, ex, top - 5, 2, 2, (46, 48, 50))
         # the meter held out flat, dial turning
         cell.round_rect(CX - 6, top + 8, 13, 10, 2, box)
-        cell.ellipse(CX, top + 13, 4, 4, dial)
+        _round(cell, CX, top + 13, 4, 4, dial)
         cell.line(CX, top + 13, CX + (spin - 2), top + 10, (40, 42, 44))
-        cell.rect(CX - 4, top + 16, 9, 1, dark)
+        _mass(cell, CX - 4, top + 16, 9, 1, dark)
     elif facing == UP:
-        cell.ellipse(hx, top - 4, 5, 5, cooler(skin, 0.35))
-        cell.ellipse(hx, top - 5, 4.5, 3, (80, 82, 84))
+        _round(cell, hx, top - 4, 5, 5, cooler(skin, 0.35))
+        _round(cell, hx, top - 5, 4.5, 3, (80, 82, 84))
         # the meter is against their chest and invisible; a strap crosses instead
         cell.line(CX - 6, top + 1, CX + 6, top + 11, dark)
-        cell.rect(CX - 6, top + 2, 13, 1, cooler(coat, 0.35))
-        cell.rect(CX - 2, GROUND - 8, 5, 5, cooler(coat, 0.4))
+        _mass(cell, CX - 6, top + 2, 13, 1, cooler(coat, 0.35))
+        _mass(cell, CX - 2, GROUND - 8, 5, 5, cooler(coat, 0.4))
     else:
-        cell.ellipse(hx, top - 4, 4, 5, skin)
-        cell.rect(hx + (1 if lead > 0 else -2), top - 5, 2, 2, (46, 48, 50))
+        _round(cell, hx, top - 4, 4, 5, skin)
+        _mass(cell, hx + (1 if lead > 0 else -2), top - 5, 2, 2, (46, 48, 50))
         # in profile the meter is a slab and the dial is a bright edge
         mx = CX + 4 * lead
         cell.round_rect(mx - 1, top + 8, 4, 10, 1, box)
-        cell.rect(mx + (2 if lead > 0 else -1), top + 11, 1, 4, dial)
-        cell.rect(CX + lead, top + 4, 3 * lead, 2, skin)
+        _mass(cell, mx + (2 if lead > 0 else -1), top + 11, 1, 4, dial)
+        _mass(cell, CX + lead, top + 4, 3 * lead, 2, skin)
     _small_legs(cell, frame, CX, GROUND - 4, dark, spread=3 if side else 4)
 
 
@@ -2544,9 +2599,9 @@ def draw_ash_walker(cell: Canvas, facing: int, frame: int) -> None:
     bw = 7 if side else 13
 
     # a coat with ash lying on its shoulders
-    cell.rect(CX - bw // 2 + (lead if side else 0), top, bw,
+    _mass(cell, CX - bw // 2 + (lead if side else 0), top, bw,
               GROUND - top - 4, coat)
-    cell.rect(CX - bw // 2 + (lead if side else 0), top, bw, 3, fall)
+    _mass(cell, CX - bw // 2 + (lead if side else 0), top, bw, 3, fall)
     _small_legs(cell, frame, CX, GROUND - 4, dark, spread=3 if side else 4)
     hx = CX + (lead if side else 0)
     for index in range(5):
@@ -2554,28 +2609,28 @@ def draw_ash_walker(cell: Canvas, facing: int, frame: int) -> None:
                  top - 8 + (index * 6 + frame * 3) % 26, fall)
 
     if facing == DOWN:
-        cell.ellipse(hx, top - 4, 5, 5, skin)
-        cell.rect(CX - 6, top - 7, 13, 2, fall)
+        _round(cell, hx, top - 4, 5, 5, skin)
+        _mass(cell, CX - 6, top - 7, 13, 2, fall)
         for ex in (CX - 3, CX + 1):
-            cell.rect(ex, top - 4, 2, 2, (50, 52, 54))
+            _mass(cell, ex, top - 4, 2, 2, (50, 52, 54))
         # the jar, held up, half filled and open
         cell.round_rect(CX - 4, top + 7, 9, 11, 2, glass)
-        cell.rect(CX - 3, top + 13, 7, 4, fall)
-        cell.rect(CX - 4, top + 6, 9, 2, cooler(glass, 0.25))
+        _mass(cell, CX - 3, top + 13, 7, 4, fall)
+        _mass(cell, CX - 4, top + 6, 9, 2, cooler(glass, 0.25))
     elif facing == UP:
-        cell.ellipse(hx, top - 4, 5, 5, cooler(skin, 0.35))
-        cell.ellipse(hx, top - 5, 5, 3, (86, 88, 90))
-        cell.rect(CX - 6, top - 6, 13, 2, fall)
+        _round(cell, hx, top - 4, 5, 5, cooler(skin, 0.35))
+        _round(cell, hx, top - 5, 5, 3, (86, 88, 90))
+        _mass(cell, CX - 6, top - 6, 13, 2, fall)
         # from behind the jar is gone and the ash on the shoulders is the shape
-        cell.rect(CX - 6, top + 1, 13, 2, fall)
-        cell.rect(CX - 2, top + 6, 5, GROUND - top - 12, cooler(coat, 0.3))
+        _mass(cell, CX - 6, top + 1, 13, 2, fall)
+        _mass(cell, CX - 2, top + 6, 5, GROUND - top - 12, cooler(coat, 0.3))
     else:
-        cell.ellipse(hx, top - 4, 4, 5, skin)
-        cell.rect(hx + (1 if lead > 0 else -2), top - 4, 2, 2, (50, 52, 54))
-        cell.rect(hx - 4, top - 7, 9, 2, fall)
+        _round(cell, hx, top - 4, 4, 5, skin)
+        _mass(cell, hx + (1 if lead > 0 else -2), top - 4, 2, 2, (50, 52, 54))
+        _mass(cell, hx - 4, top - 7, 9, 2, fall)
         jx = CX + 4 * lead
         cell.round_rect(jx - 2, top + 8, 5, 11, 2, glass)
-        cell.rect(jx - 1, top + 14, 3, 4, fall)
+        _mass(cell, jx - 1, top + 14, 3, 4, fall)
 
 
 def draw_last_engineer(cell: Canvas, facing: int, frame: int) -> None:
@@ -2590,7 +2645,7 @@ def draw_last_engineer(cell: Canvas, facing: int, frame: int) -> None:
     bw = 7 if side else 13
     glow = (0, 1, 0)[frame]
 
-    cell.rect(CX - bw // 2 + (lead if side else 0), top, bw,
+    _mass(cell, CX - bw // 2 + (lead if side else 0), top, bw,
               GROUND - top - 5, overall)
     cell.vline(CX + (lead if side else 0), top + 2, GROUND - 6,
                cooler(overall, 0.25))
@@ -2598,31 +2653,31 @@ def draw_last_engineer(cell: Canvas, facing: int, frame: int) -> None:
     hx = CX + (lead if side else 0)
 
     if facing == DOWN:
-        cell.ellipse(hx, top - 4, 5, 5, skin)
-        cell.ellipse(hx, top - 7, 6, 3, hat)
-        cell.rect(hx - 7, top - 6, 15, 2, cooler(hat, 0.2))
+        _round(cell, hx, top - 4, 5, 5, skin)
+        _round(cell, hx, top - 7, 6, 3, hat)
+        _mass(cell, hx - 7, top - 6, 15, 2, cooler(hat, 0.2))
         for ex in (CX - 3, CX + 1):
-            cell.rect(ex, top - 4, 2, 2, (44, 46, 48))
+            _mass(cell, ex, top - 4, 2, 2, (44, 46, 48))
         # the lamp, lit, held low
-        cell.ellipse(CX + 6, top + 13, 3.5 + glow, 3.5 + glow, lamp)
-        cell.ellipse(CX + 6, top + 13, 2, 2, (255, 255, 240))
-        cell.rect(CX + 5, top + 8, 3, 4, dark)
+        _round(cell, CX + 6, top + 13, 3.5 + glow, 3.5 + glow, lamp)
+        _round(cell, CX + 6, top + 13, 2, 2, (255, 255, 240))
+        _mass(cell, CX + 5, top + 8, 3, 4, dark)
     elif facing == UP:
-        cell.ellipse(hx, top - 4, 5, 5, cooler(skin, 0.35))
-        cell.ellipse(hx, top - 6, 6, 4, cooler(hat, 0.18))
+        _round(cell, hx, top - 4, 5, 5, cooler(skin, 0.35))
+        _round(cell, hx, top - 6, 6, 4, cooler(hat, 0.18))
         # from behind: the coil of cable over one shoulder, no lamp at all
         for radius in (6, 4.4, 2.8):
-            cell.ellipse(CX - 3, top + 8, radius, radius * 0.7, cable,
+            _round(cell, CX - 3, top + 8, radius, radius * 0.7, cable,
                          filled=False)
-        cell.rect(CX - 5, top + 1, 11, 2, cooler(overall, 0.3))
+        _mass(cell, CX - 5, top + 1, 11, 2, cooler(overall, 0.3))
     else:
-        cell.ellipse(hx, top - 4, 4, 5, skin)
-        cell.ellipse(hx + lead, top - 7, 5, 3, hat)
-        cell.rect(hx + lead, top - 6, 8 * lead, 2, cooler(hat, 0.2))
-        cell.rect(hx + (1 if lead > 0 else -2), top - 4, 2, 2, (44, 46, 48))
+        _round(cell, hx, top - 4, 4, 5, skin)
+        _round(cell, hx + lead, top - 7, 5, 3, hat)
+        _mass(cell, hx + lead, top - 6, 8 * lead, 2, cooler(hat, 0.2))
+        _mass(cell, hx + (1 if lead > 0 else -2), top - 4, 2, 2, (44, 46, 48))
         # the lamp swings out in front, and the cable trails behind
-        cell.ellipse(CX + 6 * lead, top + 13, 3 + glow, 3 + glow, lamp)
-        cell.rect(CX + 3 * lead, top + 8, 2, 5, dark)
+        _round(cell, CX + 6 * lead, top + 13, 3 + glow, 3 + glow, lamp)
+        _mass(cell, CX + 3 * lead, top + 8, 2, 5, dark)
         cell.line(CX - 3 * lead, top + 6, CX - 8 * lead, top + 14, cable)
 
 
@@ -2656,30 +2711,30 @@ def draw_presenter(cell: Canvas, facing: int, frame: int) -> None:
     # the body is the bars, run across whichever width the facing gives
     x0 = CX - bw // 2 + (lead if side else 0)
     for index in range(bw):
-        cell.rect(x0 + index, top + 8, 1, GROUND - top - 10,
+        _mass(cell, x0 + index, top + 8, 1, GROUND - top - 10,
                   _BARS[index % len(_BARS)] if not side
                   else _BARS[(index + 3) % len(_BARS)])
-    cell.rect(x0, GROUND - 3, bw, 2, dark)
+    _mass(cell, x0, GROUND - 3, bw, 2, dark)
 
     if facing == DOWN:
         # the head is one block of bars with a black square cut in it
         for index in range(11):
-            cell.rect(CX - 5 + index, top - 4, 1, 11,
+            _mass(cell, CX - 5 + index, top - 4, 1, 11,
                       _BARS[index % len(_BARS)])
-        cell.rect(CX - 3, top, 7, 5, dark)
-        cell.rect(CX - 2, top + 1, 2, 2, (240, 236, 226))
-        cell.rect(CX + 1, top + 1, 2, 2, (240, 236, 226))
+        _mass(cell, CX - 3, top, 7, 5, dark)
+        _mass(cell, CX - 2, top + 1, 2, 2, (240, 236, 226))
+        _mass(cell, CX + 1, top + 1, 2, 2, (240, 236, 226))
     elif facing == UP:
         # from behind: no cut, and the whole head is the grey step wedge
         for index in range(11):
             value = 32 + index * 20
-            cell.rect(CX - 5 + index, top - 4, 1, 11, (value, value, value))
-        cell.rect(CX - 5, top + 6, 11, 1, dark)
+            _mass(cell, CX - 5 + index, top - 4, 1, 11, (value, value, value))
+        _mass(cell, CX - 5, top + 6, 11, 1, dark)
     else:
         # edge on: the bars collapse to one column and the head is a line
-        cell.rect(CX + lead - 1, top - 4, 3, 11, (240, 236, 226))
-        cell.rect(CX + lead - 1, top - 4, 3, 3, (206, 58, 54))
-        cell.rect(CX + lead + (1 if lead > 0 else -1), top + 1, 1, 2, dark)
+        _mass(cell, CX + lead - 1, top - 4, 3, 11, (240, 236, 226))
+        _mass(cell, CX + lead - 1, top - 4, 3, 3, (206, 58, 54))
+        _mass(cell, CX + lead + (1 if lead > 0 else -1), top + 1, 1, 2, dark)
 
 
 def draw_caption(cell: Canvas, facing: int, frame: int) -> None:
@@ -2692,39 +2747,39 @@ def draw_caption(cell: Canvas, facing: int, frame: int) -> None:
     words = ((3, 5, 2), (4, 3, 4), (2, 6, 3))[frame]
 
     if facing == DOWN:
-        cell.rect(CX - 9, top, 19, GROUND - top - 3, dark)
+        _mass(cell, CX - 9, top, 19, GROUND - top - 3, dark)
         x = CX - 7
         for length in words:
-            cell.rect(x, top + 5, length, 3, ink)
+            _mass(cell, x, top + 5, length, 3, ink)
             x += length + 2
         x = CX - 6
         for length in reversed(words):
-            cell.rect(x, top + 12, length, 3, ink)
+            _mass(cell, x, top + 12, length, 3, ink)
             x += length + 2
-        cell.rect(CX - 9, top, 19, 1, (206, 58, 54))
+        _mass(cell, CX - 9, top, 19, 1, (206, 58, 54))
     elif facing == UP:
         # from behind, a caption is a blank black bar: the words face outward
-        cell.rect(CX - 9, top, 19, GROUND - top - 3, dark)
-        cell.rect(CX - 9, top, 19, 2, (52, 44, 52))
-        cell.rect(CX - 8, GROUND - 6, 17, 1, (52, 44, 52))
+        _mass(cell, CX - 9, top, 19, GROUND - top - 3, dark)
+        _mass(cell, CX - 9, top, 19, 2, (52, 44, 52))
+        _mass(cell, CX - 8, GROUND - 6, 17, 1, (52, 44, 52))
     else:
         # Edge-on it is nearly nothing, which is the joke — but the words are
         # still running, so they spill off the *leading* edge and trail behind
         # it, and that spill is what makes left and right different sprites
         # rather than the same four-pixel bar twice.
         bar = CX + 4 * lead
-        cell.rect(bar - 2, top, 4, GROUND - top - 3, dark)
-        cell.rect(bar - 2, top, 4, 1, (206, 58, 54))
-        cell.rect(bar - 2, top + 5, 4, 3, ink)
-        cell.rect(bar - 2, top + 12, 4, 3, ink)
+        _mass(cell, bar - 2, top, 4, GROUND - top - 3, dark)
+        _mass(cell, bar - 2, top, 4, 1, (206, 58, 54))
+        _mass(cell, bar - 2, top + 5, 4, 3, ink)
+        _mass(cell, bar - 2, top + 12, 4, 3, ink)
         # the text leaving the bar, in the direction of travel
         run = CX + 8 * lead
         for index, length in enumerate(words):
-            cell.rect(min(run, run - length * lead) if lead < 0 else run,
+            _mass(cell, min(run, run - length * lead) if lead < 0 else run,
                       top + 5 + index * 5, length, 2, ink)
             run += (length + 2) * lead
         # and the sliver still to arrive, behind
-        cell.rect(CX - 7 * lead, top + 9, 3, 2, (96, 92, 96))
+        _mass(cell, CX - 7 * lead, top + 9, 3, 2, (96, 92, 96))
 
 
 def draw_test_tone(cell: Canvas, facing: int, frame: int) -> None:
@@ -2739,24 +2794,24 @@ def draw_test_tone(cell: Canvas, facing: int, frame: int) -> None:
         # the waveform, seen face on: wide, symmetrical, and loud
         for row in range(6, GROUND - 2):
             width = 2 + abs(8 - ((row + phase) % 16)) // 2
-            cell.rect(CX - width, row, width * 2, 1,
+            _mass(cell, CX - width, row, width * 2, 1,
                       ink if ((row + phase) % 16) < 8 else accent)
-        cell.rect(CX - 1, 6, 3, GROUND - 8, dark)
-        cell.rect(CX - 4, 10, 9, 2, dark)
+        _mass(cell, CX - 1, 6, 3, GROUND - 8, dark)
+        _mass(cell, CX - 4, 10, 9, 2, dark)
     elif facing == UP:
         # from behind, a waveform is a straight line
-        cell.rect(CX - 2, 6, 5, GROUND - 8, ink)
-        cell.rect(CX - 1, 6, 3, GROUND - 8, accent)
-        cell.rect(CX - 5, GROUND - 5, 11, 2, dark)
+        _mass(cell, CX - 2, 6, 5, GROUND - 8, ink)
+        _mass(cell, CX - 1, 6, 3, GROUND - 8, accent)
+        _mass(cell, CX - 5, GROUND - 5, 11, 2, dark)
     else:
         # edge on: half a waveform, and it leans the way it is going
         for row in range(6, GROUND - 2):
             width = 1 + abs(8 - ((row + phase) % 16)) // 2
             if lead > 0:
-                cell.rect(CX + 1, row, width, 1, ink)
+                _mass(cell, CX + 1, row, width, 1, ink)
             else:
-                cell.rect(CX - width, row, width, 1, ink)
-        cell.rect(CX, 6, 2, GROUND - 8, accent)
+                _mass(cell, CX - width, row, width, 1, ink)
+        _mass(cell, CX, 6, 2, GROUND - 8, accent)
 
 
 def draw_continuity(cell: Canvas, facing: int, frame: int) -> None:
@@ -2773,26 +2828,26 @@ def draw_continuity(cell: Canvas, facing: int, frame: int) -> None:
     steps = max(1, bw)
     for index in range(steps):
         value = 216 - index * (168 // steps)
-        cell.rect(x0 + index, top + 7, 1, GROUND - top - 9, (value, value, value))
+        _mass(cell, x0 + index, top + 7, 1, GROUND - top - 9, (value, value, value))
 
     if facing == DOWN:
-        cell.ellipse(CX, top + 1, 6, 6, (206, 58, 54))
-        cell.ellipse(CX, top + 1, 4.5, 4.5, (240, 236, 226))
+        _round(cell, CX, top + 1, 6, 6, (206, 58, 54))
+        _round(cell, CX, top + 1, 4.5, 4.5, (240, 236, 226))
         # the apology: a black bar where a mouth would be, and no eyes
-        cell.rect(CX - 4, top + 3, 9, 2, dark)
-        cell.rect(CX - 1, top - 5, 3, 3, dark)
+        _mass(cell, CX - 4, top + 3, 9, 2, dark)
+        _mass(cell, CX - 1, top - 5, 3, 3, dark)
     elif facing == UP:
         # from behind the circle is solid and the wedge runs the other way
-        cell.ellipse(CX, top + 1, 6, 6, (96, 96, 96))
-        cell.ellipse(CX, top, 5, 5, (56, 56, 56))
+        _round(cell, CX, top + 1, 6, 6, (96, 96, 96))
+        _round(cell, CX, top, 5, 5, (56, 56, 56))
         for index in range(bw):
             value = 48 + index * (168 // max(1, bw))
-            cell.rect(x0 + index, top + 7, 1, GROUND - top - 9,
+            _mass(cell, x0 + index, top + 7, 1, GROUND - top - 9,
                       (value, value, value))
     else:
-        cell.ellipse(CX + lead, top + 1, 3, 6, (206, 58, 54))
-        cell.ellipse(CX + lead, top + 1, 2, 4.5, (240, 236, 226))
-        cell.rect(CX + lead + (1 if lead > 0 else -2), top + 3, 2, 2, dark)
+        _round(cell, CX + lead, top + 1, 3, 6, (206, 58, 54))
+        _round(cell, CX + lead, top + 1, 2, 4.5, (240, 236, 226))
+        _mass(cell, CX + lead + (1 if lead > 0 else -2), top + 3, 2, 2, dark)
 
 
 FACES4 = {

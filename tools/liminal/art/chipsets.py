@@ -665,6 +665,12 @@ REFLECTION: dict[str, str] = {
     "blocks": "block", "stairs": "steps", "sand": "dune", "faces": "tree",
     "hands": "hand", "checker": "square", "toys": "toy", "neon": "scrawl",
     "umbrellas": "brolly", "stars": "star",
+    # The four ways down out of the grove's hidden half.  A mirror that
+    # reflects you is furniture; one that reflects somewhere else is a door,
+    # and these four are the only mirrors in the game that reflect a place
+    # the player has not been.
+    "caustic": "slime", "hell": "maw", "purgatory": "chair",
+    "lobotomy": "smile",
 }
 
 
@@ -696,6 +702,35 @@ def _reflect(art: Canvas, kind: str, x: int, y: int, w: int, h: int,
     elif kind == "dune":
         art.ellipse(cx, cy + 5, w * 0.42, h * 0.22, ink)
         art.ellipse(cx - 3, cy + 1, w * 0.22, h * 0.14, pale)
+    elif kind == "slime":
+        # something rising through water: a bulge, and a run of it coming off
+        art.ellipse(cx, cy + 3, w * 0.34, h * 0.16, ink)
+        art.ellipse(cx, cy - 1, w * 0.22, h * 0.14, pale)
+        for drip, dy in ((-4, 4), (0, 6), (4, 3)):
+            art.rect(cx + drip, cy + 5, 1, dy, ink)
+    elif kind == "maw":
+        # not a face: an opening with teeth on both edges of it, and nothing
+        # behind them.  The one reflection in the game with black in it.
+        art.ellipse(cx, cy, w * 0.36, h * 0.24, (0, 0, 0))
+        for tooth in range(-4, 5, 2):
+            art.rect(cx + tooth, cy - 5, 1, 3, pale)
+            art.rect(cx + tooth + 1, cy + 3, 1, 3, pale)
+        art.ellipse(cx, cy, w * 0.16, h * 0.10, ink)
+    elif kind == "chair":
+        # a chair, facing away.  Nobody is in it and it is still warm.
+        art.rect(cx - 4, cy - 5, 8, 2, pale)
+        art.rect(cx - 4, cy - 3, 1, 6, ink)
+        art.rect(cx + 3, cy - 3, 1, 6, ink)
+        art.rect(cx - 5, cy + 3, 10, 2, ink)
+        art.rect(cx - 4, cy + 5, 1, 4, ink)
+        art.rect(cx + 3, cy + 5, 1, 4, ink)
+    elif kind == "smile":
+        # a mouth on its own, too wide, and drawn the way a child draws one
+        art.ellipse(cx, cy, w * 0.34, h * 0.20, pale)
+        for step in range(-5, 6):
+            art.dot(cx + step, cy + 2 + abs(step) // 3, ink)
+        art.dot(cx - 4, cy - 3, ink)
+        art.dot(cx + 4, cy - 3, ink)
     elif kind == "tree":
         art.rect(cx - 1, cy, 3, h // 3, ink)
         art.blob(cx, cy - 2, w * 0.30, ink)

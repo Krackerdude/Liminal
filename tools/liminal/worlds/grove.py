@@ -10,7 +10,7 @@ and does not stop when you lift it.  From then on the town rings at you
 periodically, from a direction.  Walk that way inside the window and the
 picture changes around you without you having gone anywhere.  Miss it and
 nothing at all happens — no penalty, no message, no second chance on that
-ring.  The next one is along in a few seconds.
+ring.  The next one is along in twenty seconds, on the beat.
 
 **The yards**  Five, buried in the green.  Each is reachable on exactly one
 channel, because on that channel the seam of wood between it and the street
@@ -42,14 +42,37 @@ from ..maps import (ANIM_CONTINUOUS, LAYER_BELOW, LAYER_SAME, MOVE_RANDOM,
                     TRIGGER_PARALLEL, Page)
 from ..state import (SW_FACE_BULB, SW_FACE_COIN, SW_FACE_ENDED, SW_FACE_HEARD,
                      SW_FACE_MAST, SW_FACE_SEED, SW_FACE_TAPE, VR_CHANNEL,
-                     VR_RING_DIR, VR_RING_WAIT, VR_RING_X, VR_RING_Y)
+                     VR_AMBIENCE, VR_RING_DIR, VR_RING_WAIT, VR_RING_X,
+                     VR_RING_Y)
 from ..art.cast import WORLD_CAST
 from . import atmosphere
 from . import systems as sys
 from .cast_lookup import charset_slot
+from .events import gleam
 
 # 0 up, 1 right, 2 down, 3 left — the engine's own order, used for the pan.
 UP, RIGHT, DOWN, LEFT = range(4)
+
+# How long between rings, in tenths of a second.  Fixed rather than random:
+# the window is short and missable on purpose, and a player who cannot feel
+# the beat cannot choose to be ready for it.
+RING_INTERVAL = 200
+
+# Where the shudder sits for each direction, as the *centre* of the picture on
+# a 320x240 screen, and which of the two bands to use.  The band is jittered
+# a few pixels while the ring sounds, so the side the sound came from is the
+# side that visibly moves.  This is not a camera shake and could not be one:
+# a shake moves the whole picture, and the whole picture is not what rang.
+SHUDDER = {
+    UP:    ("ShudderH", 160, 34),
+    RIGHT: ("ShudderV", 286, 120),
+    DOWN:  ("ShudderH", 160, 206),
+    LEFT:  ("ShudderV", 34, 120),
+}
+# How far it moves and how long each nudge takes.  Three pixels at a tenth of
+# a second reads as a quiver; more than that reads as a fault.
+SHUDDER_THROW = 3
+SHUDDER_BEATS = 6
 
 # How long the player has, in tenths of a second, from the ring to having
 # moved.  Two seconds is about eight tiles at walking pace and about two if
@@ -95,11 +118,17 @@ def _ringer(world) -> Page:
     """The periodic ring, and the window it opens.
 
     A parallel process, running the whole time the receiver is in your hands.
-    It waits a random handful of seconds, picks a direction, rings from it —
-    panned in stereo for left and right, and with the camera drifting a single
-    tile toward it, which is the only cue the up and down rings get — and then
-    compares where you were standing against where you are standing two
+    It counts down twenty seconds, picks a direction, and rings from it: panned
+    in stereo, with the camera drifting a single tile that way, and with that
+    edge of the screen visibly quivering for as long as the ring lasts.  Then
+    it compares where you were standing against where you are standing two
     seconds later.
+
+    The interval used to be a random five to ten seconds and the direction cue
+    was stereo and a one-tile pan.  Neither survives contact with a player: a
+    window you cannot anticipate is a window you can only be given, and up and
+    down are not places in a stereo field at all.  A fixed beat and a shudder
+    on the edge it came from fix both without saying anything out loud.
 
     The comparison is deliberately crude.  It does not care what you are
     facing, whether you stopped, or how you got there.  It cares that you went
@@ -112,9 +141,9 @@ def _ringer(world) -> Page:
     s = Script()
     s.comment("the town rings at you, periodically, from a direction")
     with s.loop():
-        # a few seconds, never the same few, counted down a tenth at a time so
-        # the interval can be a variable rather than a constant
-        s.var_random(VR_RING_WAIT, 55, 105)
+        # twenty seconds, counted down a tenth at a time so the interval can
+        # be a variable rather than a constant
+        s.var(VR_RING_WAIT, RING_INTERVAL)
         with s.loop():
             s.wait(1)
             s.var(VR_RING_WAIT, 1, 2)
@@ -125,15 +154,17 @@ def _ringer(world) -> Page:
         s.var_from_event(VR_RING_X, 10001, 1)
         s.var_from_event(VR_RING_Y, 10001, 2)
 
-        # the ring itself, placed in the stereo field and in the camera
+        # the ring itself, placed in the stereo field, in the camera, and now
+        # on the edge of the screen it came from
         for direction, balance in ((UP, 50), (RIGHT, 92), (DOWN, 50), (LEFT, 8)):
             with s.if_var(VR_RING_DIR, direction):
                 s.se("PhoneFar", volume=58, balance=balance,
                      tempo=112 if direction == UP else
                      (88 if direction == DOWN else 100))
                 s.pan(direction, 1, 3, wait=False)
+                _shudder(s, direction)
 
-        s.wait(WINDOW)
+        s.wait(WINDOW - SHUDDER_BEATS * 2)
         s.pan_reset(speed=3, wait=False)
 
         # where you are now, minus where you were: the whole judgement
@@ -158,6 +189,34 @@ def _ringer(world) -> Page:
                         _tune(s, world, nxt)
     return Page(script=s, trigger=TRIGGER_PARALLEL, layer=LAYER_BELOW,
                 switch_a=SW_FACE_HEARD)
+
+
+def _shudder(s: Script, direction: int) -> None:
+    """Jitter one edge of the screen for as long as the phone is ringing.
+
+    A picture, not the camera.  It is shown at the edge the sound is panned
+    to, nudged back and forth by a few pixels a handful of times, and erased —
+    so the cue is local to that side and the rest of the frame never moves.
+
+    Left and right share one band and up and down share the other; the art
+    fades out at both ends of itself so the same picture sits correctly on
+    either edge of the pair.
+    """
+    name, cx, cy = SHUDDER[direction]
+    horizontal = direction in (LEFT, RIGHT)
+    s.show_picture(sys.PIC_SHUDDER, name, cx, cy, transparency=62)
+    for beat in range(SHUDDER_BEATS):
+        throw = SHUDDER_THROW if beat % 2 == 0 else -SHUDDER_THROW
+        # the band moves along its own length, not across it: a strip of
+        # broken lines sliding sideways reads as a wobble, and the same strip
+        # sliding through its own thickness reads as nothing
+        s.move_picture(sys.PIC_SHUDDER,
+                       cx + (0 if horizontal else throw),
+                       cy + (throw if horizontal else 0),
+                       transparency=62 if beat < SHUDDER_BEATS - 2 else 88,
+                       tenths=1, wait=True)
+        s.wait(1)
+    s.erase_picture(sys.PIC_SHUDDER)
 
 
 def _tune(s: Script, world, target_key: str) -> None:
@@ -205,7 +264,7 @@ def _receiver(world) -> None:
     kept.msg("the handset is warm and it has not stopped.")
     world.map.add_event("the phone", (jx + 5) % world.map.width,
                         (jy + 3) % world.map.height, [
-        Page(script=take, trigger=TRIGGER_ACTION, layer=LAYER_SAME),
+        gleam(script=take, trigger=TRIGGER_ACTION),
         Page(script=kept, trigger=TRIGGER_ACTION, layer=LAYER_SAME,
              switch_a=SW_FACE_HEARD),
     ])
@@ -309,7 +368,7 @@ def _yard(world, index: int, spec: dict, rng: random.Random) -> None:
         done.msg("it is open.")
 
         m.add_event(f"{name} lock", x, y, [
-            Page(script=shut, trigger=TRIGGER_ACTION, layer=LAYER_SAME),
+            gleam(script=shut, trigger=TRIGGER_ACTION),
             Page(script=open_it, trigger=TRIGGER_ACTION, layer=LAYER_SAME,
                  switch_a=spec["needs"]),
             Page(script=done, trigger=TRIGGER_ACTION, layer=LAYER_SAME,
@@ -320,7 +379,7 @@ def _yard(world, index: int, spec: dict, rng: random.Random) -> None:
     lore.msg(*_lines(YARD_LORE[name]))
     px, py = _standable(world, x + 3, y - 2)
     m.add_event(f"{name} paper", px, py,
-                [Page(script=lore, trigger=TRIGGER_ACTION, layer=LAYER_SAME)])
+                [gleam(script=lore, trigger=TRIGGER_ACTION)])
 
 
 def _pickup(world, thing: str, x: int, y: int) -> None:
@@ -334,7 +393,7 @@ def _pickup(world, thing: str, x: int, y: int) -> None:
     got.msg(*_lines(YARD_ITEM[thing]))
     got.switch(switch, True)
     m.add_event(f"the {thing}", x, y, [
-        Page(script=got, trigger=TRIGGER_ACTION, layer=LAYER_SAME),
+        gleam(script=got, trigger=TRIGGER_ACTION),
         Page(script=Script(), trigger=TRIGGER_ACTION, switch_a=switch),
     ])
 
@@ -411,79 +470,253 @@ def _signs(world) -> None:
         s.msg(*text)
         m.add_event(f"sign {index}", (mouth[0] + 1) % m.width,
                     mouth[1] % m.height,
-                    [Page(script=s, trigger=TRIGGER_ACTION, layer=LAYER_SAME)])
+                    [gleam(script=s, trigger=TRIGGER_ACTION)])
 
 
 # --- who is here --------------------------------------------------------------
 
-# Four per channel, and none of them are the same four.  A channel's residents
-# are the strongest single statement it makes about what kind of reception it
-# is, so these are placed by hand at named landmarks rather than scattered.
-RESIDENTS: dict[str, tuple[tuple[str, str, tuple[str, ...]], ...]] = {
-    "faces": (
-        ("commuter", "junctions", ("the 7 is due.", "", "it has been due.")),
-        ("gardener", "glades", ("i keep the verge.", "",
-                                "the verge is now most of it.")),
-        ("leaf_head", "glades", ("something is coming up.", "",
-                                 "i am not going to look.")),
-        ("seedling", "junctions", ("i was planted at the wrong scale.",)),
-    ),
-    "faces2": (
-        ("ranger", "junctions", ("management plan's still current.", "",
-                                 "it says: allow to develop.")),
-        ("grafter", "glades", ("i joined a few things up.", "",
-                               "they took better than i did.")),
-        ("swarm", "glades", ("we are all of us here.", "",
-                             "we were fewer.")),
-        ("bough_sleeper", "junctions", ("...the 7 is due...",)),
-    ),
-    "faces3": (
-        ("staffholder", "junctions", ("i'm sighting the new road.", "",
-                                      "it goes through all of this.")),
-        ("meter_reader", "junctions", ("supply's still on.", "",
-                                       "nobody's drawing on it but the mast.")),
-        ("ash_walker", "glades", ("it comes down at the same rate",
-                                  "whatever the weather is.")),
-        ("last_engineer", "glades", ("it's transmitting.", "",
-                                     "i checked. i keep checking.")),
-    ),
-    "faces4": (
-        ("presenter", "junctions", ("GOOD EVENING.", "",
-                                    "TONIGHT, AS EVERY NIGHT—")),
-        ("caption", "junctions", ("[ INAUDIBLE ]", "", "[ INAUDIBLE ]")),
-        ("test_tone", "glades", ("————————————————",)),
-        ("continuity", "glades", ("WE APOLOGISE FOR THE INTERRUPTION.", "",
-                                  "NORMAL SERVICE WILL NOT BE RESUMED.")),
-    ),
+# Sixteen people, and all sixteen live on all four channels.
+#
+# The town is one town.  If tuning changed who was in it, the receiver would
+# be a teleport rather than a tuner, and the whole conceit would collapse into
+# four maps that happen to share a street plan.  So the roster is fixed and
+# what moves is *how everyone is*:
+#
+#     the grove     as they are
+#     overgrown     happier, and a bit too happy — nothing here is worried
+#     off-colour    sad, tired, and much more honest for it
+#     no signal     angry, corrupted, and talking to you rather than at you
+#
+# Which is also how you find things out.  A person who will not tell you
+# something on one channel says it on another because they are not being
+# careful any more, and the red channel says it because it wants to hurt.
+PEOPLE: dict[str, dict[str, tuple[str, ...]]] = {
+    "gardener": {
+        "faces": ("i keep the verge.", "", "the verge is now most of it."),
+        "faces2": ("everything took!", "", "everything i put in took.", "",
+                   "i have never had a year like it."),
+        "faces3": ("nothing needs me now.", "",
+                   "i come out anyway. it's a habit with a shape."),
+        "faces4": ("I WATERED IT AND IT DIED ANYWAY.", "",
+                   "DO YOU WANT TO KNOW WHAT ELSE I DID."),
+    },
+    "seedling": {
+        "faces": ("i was planted at the wrong scale.",),
+        "faces2": ("look at me!", "", "look at me. LOOK—", "",
+                   "sorry. sorry."),
+        "faces3": ("i stopped.", "", "not died. stopped."),
+        "faces4": ("PUT ME BACK.",),
+    },
+    "commuter": {
+        "faces": ("the 7 is due.", "", "it has been due."),
+        "faces2": ("i walked instead!", "",
+                   "it took nine hours and it was lovely."),
+        "faces3": ("i've stopped checking the timetable.", "",
+                   "i still stand here. i don't know what that is."),
+        "faces4": ("IT CAME.", "", "IT CAME AND IT DIDN'T STOP."),
+    },
+    "leaf_head": {
+        "faces": ("something is coming up.", "", "i am not going to look."),
+        "faces2": ("IT FLOWERED.", "", "sorry. i can't tell how loud i am."),
+        "faces3": ("it's bare now.", "", "i miss the weight of it."),
+        "faces4": ("IT'S STILL GROWING.", "", "IT'S GROWING INWARDS."),
+    },
+    "ranger": {
+        "faces": ("management plan's still current.",),
+        "faces2": ("allow to develop!", "", "and it did! look at it!"),
+        "faces3": ("there's nothing left to manage.", "",
+                   "i log that. every day. nothing left to manage."),
+        "faces4": ("I SIGNED IT OFF.", "", "ALL OF THIS. I SIGNED IT OFF."),
+    },
+    "grafter": {
+        "faces": ("i joined a few things up.", "", "they took better than i did."),
+        "faces2": ("that lamp post has buds on it!", "", "i did that. me."),
+        "faces3": ("wood wants to join.", "",
+                   "that's all a graft is. two things held together.", "",
+                   "nobody held me anywhere."),
+        "faces4": ("I NUMBERED THEM.", "", "14. 16. 18.", "",
+                   "GO AND COUNT. GO ON."),
+    },
+    "swarm": {
+        "faces": ("we are all of us here.", "", "we were fewer."),
+        "faces2": ("we are MANY now!", "", "we agreed to be pleased about it."),
+        "faces3": ("we are fewer again.", "",
+                   "we do not talk about which ones."),
+        "faces4": ("DO NOT COUNT US.", "",
+                   "THE NUMBER CHANGES WHEN YOU DO."),
+    },
+    "bough_sleeper": {
+        "faces": ("...the 7 is due...",),
+        "faces2": ("...i can hear all four of them from up here...", "",
+                   "...it's lovely..."),
+        "faces3": ("...leave it on...", "", "...i sleep better with it on..."),
+        "faces4": ("I AM NOT ASLEEP.", "", "I HAVE NEVER BEEN ASLEEP."),
+    },
+    "staffholder": {
+        "faces": ("i'm sighting the new road.", "", "it goes through all of this."),
+        "faces2": ("the new road's beautiful!", "",
+                   "you can't see it yet. that's fine."),
+        "faces3": ("we're waiting on a colour.", "",
+                   "we've been waiting on a colour for a long time."),
+        "faces4": ("HOLD THIS. DON'T MOVE.", "",
+                   "I SAID DON'T MOVE."),
+    },
+    "meter_reader": {
+        "faces": ("supply's still on.", "",
+                  "nobody's drawing on it but the mast."),
+        "faces2": ("readings are up!", "", "everything's up!"),
+        "faces3": ("house four's been empty since before the trees.", "",
+                   "it used four units last month.", "",
+                   "i write it down. somebody has to have the numbers."),
+        "faces4": ("ESTIMATED READINGS ARE A FORM OF LYING.", "",
+                   "I WANT THAT UNDERSTOOD."),
+    },
+    "ash_walker": {
+        "faces": ("it comes down at the same rate", "whatever the weather is."),
+        "faces2": ("it's not falling today!", "", "isn't that lovely."),
+        "faces3": ("i've stopped brushing it off.", "", "you will too."),
+        "faces4": ("IT ISN'T ASH.", "", "YOU KNOW IT ISN'T ASH."),
+    },
+    "last_engineer": {
+        "faces": ("it's transmitting.", "", "i checked. i keep checking."),
+        "faces2": ("four carriers off one mast!", "",
+                   "she's never run better. never."),
+        "faces3": ("that's not how many we built it for.", "",
+                   "if you hear a phone, walk towards it.", "",
+                   "that's the last thing i'll say about it."),
+        "faces4": ("SOMETHING ANSWERS ON THE FOURTH ONE.", "",
+                   "YOU'RE STANDING IN IT."),
+    },
+    "presenter": {
+        "faces": ("good evening.", "", "tonight, as every night—"),
+        "faces2": ("AND WHAT A LOVELY EVENING IT IS.",),
+        "faces3": ("we'll be back after this.", "", "we won't."),
+        "faces4": ("PLEASE DO NOT ADJUST YOUR SET.", "",
+                   "THERE IS NOTHING WRONG WITH YOUR SET.", "",
+                   "THERE IS NOTHING WRONG."),
+    },
+    "caption": {
+        "faces": ("[ SPEAKER UNIDENTIFIED ]",),
+        "faces2": ("[ LAUGHTER ]", "", "[ LAUGHTER CONTINUES ]"),
+        "faces3": ("[ SILENCE ]", "", "[ SILENCE CONTINUES ]"),
+        "faces4": ("[ SPEAKER IS YOU ]",),
+    },
+    "test_tone": {
+        "faces": ("————————————————",),
+        "faces2": ("——————♪——————", "", "( it is trying )"),
+        "faces3": ("——————", "", "( it stops. it starts again. )"),
+        "faces4": ("————————————————————————", "",
+                   "( it does not stop while you read this )"),
+    },
+    "continuity": {
+        "faces": ("normal service will be resumed.",),
+        "faces2": ("NORMAL SERVICE!", "", "ISN'T IT MARVELLOUS."),
+        "faces3": ("normal service will not be resumed.", "",
+                   "we are sorry. we are actually sorry."),
+        "faces4": ("YOU ARE WATCHING.", "", "THAT IS THE PROGRAMME.", "",
+                   "THE OTHER THREE ARE NOT AWARE OF THIS ONE."),
+    },
 }
 
-# How many copies of each design stand about, and how far apart.  The grove is
-# the busiest reception and the dead channel is the emptiest, which is the
-# arithmetic version of what the four of them are for.
-CROWD = {"faces": 5, "faces2": 4, "faces3": 3, "faces4": 2}
+# Where each of them stands.  Junctions are where the town still works and
+# glades are where it has stopped, and which of the two somebody is found in
+# says as much about them as anything they say.
+STANDS = {
+    "gardener": "glades", "seedling": "junctions", "commuter": "junctions",
+    "leaf_head": "glades", "ranger": "junctions", "grafter": "glades",
+    "swarm": "glades", "bough_sleeper": "junctions",
+    "staffholder": "junctions", "meter_reader": "junctions",
+    "ash_walker": "glades", "last_engineer": "glades",
+    "presenter": "junctions", "caption": "junctions",
+    "test_tone": "glades", "continuity": "glades",
+}
+
+# What each channel's designs are called on its own charset.
+SUFFIX = {"faces": "", "faces2": "_g", "faces3": "_y", "faces4": "_r"}
+
+
+# --- what each reception sounds like when nothing is happening -----------------
+# Music says what kind of place this is; ambience says whether anything is in
+# it with you.  One parallel process per channel, playing one sound at long
+# and uneven intervals, panned somewhere you are not looking.
+#
+# The gaps matter more than the sounds.  A noise every four seconds is a
+# soundtrack and stops being heard; a noise somewhere between eight and thirty
+# seconds cannot be predicted, so the player keeps listening for it, and on
+# the dead channel that is the whole effect.
+AMBIENCE: dict[str, tuple[tuple[str, int, int], ...]] = {
+    # birds, leaves, and a car radio a long way off
+    "faces": (("Rustle", 26, 100), ("WindGust", 20, 100), ("Carrier", 14, 40)),
+    # too many birds, too pleased, too often — the channel performing health
+    "faces2": (("Rustle", 34, 100), ("ChimeFar", 22, 100),
+               ("Rustle", 30, 100), ("WaterDrop", 18, 100)),
+    # a fluorescent tube, wind through something empty, and long nothing
+    "faces3": (("Filament", 18, 100), ("WindGust", 24, 100),
+               ("TapeRoll", 14, 100)),
+    # something large, below, that is not in a hurry.  The heartbeat is the
+    # only sound in the game that is centred rather than panned: it is not
+    # coming from anywhere in the town.
+    "faces4": (("LowThud", 34, 50), ("Heartbeat", 26, 50),
+               ("StaticBurst", 30, 100), ("LowThud", 22, 50),
+               ("Buzzer", 20, 100)),
+}
+
+# How long between them, in tenths of a second: from, to.
+AMBIENCE_GAP = {"faces": (90, 260), "faces2": (70, 200),
+                "faces3": (140, 340), "faces4": (80, 300)}
+
+
+def _ambience(world) -> Page:
+    """One sound, at an interval nobody can learn, from somewhere off-screen."""
+    sounds = AMBIENCE[world.key]
+    low, high = AMBIENCE_GAP[world.key]
+
+    s = Script()
+    s.comment("what this reception sounds like when nothing is happening")
+    with s.loop():
+        s.var_random(VR_AMBIENCE, low, high)
+        with s.loop():
+            s.wait(1)
+            s.var(VR_AMBIENCE, 1, 2)
+            with s.if_var(VR_AMBIENCE, 0, 2):
+                s.break_loop()
+        s.var_random(VR_AMBIENCE, 0, len(sounds) - 1)
+        for index, (name, volume, spread) in enumerate(sounds):
+            with s.if_var(VR_AMBIENCE, index):
+                # panned hard when it belongs to the town and centred when it
+                # does not belong to anything
+                s.se(name, volume=volume,
+                     balance=50 + spread // 2 if index % 2 else 50 - spread // 2,
+                     tempo=100 - spread // 8)
+    return Page(script=s, trigger=TRIGGER_PARALLEL, layer=LAYER_BELOW)
 
 
 def _residents(world, rng: random.Random) -> None:
+    """All sixteen, once each, wherever this channel keeps them.
+
+    One copy per design rather than five, because there are four times as many
+    designs as there used to be: sixteen people standing about is a town, and
+    sixteen designs at five copies each would be eighty events on a map that
+    also has to hold a road network.
+    """
     m = world.map
-    copies = CROWD[world.key]
-    for design, where, lines in RESIDENTS[world.key]:
-        sheet, slot = charset_slot(design)
-        spots = list(world.landmarks.get(where, []))
-        rng.shuffle(spots)
-        for n in range(copies):
-            if not spots:
-                break
-            ax, ay = spots[n % len(spots)]
-            ax = (ax + rng.randint(-5, 5)) % m.width
-            ay = (ay + rng.randint(-4, 4)) % m.height
-            s = Script()
-            s.move_route(0, [MV_FACE_HERO], frequency=8)
-            s.msg(*lines)
-            m.add_event(f"{design} {n}", ax, ay, [
-                Page(script=s, charset=sheet, charset_index=slot,
-                     move_type=MOVE_STATIONARY if n % 3 == 0 else MOVE_RANDOM,
-                     move_speed=2, move_frequency=3, trigger=TRIGGER_ACTION,
-                     animation_type=ANIM_CONTINUOUS)])
+    suffix = SUFFIX[world.key]
+    for index, (design, registers) in enumerate(PEOPLE.items()):
+        sheet, slot = charset_slot(f"{design}{suffix}")
+        spots = list(world.landmarks.get(STANDS[design], []))
+        if not spots:
+            continue
+        ax, ay = spots[index % len(spots)]
+        ax = (ax + rng.randint(-6, 6)) % m.width
+        ay = (ay + rng.randint(-5, 5)) % m.height
+        s = Script()
+        s.move_route(0, [MV_FACE_HERO], frequency=8)
+        s.msg(*registers[world.key])
+        m.add_event(design, ax, ay, [
+            Page(script=s, charset=sheet, charset_index=slot,
+                 move_type=MOVE_STATIONARY if index % 3 == 0 else MOVE_RANDOM,
+                 move_speed=2, move_frequency=3, trigger=TRIGGER_ACTION,
+                 animation_type=ANIM_CONTINUOUS)])
 
 
 # --- what is only here --------------------------------------------------------
@@ -523,7 +756,7 @@ def _easter(world, rng: random.Random) -> None:
     s.se(sound, volume=52)
     s.msg(*lines)
     m.add_event("only here", (x - 4) % m.width, (y + 3) % m.height,
-                [Page(script=s, trigger=TRIGGER_ACTION, layer=LAYER_SAME)])
+                [gleam(script=s, trigger=TRIGGER_ACTION)])
 
 
 # --- the mast -----------------------------------------------------------------
@@ -574,12 +807,12 @@ def channel_layer_events(world, worlds: dict, rng: random.Random) -> None:
     moved.
     """
     from .events import _arrival_event
-    from .worlds import DREAM_ORDER
+    from .worlds import NEXUS_ORDER
 
     world.map.add_event("arrive", 0, 0, [_arrival_event(world)])
 
     nexus = worlds["nexus"]
-    nx, ny = nexus.landmarks["doors"][DREAM_ORDER.index("faces")]
+    nx, ny = nexus.landmarks["doors"][NEXUS_ORDER.index("faces")]
     bx, by = worlds["faces"].landmarks["door_face"][0]
     back = Script()
     back.se("DoorShut", volume=60)
@@ -591,8 +824,7 @@ def channel_layer_events(world, worlds: dict, rng: random.Random) -> None:
     back.teleport(nexus.map_id, nx + 1, ny + 3)
     back.fade_in(atmosphere.of("nexus").enter)
     world.map.add_event("door", bx % world.map.width, by % world.map.height,
-                        [Page(script=back, trigger=TRIGGER_ACTION,
-                              layer=LAYER_SAME)])
+                        [gleam(script=back, trigger=TRIGGER_ACTION)])
 
 
 def grove_events(world, worlds: dict, rng: random.Random) -> None:
@@ -617,6 +849,7 @@ def grove_events(world, worlds: dict, rng: random.Random) -> None:
     world.map.add_event("ringer", 1, 1, [_ringer(world)])
     _signs(world)
     _residents(world, rng)
+    world.map.add_event("ambience", 2, 1, [_ambience(world)])
     _easter(world, rng)
     if channel == 0:
         _receiver(world)

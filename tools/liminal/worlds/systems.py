@@ -88,6 +88,9 @@ def boot() -> CommonEvent:
     """
     s = Script()
     s.comment("first frame of a new game")
+    # The stock menu is four empty lists in this game; turning it off is
+    # what makes the cancel key available for anything else.
+    s.allow_menu(False)
     s.var(VR_EQUIPPED, 0)
     s.var(VR_DREAM_DISTANCE, 0)
     s.var(VR_EFFECTS_FOUND, 0)
@@ -532,9 +535,13 @@ def debug_readout(worlds) -> CommonEvent:
     A testing aid, and off unless you ask for it: nothing shows until the key
     is pressed, so a player who never touches shift never learns it exists.
 
-    Shift is the one key in this engine that is otherwise unbound -- the
-    action key talks to things, cancel opens the menu, and the directions
-    walk -- so this costs no input the game was already using.
+    On **cancel**, not shift.  Shift belongs to the diary, and this sat on
+    top of it -- pressing the key gave you the diary and the coordinates at
+    once, which is no use for either.  There is no Tab in this engine: key
+    input exposes decision, cancel, shift and the four directions and nothing
+    else.  Cancel became free by turning off the stock menu at boot, which
+    this game never wanted -- it has no items, no skills and no equipment, so
+    that menu was four empty lists.
 
     RPG Maker cannot draw text on the screen outside a message box, so the
     readout *is* a message box.  It reads the hero's tile straight out of the
@@ -545,8 +552,9 @@ def debug_readout(worlds) -> CommonEvent:
 
     s = Script()
     s.comment("hold shift: where am i")
-    s.key_input(VR_DEBUG_KEY, wait=False, decision=False, shift=True)
-    with s.if_var(VR_DEBUG_KEY, 7):
+    s.key_input(VR_DEBUG_KEY, wait=False, decision=False, cancel=True,
+                shift=False)
+    with s.if_var(VR_DEBUG_KEY, 6):
         s.var_from_event(VR_DEBUG_X, PLAYER, 1)
         s.var_from_event(VR_DEBUG_Y, PLAYER, 2)
         s.msg_options(MSG_TOP)
@@ -555,6 +563,17 @@ def debug_readout(worlds) -> CommonEvent:
         # readout confidently reported the wrong world.
         s.msg(f"x \\v[{VR_DEBUG_X}]   y \\v[{VR_DEBUG_Y}]", "",
               f"world \\v[{VR_WORLD}]")
+        # Saving lives here now.  Turning the stock menu off is what freed
+        # this key, and that menu was also the only way to save -- so the
+        # thing that took its place has to carry it, or the game quietly
+        # became one you cannot put down.
+        s.msg_options(MSG_MIDDLE)
+        s.msg("save?")
+        with s.choice(["yes", "no"], cancel=2) as branch:
+            with branch(0):
+                s.open_save()
+            with branch(1):
+                pass
         s.msg_options(MSG_BOTTOM)
         s.var(VR_DEBUG_KEY, 0)
     return CommonEvent(CE_DEBUG, "where am i", TRIGGER_PARALLEL, None, s)

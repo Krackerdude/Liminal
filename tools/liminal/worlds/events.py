@@ -43,7 +43,7 @@ from . import systems as sys
 from .cast_lookup import charset_slot
 from ..art.cast import WORLD_CAST
 from .layout import solid_ids
-from .worlds import (BLOCK_ORDER, DREAM_ORDER, HOME_DOOR, HOME_FLOOR,
+from .worlds import (BLOCK_ORDER, DREAM_ORDER, HOME_DOOR, HOME_FLOOR, LIFT_AT,
                      NEXUS_ORDER, POPULATION, WORLD_ORDER, World)
 
 # Interactables draw as the world's own door graphic at a small size, which
@@ -219,6 +219,44 @@ def _place(world: World, name: str, x: int, y: int, pages) -> None:
     world.map.add_event(name, *_free_tile(world, x, y), pages)
 
 
+def _place_object(world: World, obj: str, pages, *, at=None) -> None:
+    """Put an interaction on every tile the object actually occupies.
+
+    This is the only correct way to do it and it took a playtest to see why.
+    The old way put one event on a *guessed* tile in front of the thing, which
+    was wrong twice over: the guess was often a bare patch of floor several
+    tiles from the object, and an event standing on open floor **blocks
+    movement**, so the room was full of invisible bollards you had to walk
+    round and then stand on exactly the right square to use the bed.
+
+    An object already knows its own footprint — where it was stamped and how
+    big it is — and every tile of that footprint is already solid.  Putting
+    the same pages on all of them means the player can walk up to any edge of
+    a thing, face it, and have it answer, and not one of those events adds a
+    single square of collision that the object was not already occupying.
+    """
+    m = world.map
+    x, y = at if at is not None else world.landmarks[obj][0]
+    grid = world.chipset.obj(obj)
+    taken = {(e.x, e.y) for e in m.events}
+    solid = solid_ids(world.chipset)
+    # Only the tiles of the footprint that already block.  A desk is
+    # ``solid="bottom"`` -- you can walk behind its top half -- so an event up
+    # there would put a bollard back on open floor, which is the whole thing
+    # this is fixing.
+    spots = [((x + c) % m.width, (y + r) % m.height)
+             for r in range(grid.rows) for c in range(grid.cols)]
+    blocking = [p for p in spots
+                if m.get_lower(*p) in solid or m.get_upper(*p) in solid]
+    for index, spot in enumerate(blocking or spots):
+            col, row = index % max(1, grid.cols), index // max(1, grid.cols)
+            if spot in taken:
+                continue
+            m.add_event(f"{obj} {col},{row}" if (col or row) else obj,
+                        spot[0], spot[1], pages)
+            taken.add(spot)
+
+
 def _place_wide(world: World, name: str, x: int, y: int, pages, *,
                 reach: int = 1) -> None:
     """The same, plus relays on the tiles around it that do the same thing.
@@ -356,7 +394,7 @@ def room_events(world: World, worlds: dict[str, World]) -> None:
             sleep.msg_options(MSG_BOTTOM)
     # the head of the bed, against the back wall: the tile you reach if you
     # walk into the corner, which is how anyone actually crosses a room
-    _place(world, "bed", 7, 6, [Page(script=sleep, trigger=TRIGGER_ACTION)])
+    _place_object(world, "bed", [Page(script=sleep, trigger=TRIGGER_ACTION)])
 
     # The television: shows the world you were last in.
     tv = Script()
@@ -369,7 +407,7 @@ def room_events(world: World, worlds: dict[str, World]) -> None:
                "it stops when you look directly at it.")
     with tv.if_var(VR_DREAM_DISTANCE, 0):
         tv.msg("it is not plugged in.")
-    _place(world, "television", 11, 5, [Page(script=tv, trigger=TRIGGER_ACTION)])
+    _place_object(world, "television", [Page(script=tv, trigger=TRIGGER_ACTION)])
 
     # The mirror: after you have been away long enough, it is late.
     mirror = Script()
@@ -378,7 +416,7 @@ def room_events(world: World, worlds: dict[str, World]) -> None:
         mirror.msg("you are still there.", "", "you look tired.")
     with mirror.if_var(VR_DREAM_DISTANCE, 3, 2):
         mirror.msg("you are still there.")
-    _place(world, "mirror", 5, 9, [Page(script=mirror, trigger=TRIGGER_ACTION)])
+    _place_object(world, "mirror", [Page(script=mirror, trigger=TRIGGER_ACTION)])
 
     # The wardrobe: a deep layer, and the only thing in the game with a lock.
     wardrobe = Script()
@@ -393,7 +431,7 @@ def room_events(world: World, worlds: dict[str, World]) -> None:
         with arm(True):
             wardrobe.msg("it does not open.",
                          "it has never opened.")
-    _place(world, "wardrobe", 14, 6, [Page(script=wardrobe, trigger=TRIGGER_ACTION)])
+    _place_object(world, "wardrobe", [Page(script=wardrobe, trigger=TRIGGER_ACTION)])
 
     # The window: nothing outside, unless you are wearing the eye.
     window = Script()
@@ -407,25 +445,25 @@ def room_events(world: World, worlds: dict[str, World]) -> None:
             window.msg("none of it is lit from anywhere.")
         with arm(True):
             window.msg("it is too dark to see out.")
-    _place(world, "window", 5, 3, [Page(script=window, trigger=TRIGGER_ACTION)])
+    _place_object(world, "window", [Page(script=window, trigger=TRIGGER_ACTION)])
 
     desk = Script()
     desk.msg("there is nothing written on it.")
-    _place(world, "desk", 3, 7, [Page(script=desk, trigger=TRIGGER_ACTION)])
+    _place_object(world, "desk", [Page(script=desk, trigger=TRIGGER_ACTION)])
 
     # The flat's front door.  It used to be the one door in the game that
     # went nowhere; there is a building on the other side of it now.
-    _place(world, "door", 3, 3,
+    _place_object(world, "door",
            [_door(worlds["hall4"].map_id, *worlds["hall4"].spawn,
                   sound="Latch", leaving="room", entering="hall4")])
 
     stand = Script()
     stand.msg("a glass of water you do not remember pouring.")
-    _place(world, "nightstand", 10, 5,
+    _place_object(world, "nightstand",
            [Page(script=stand, trigger=TRIGGER_ACTION)])
 
     # The way out to the balcony.  The only door in the room that opens.
-    _place(world, "slider", 14, 3,
+    _place_object(world, "slider",
            [_door(worlds["balcony"].map_id, *worlds["balcony"].spawn,
                   sound="DoorOpen", leaving="room", entering="balcony")])
 
@@ -435,9 +473,9 @@ def balcony_events(world: World, worlds: dict[str, World]) -> None:
     m = world.map
     m.add_event("arrive", 0, 0, [_arrival_event(world)])
 
-    _place(world, "slider", 10, 12,
-           [_door(worlds["room"].map_id, 14, 3, sound="DoorOpen",
-                  leaving="balcony", entering="room")])
+    _place_object(world, "slider",
+                  [_door(worlds["room"].map_id, 14, 3, sound="DoorOpen",
+                         leaving="balcony", entering="room")], at=(8, 12))
 
     rail = Script()
     rail.se("Watch", volume=40)
@@ -447,22 +485,26 @@ def balcony_events(world: World, worlds: dict[str, World]) -> None:
         rail.msg("some of those windows are the wrong colour",
                  "and you know which ones.")
     for spot in (5, 10, 15):
-        _place(world, f"the rail {spot}", spot, 11,
-               [Page(script=rail, trigger=TRIGGER_ACTION)])
+        _place_object(world, "rail",
+                      [Page(script=rail, trigger=TRIGGER_ACTION)],
+                      at=(spot, 10))
 
     chair = Script()
     chair.msg("a plastic chair, facing out.", "",
               "it has been rained on since anybody sat in it.")
-    _place(world, "chair", 5, 12, [Page(script=chair, trigger=TRIGGER_ACTION)])
+    _place_object(world, "chair",
+                  [Page(script=chair, trigger=TRIGGER_ACTION)], at=(4, 9))
 
     unit = Script()
     unit.se("Carrier", volume=30)
     unit.msg("it is running.", "", "nothing in the flat is cold.")
-    _place(world, "aircon", 14, 11, [Page(script=unit, trigger=TRIGGER_ACTION)])
+    _place_object(world, "aircon",
+                  [Page(script=unit, trigger=TRIGGER_ACTION)], at=(14, 9))
 
     bucket = Script()
     bucket.msg("there is water in it.", "", "it has not rained.")
-    _place(world, "bucket", 7, 11, [Page(script=bucket, trigger=TRIGGER_ACTION)])
+    _place_object(world, "bucket",
+                  [Page(script=bucket, trigger=TRIGGER_ACTION)], at=(7, 12))
 
 
 # --- the building -------------------------------------------------------------
@@ -519,28 +561,31 @@ def block_events(world: World, worlds: dict[str, World]) -> None:
     # every floor without exception.
     if depth > 0:
         above = worlds[BLOCK_ORDER[depth - 1]]
-        _place(world, "stair up", 4, 8,
-               [_door(above.map_id, 4, 9, sound="StepStone",
-                      leaving=world.key, entering=above.key)])
+        _place_object(world, "stair_up",
+                      [_door(above.map_id, 4, 9, sound="StepStone",
+                             leaving=world.key, entering=above.key)],
+                      at=(3, 4))
     if world.key != "lobby":
         below = worlds[BLOCK_ORDER[depth + 1]]
-        _place(world, "stair down", 15, 8,
-               [_door(below.map_id, 15, 9, sound="StepStone",
-                      leaving=world.key, entering=below.key)])
+        _place_object(world, "stair_down",
+                      [_door(below.map_id, 15, 9, sound="StepStone",
+                             leaving=world.key, entering=below.key)],
+                      at=(14, 4))
 
     # the flats
     index = 0
     for side, row, front in (("north", 2, 4), ("south", 10, 9)):
         for x, _ in world.landmarks.get(side, []):
             if world.key == HOME_FLOOR and side == "north" and x == HOME_DOOR:
-                _place(world, "your door", x, front,
-                       [_door(worlds["room"].map_id, *worlds["room"].spawn,
-                              sound="Latch", leaving=world.key,
-                              entering="room")])
+                _place_object(world, "flat_door",
+                              [_door(worlds["room"].map_id,
+                                     *worlds["room"].spawn, sound="Latch",
+                                     leaving=world.key, entering="room")],
+                              at=(x, row))
             else:
-                _place(world, f"{side} {x}", x, front,
-                       [Page(script=_locked(index + depth),
-                             trigger=TRIGGER_ACTION)])
+                _place_object(world, "flat_door_plain",
+                              [Page(script=_locked(index + depth),
+                                    trigger=TRIGGER_ACTION)], at=(x, row))
             index += 1
 
     lift = Script()
@@ -552,22 +597,27 @@ def block_events(world: World, worlds: dict[str, World]) -> None:
         lift.wait(10)
         lift.msg("it has read the same floor since you moved in",
                  "and you have never once wondered which one.")
-    _place(world, "the lift", 15, 9, [Page(script=lift, trigger=TRIGGER_ACTION)])
+    _place_object(world, "lift", [Page(script=lift, trigger=TRIGGER_ACTION)],
+                  at=(LIFT_AT, 10))
 
     if world.key != "lobby":
         board = Script()
         board.msg("a board of notices behind glass.", "",
                   "none of them are new",
                   "and none of them are about anybody you know.")
-        _place(world, "the board", 3, 9,
-               [gleam(script=board, trigger=TRIGGER_ACTION)])
+        _place_object(world, "notice",
+                      [gleam(script=board, trigger=TRIGGER_ACTION)],
+                      at=(3, 10))
 
     note = FLOOR_NOTE.get(depth)
     if note:
         landing = Script()
         landing.msg(*note)
+        # Not an object -- a place.  Touch-triggered and below the player,
+        # so it says its line as you walk past and never stands in the way.
         _place(world, "the landing", 4, 9,
-               [gleam(script=landing, trigger=TRIGGER_ACTION)])
+               [Page(script=landing, trigger=TRIGGER_TOUCH,
+                     layer=LAYER_BELOW)])
 
     if world.key == "lobby":
         _lobby(world)
@@ -586,15 +636,15 @@ def _lobby(world: World) -> None:
         out.se("Watch", volume=40)
         out.msg("you have never been outside this building.", "",
                 "you have never once thought about that until now.")
-    _place(world, "the way out", 10, 9,
-           [Page(script=out, trigger=TRIGGER_ACTION)])
+    _place_object(world, "entrance",
+                  [Page(script=out, trigger=TRIGGER_ACTION)], at=(9, 10))
 
     boxes = Script()
     boxes.msg("a wall of little brass doors.", "",
               "one of them has your number on it",
               "and it has never had anything in it.")
-    _place(world, "the boxes", 8, 4,
-           [Page(script=boxes, trigger=TRIGGER_ACTION)])
+    _place_object(world, "mailboxes",
+                  [Page(script=boxes, trigger=TRIGGER_ACTION)], at=(7, 2))
 
     notice = Script()
     notice.msg("four notices, all of them curled.", "",
@@ -603,15 +653,15 @@ def _lobby(world: World) -> None:
         notice.wait(8)
         notice.msg("it is dated, and the date is wrong",
                    "in a way you cannot put a number on.")
-    _place(world, "the notices", 13, 4,
-           [gleam(script=notice, trigger=TRIGGER_ACTION)])
+    _place_object(world, "notice",
+                  [gleam(script=notice, trigger=TRIGGER_ACTION)], at=(12, 2))
 
     dark = Script()
     dark.se("Heartbeat", volume=30)
     dark.msg("the last light down here is at the far end", "",
              "and it is behind you.")
     _place(world, "the dark", 16, 8,
-           [Page(script=dark, trigger=TRIGGER_ACTION)])
+           [Page(script=dark, trigger=TRIGGER_TOUCH, layer=LAYER_BELOW)])
 
 
 # --- the nexus ---------------------------------------------------------------

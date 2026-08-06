@@ -81,24 +81,57 @@ EFFECT_INDEX = {key: index for index, (key, _, _) in enumerate(EFFECTS, start=1)
 EFFECT_HOME = dict(zip(DREAM_ORDER, [key for key, _, _ in EFFECTS]))
 
 
-def _free_tile(world: World, x: int, y: int, *, radius: int = 6) -> tuple[int, int]:
-    """Nudge a placement off any tile another event is already standing on.
+_PAVED: dict[str, set[int]] = {}
 
-    Two events sharing a tile is legal, and the engine will happily run one of
-    them forever while the other can never be talked to.  Landmark-relative
-    placements (the keeper beside the bench, a door beside its frame) are the
-    ones that collide, because two landmarks can end up next to each other.
+
+def _carriageway(world: World) -> set[int]:
+    """Every tile id in this world that is a road surface or a kerb.
+
+    Only the grove has any, and only the grove needs this: it is the one
+    world with a *road* in it, and a road is as walkable as a verge as far as
+    the engine is concerned, so nothing else stops an object being scattered
+    into the middle of a carriageway.
+    """
+    if world.key not in _PAVED:
+        _PAVED[world.key] = {tid for name, tid in world.chipset.tiles.items()
+                             if name.startswith(("road", "kerb"))}
+    return _PAVED[world.key]
+
+
+def _free_tile(world: World, x: int, y: int, *, radius: int = 6) -> tuple[int, int]:
+    """Nudge a placement off any tile it has no business standing on.
+
+    Two things disqualify a tile.  Another event is already there — two events
+    sharing a tile is legal, and the engine will happily run one of them
+    forever while the other can never be talked to.  Or it is road: a thing
+    lying in the carriageway reads as a mistake rather than as litter, and
+    the grove was scattering sixteen of them per channel straight down the
+    middle of its own avenues.
     """
     m = world.map
     taken = {(e.x, e.y) for e in m.events}
+    paved = _carriageway(world)
     x, y = x % m.width, y % m.height
-    if (x, y) not in taken:
+
+    def free(spot: tuple[int, int]) -> bool:
+        return (spot not in taken
+                and m.get_lower(spot[0], spot[1]) not in paved)
+
+    if free((x, y)):
         return x, y
     for step in range(1, radius + 1):
         for dy in range(-step, step + 1):
             for dx in range(-step, step + 1):
                 if max(abs(dx), abs(dy)) != step:
                     continue
+                spot = ((x + dx) % m.width, (y + dy) % m.height)
+                if free(spot):
+                    return spot
+    # nothing clear within reach: take any tile no other event is on, so a
+    # crowded corner loses its road check rather than losing its event
+    for step in range(1, radius + 1):
+        for dy in range(-step, step + 1):
+            for dx in range(-step, step + 1):
                 spot = ((x + dx) % m.width, (y + dy) % m.height)
                 if spot not in taken:
                     return spot
@@ -192,12 +225,24 @@ def _place_wide(world: World, name: str, x: int, y: int, pages, *,
     The relays are the identical page list, which means they share the switch
     the real one sets: using any of them marks the object used, and every
     other relay flips to the used page with it.
+
+    They are invisible, though, and that is not a detail.  A relay carrying
+    the same pages as the real event also carries the same *graphic*, so
+    every wide object in the game was wearing one gleam per relay — a phone
+    box on a corner put nine of them on the ground around itself, five of
+    which were out in the road.  The gleam belongs to the object; the relays
+    only exist so that the object answers when you walk up to any part of it.
     """
+    from dataclasses import replace
+
     m = world.map
     ox, oy = _free_tile(world, x, y)
     m.add_event(name, ox, oy, pages)
+    quiet = [replace(page, charset="Blank", charset_index=0)
+             for page in pages]
     taken = {(e.x, e.y) for e in m.events}
     solid = solid_ids(world.chipset)
+    paved = _carriageway(world)
     for dy in range(-reach, reach + 1):
         for dx in range(-reach, reach + 1):
             if dx == 0 and dy == 0:
@@ -207,7 +252,7 @@ def _place_wide(world: World, name: str, x: int, y: int, pages, *,
                 continue
             if (m.get_lower(px, py) in solid or m.get_upper(px, py) in solid):
                 continue
-            m.add_event(f"{name} reach {dx},{dy}", px, py, pages)
+            m.add_event(f"{name} reach {dx},{dy}", px, py, quiet)
             taken.add((px, py))
 
 

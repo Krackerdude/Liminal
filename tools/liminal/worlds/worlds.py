@@ -973,20 +973,49 @@ def _faces_layout(world: World, cs) -> None:
         layout.carpet(m, fld, zone, t, rng, "full")
 
     # Lay the actual road surface back over the avenues, lane markings and all.
-    for x in avenues_x:
-        for y in range(m.height):
-            for o in range(-2, 3):
-                if fld.is_floor(x + o, y):
-                    m.set_lower(x + o, y, t["kerb"] if abs(o) == 2 else
-                                (t["road_line"] if o == 0 and y % 4 < 2
-                                 else t["road"]))
-    for y in avenues_y:
+    #
+    # One pass over every cell rather than one pass per axis, because the
+    # interesting cases are all where two carriageways meet and a per-axis
+    # pass cannot see them.  Three things came out of the old two-pass
+    # version and all three are the same bug: it did not know what a junction
+    # was.  Kerbs ran straight through crossings, so every intersection had a
+    # pavement across the middle of it; the north-south avenues were kerbed
+    # with the east-west stone, so their pavements ran at right angles to
+    # their own road; and both axes used the same centre line, so half the
+    # town had its lane markings painted across the lane.
+    def _near(value: int, centres, wrap: int) -> int | None:
+        for centre in centres:
+            delta = ((value - centre + wrap // 2) % wrap) - wrap // 2
+            if abs(delta) <= 2:
+                return delta
+        return None
+
+    for y in range(m.height):
+        row = _near(y, avenues_y, m.height)
         for x in range(m.width):
-            for o in range(-2, 3):
-                if fld.is_floor(x, y + o):
-                    m.set_lower(x, y + o, t["kerb"] if abs(o) == 2 else
-                                (t["road_line"] if o == 0 and x % 4 < 2
-                                 else t["road"]))
+            col = _near(x, avenues_x, m.width)
+            if col is None and row is None:
+                continue
+            if not fld.is_floor(x, y):
+                continue
+            if col is not None and row is not None:
+                # a crossing: all carriageway, no stone, and no centre line
+                # running through the middle of it
+                m.set_lower(x, y, t["road"])
+            elif col is not None:                   # a north-south avenue
+                if abs(col) == 2:
+                    m.set_lower(x, y, t["kerb_w" if col < 0 else "kerb_e"])
+                elif col == 0 and y % 4 < 2:
+                    m.set_lower(x, y, t["road_line"])
+                else:
+                    m.set_lower(x, y, t["road"])
+            else:                                   # an east-west avenue
+                if abs(row) == 2:
+                    m.set_lower(x, y, t["kerb_n" if row < 0 else "kerb_s"])
+                elif row == 0 and x % 4 < 2:
+                    m.set_lower(x, y, t["road_line_h"])
+                else:
+                    m.set_lower(x, y, t["road"])
 
     fur = Furnisher(m, fld, cs, rng)
     # Junctions get the municipal furniture: lights on every corner, a shelter,
@@ -1013,8 +1042,13 @@ def _faces_layout(world: World, cs) -> None:
         for slot, (px, py) in enumerate(ring(zone, 4, inset=6)):
             _street_furniture(fur, m, t, street[(index + slot) % len(street)],
                               px, py, pad=1)
-        # a tree straight through the middle of the junction
-        fur.put("tree", zone.cx, zone.cy, pad=1)
+        # A tree on the verge at the corner of the crossing, not in the
+        # middle of it.  It used to stand on the centre line, which was the
+        # one thing in this world that read as a mistake rather than as a
+        # place: everything else the forest took, it took from the edges in.
+        for dx, dy in ((-6, -6), (6, 6)):
+            _street_furniture(fur, m, t, "tree", zone.cx + dx, zone.cy + dy,
+                              pad=1)
 
     # The glades are what the town looks like once the road has gone.
     for index, zone in enumerate(glades):
@@ -1065,7 +1099,11 @@ def _street_furniture(fur, m, t: dict, name: str, x: int, y: int, *,
     grid = fur.cs.obj(name)
     ox = x - grid.cols // 2 if centred else x
     oy = y - grid.rows // 2 if centred else y
-    tarmac = {t[k] for k in ("road", "road_line") if k in t}
+    # Every road tile, kerbs included: a bus shelter standing on the
+    # kerb stone is standing in the gutter.
+    tarmac = {t[k] for k in ("road", "road_line", "road_line_h",
+                             "kerb", "kerb_n", "kerb_s", "kerb_w",
+                             "kerb_e") if k in t}
     for row in range(grid.rows):
         for col in range(grid.cols):
             if m.get_lower(ox + col, oy + row) in tarmac:

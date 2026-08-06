@@ -33,7 +33,7 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT / "tools"))
 
-from liminal import db, state, validate                          # noqa: E402
+from liminal import db, keys, state, validate                    # noqa: E402
 from liminal.art import cast, menu, ui                           # noqa: E402
 from liminal.art.canvas import save_indexed                      # noqa: E402
 from liminal.maps import MapInfo, build_treemap                  # noqa: E402
@@ -391,6 +391,14 @@ def write_ini() -> None:
         "MapEditZoom=0\n"
         "FullPackageFlag=1\n",
         encoding="utf-8")
+
+    # The keyboard.  Three plain-text files and the game stops being limited
+    # to the engine's seven buttons -- see liminal/keys.py for what they say
+    # and why.  They are written last, with the rest of the loose files,
+    # because nothing generates them: they are the same every build.
+    (GAME / "EasyRPG.ini").write_text(keys.ini(), encoding="utf-8")
+    (GAME / keys.LIST_FILE).write_text(keys.script_list(), encoding="utf-8")
+    (GAME / keys.SCRIPT_FILE).write_text(keys.script(), encoding="utf-8")
 
 
 # --- reporting ---------------------------------------------------------------

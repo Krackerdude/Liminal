@@ -1,0 +1,22 @@
+[execute]
+action=miditickfunction
+command=output
+next=step1
+
+[step1]
+action=enablekeysupport
+enable=true
+next=step2
+
+[step2]
+; things i found
+action=registerkeydownevent
+key=(tab)
+value=9001
+next=step3
+
+[step3]
+; where am i
+action=registerkeydownevent
+key=c
+value=9002

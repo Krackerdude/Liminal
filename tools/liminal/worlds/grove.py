@@ -632,12 +632,12 @@ def channel_layer_events(world, worlds: dict, rng: random.Random) -> None:
     moved.
     """
     from .events import _arrival_event
-    from .worlds import DREAM_ORDER
+    from .worlds import NEXUS_ORDER
 
     world.map.add_event("arrive", 0, 0, [_arrival_event(world)])
 
     nexus = worlds["nexus"]
-    nx, ny = nexus.landmarks["doors"][DREAM_ORDER.index("faces")]
+    nx, ny = nexus.landmarks["doors"][NEXUS_ORDER.index("faces")]
     bx, by = worlds["faces"].landmarks["door_face"][0]
     back = Script()
     back.se("DoorShut", volume=60)

@@ -44,7 +44,7 @@ from .cast_lookup import charset_slot
 from ..art.cast import WORLD_CAST
 from .layout import solid_ids
 from .worlds import (BLOCK_ORDER, DREAM_ORDER, HOME_DOOR, HOME_FLOOR,
-                     POPULATION, WORLD_ORDER, World)
+                     NEXUS_ORDER, POPULATION, WORLD_ORDER, World)
 
 # Interactables draw as the world's own door graphic at a small size, which
 # reads as "part of the architecture" rather than as an item lying about.
@@ -569,7 +569,7 @@ def nexus_events(world: World, worlds: dict[str, World]) -> None:
     m.add_event("arrive", 1, 1, [_arrival_event(world)])
 
     for index, (x, y) in enumerate(world.landmarks["doors"]):
-        key = DREAM_ORDER[index]
+        key = NEXUS_ORDER[index]
         target = worlds[key]
         # on the door's own bottom tile, so you use it by facing it rather
         # than by standing on top of it
@@ -667,7 +667,7 @@ def dream_events(world: World, worlds: dict[str, World],
     # the hub keeps its shape: each world has a fixed place in the ring and
     # returning tells you where you have been without anything saying so.
     nexus = worlds["nexus"]
-    nx, ny = nexus.landmarks["doors"][DREAM_ORDER.index(key)]
+    nx, ny = nexus.landmarks["doors"][NEXUS_ORDER.index(key)]
     back = Script()
     back.se("DoorShut", volume=60)
     back.bgm_fadeout(10)
@@ -1088,7 +1088,7 @@ def floor_events(world: World, worlds: dict[str, World],
         _stairs_system(world, worlds, rng, index)
 
     nexus = worlds["nexus"]
-    nx, ny = nexus.landmarks["doors"][DREAM_ORDER.index("stairs")]
+    nx, ny = nexus.landmarks["doors"][NEXUS_ORDER.index("stairs")]
     back = Script()
     back.se("DoorShut", volume=60)
     back.bgm_fadeout(10)

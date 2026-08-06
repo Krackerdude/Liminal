@@ -206,9 +206,20 @@ POPULATION: dict[str, int] = {
     "umbrellas": 16, "stars": 16,
 }
 
-# Which door in the nexus leads where, in the order they stand.
+# The twelve dreams, in their canonical order.  This is identity, not
+# geography: map ids, world indices and which effect is hidden in which dream
+# all hang off it, so it does not get shuffled to move a door.
 DREAM_ORDER = ["pink", "numbers", "blocks", "stairs", "sand", "faces", "hands",
                "checker", "toys", "neon", "umbrellas", "stars"]
+
+# Where each door actually stands in the ring, clockwise from the top — which
+# is a separate question, because the hub opens on the first of them.  The
+# player arrives in front of position zero and the ring curves away either
+# side, so whatever sits there is the dream the game is about until you decide
+# otherwise.  Swapping two entries here moves two doors and nothing else.
+NEXUS_ORDER = ["faces", "numbers", "blocks", "stairs", "sand", "pink", "hands",
+               "checker", "toys", "neon", "umbrellas", "stars"]
+assert sorted(NEXUS_ORDER) == sorted(DREAM_ORDER)
 
 # The stairwell is five floors deep.  These are *layers*, not subworlds: the
 # same world continuing downward, sharing its chipset, cast and music family,
@@ -571,8 +582,8 @@ def build_nexus(map_id: int) -> World:
         x = int(m.width / 2 + math.cos(angle) * 15) - 1
         y = int(m.height / 2 + math.sin(angle) * 11) - 1
         # each portal wears the mirror of the world it opens onto
-        gen.stamp(m, cs.obj(f"door_{DREAM_ORDER[index]}"), x, y)
-        world.placer.mark(x, y, 2, 3, f"door_{DREAM_ORDER[index]}")
+        gen.stamp(m, cs.obj(f"door_{NEXUS_ORDER[index]}"), x, y)
+        world.placer.mark(x, y, 2, 3, f"door_{NEXUS_ORDER[index]}")
         doors.append((x, y))
         gen.patch(m, t["glow"], x + 1, y + 3, 2.4, rng, ragged=0.2)
 

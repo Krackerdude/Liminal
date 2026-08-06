@@ -52,6 +52,7 @@ CE_OVERLAY_OFF = 10
 CE_WAKE = 11
 CE_DIARY_KEY = 12
 CE_ATMOSPHERE = 13
+CE_DEBUG = 14
 
 # Picture layers.  Higher numbers draw in front.
 PIC_OVERLAY = 5           # the world's own film: grain, haze, scanlines
@@ -525,6 +526,40 @@ def overlay_off() -> CommonEvent:
     return CommonEvent(CE_OVERLAY_OFF, "overlay off", TRIGGER_CALL, None, s)
 
 
+def debug_readout(worlds) -> CommonEvent:
+    """Hold SHIFT and the game tells you where you are.
+
+    A testing aid, and off unless you ask for it: nothing shows until the key
+    is pressed, so a player who never touches shift never learns it exists.
+
+    Shift is the one key in this engine that is otherwise unbound -- the
+    action key talks to things, cancel opens the menu, and the directions
+    walk -- so this costs no input the game was already using.
+
+    RPG Maker cannot draw text on the screen outside a message box, so the
+    readout *is* a message box.  It reads the hero's tile straight out of the
+    engine rather than tracking it, which means it cannot drift out of step
+    with where you actually are.
+    """
+    from ..state import VR_DEBUG_KEY, VR_DEBUG_X, VR_DEBUG_Y, VR_WORLD
+
+    s = Script()
+    s.comment("hold shift: where am i")
+    s.key_input(VR_DEBUG_KEY, wait=False, decision=False, shift=True)
+    with s.if_var(VR_DEBUG_KEY, 7):
+        s.var_from_event(VR_DEBUG_X, PLAYER, 1)
+        s.var_from_event(VR_DEBUG_Y, PLAYER, 2)
+        s.msg_options(MSG_TOP)
+        # Built from the constants rather than typed: the first version had
+        # the world's variable written out as \\v[1] when it is six, so the
+        # readout confidently reported the wrong world.
+        s.msg(f"x \\v[{VR_DEBUG_X}]   y \\v[{VR_DEBUG_Y}]", "",
+              f"world \\v[{VR_WORLD}]")
+        s.msg_options(MSG_BOTTOM)
+        s.var(VR_DEBUG_KEY, 0)
+    return CommonEvent(CE_DEBUG, "where am i", TRIGGER_PARALLEL, None, s)
+
+
 def atmosphere_watch(worlds) -> CommonEvent:
     """Footsteps, and the tremor some worlds never stop having.
 
@@ -591,4 +626,5 @@ def build(worlds) -> list[CommonEvent]:
         wake(worlds),
         diary_key(),
         atmosphere_watch(worlds),
+        debug_readout(worlds),
     ]

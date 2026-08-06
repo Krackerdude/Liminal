@@ -237,10 +237,16 @@ def build(key: str):
         # The tile you arrive on, kept clear in every room.  Two of them
         # buried it -- one under a crossing channel and one behind a wall --
         # and a hidden room you cannot stand up in is not a hidden room.
+        # Only the row the player actually lands on.  Clearing two rows also
+        # cleared the bottom of the way out, so the exit object lost its foot
+        # and the tile in front of it stopped being part of the object.
+        from ..maps import EMPTY_UPPER
         for ax in (8, 9, 10):
             m.set_lower(ax, m.height - 4, t["ground"])
-            m.set_lower(ax, m.height - 5, t["ground"])
-        world.landmarks = {"out": [(9, m.height - 5)], "prize": [(15, 5)],
+            # and nothing standing on it either: the cable duct had a tray
+            # over its own arrival square
+            m.set_upper(ax, m.height - 4, EMPTY_UPPER)
+        world.landmarks = {"out": [(9, m.height - 7)], "prize": [(15, 5)],
                            "npc": [(5, 6)]}
         world.spawn = (9, m.height - 4)
         world.npcs = []
@@ -286,7 +292,7 @@ def _cave1(m, t, cs, rng, gen) -> None:
         m.set_lower(x, 8, t["pool_2"])
     gen.stamp(m, cs.obj("boulder"), 14, 4)
     gen.stamp(m, cs.obj("column"), 16, 2, overlap=True)
-    gen.stamp(m, cs.obj("mouth"), 9, m.height - 6, overlap=True)
+    gen.stamp(m, cs.obj("mouth"), 9, m.height - 7, overlap=True)
 
 
 def _cave2(m, t, cs, rng, gen) -> None:
@@ -298,7 +304,7 @@ def _cave2(m, t, cs, rng, gen) -> None:
         for y in range(9, 12):
             m.set_lower(x, y, t["path"])
     gen.stamp(m, cs.obj("boulder_small"), 3, 10)
-    gen.stamp(m, cs.obj("mouth"), 9, m.height - 6, overlap=True)
+    gen.stamp(m, cs.obj("mouth"), 9, m.height - 7, overlap=True)
 
 
 def _cave3(m, t, cs, rng, gen) -> None:
@@ -317,7 +323,7 @@ def _cave3(m, t, cs, rng, gen) -> None:
     # Standing at the head of the clean patch, facing it.  Whoever sat here
     # sat looking at this.
     gen.stamp(m, cs.obj("gate_purgatory"), 9, 3)
-    gen.stamp(m, cs.obj("mouth"), 9, m.height - 6, overlap=True)
+    gen.stamp(m, cs.obj("mouth"), 9, m.height - 7, overlap=True)
 
 
 def _cave4(m, t, cs, rng, gen) -> None:
@@ -338,7 +344,7 @@ def _cave4(m, t, cs, rng, gen) -> None:
     # dead centre, because in a space this regular the middle is the only
     # place anything can be.
     gen.stamp(m, cs.obj("gate_hell"), 9, 5)
-    gen.stamp(m, cs.obj("mouth"), 9, m.height - 6, overlap=True)
+    gen.stamp(m, cs.obj("mouth"), 9, m.height - 7, overlap=True)
 
 
 def _under1(m, t, cs, rng, gen) -> None:
@@ -360,7 +366,7 @@ def _under1(m, t, cs, rng, gen) -> None:
         for y in range(3, 6):
             m.set_lower(x, y, t["ground"])
     gen.stamp(m, cs.obj("gate_caustic"), 9, 3)
-    gen.stamp(m, cs.obj("ladder"), 9, m.height - 6, overlap=True)
+    gen.stamp(m, cs.obj("ladder"), 9, m.height - 7, overlap=True)
 
 
 def _under2(m, t, cs, rng, gen) -> None:
@@ -371,7 +377,7 @@ def _under2(m, t, cs, rng, gen) -> None:
         m.set_lower(x, m.height - 3, t["ground_b"])
     for x in range(3, 8):
         m.set_lower(x, 3, t["ground"])              # a step down at the far end
-    gen.stamp(m, cs.obj("ladder"), 9, m.height - 6, overlap=True)
+    gen.stamp(m, cs.obj("ladder"), 9, m.height - 7, overlap=True)
 
 
 def _under3(m, t, cs, rng, gen) -> None:
@@ -382,7 +388,7 @@ def _under3(m, t, cs, rng, gen) -> None:
         m.set_lower(x, 8, t["dry"])
     for n, bx in enumerate((4, 6, 14, 16)):         # stacked against the wall
         gen.stamp(m, cs.obj("boulder_small"), bx, 4 if n % 2 else 10)
-    gen.stamp(m, cs.obj("ladder"), 9, m.height - 6, overlap=True)
+    gen.stamp(m, cs.obj("ladder"), 9, m.height - 7, overlap=True)
 
 
 def _under4(m, t, cs, rng, gen) -> None:
@@ -391,7 +397,7 @@ def _under4(m, t, cs, rng, gen) -> None:
     for y in (4, m.height - 5):                     # trays on both walls
         for x in range(4, m.width - 6, 3):
             gen.stamp(m, cs.obj("cable"), x, y, overlap=True)
-    gen.stamp(m, cs.obj("ladder"), 9, m.height - 6, overlap=True)
+    gen.stamp(m, cs.obj("ladder"), 9, m.height - 7, overlap=True)
 
 
 def _room_shell(m, t) -> None:
@@ -423,7 +429,7 @@ def _box1(m, t, cs, rng, gen) -> None:
         gen.stamp(m, cs.obj("levers"), lx, 6)
     gen.stamp(m, cs.obj("board"), 15, 3, overlap=True)
     gen.stamp(m, cs.obj("desk"), 3, 3)
-    gen.stamp(m, cs.obj("way_out"), 9, m.height - 6, overlap=True)
+    gen.stamp(m, cs.obj("way_out"), 9, m.height - 7, overlap=True)
 
 
 def _box2(m, t, cs, rng, gen) -> None:
@@ -442,7 +448,7 @@ def _box2(m, t, cs, rng, gen) -> None:
         for y in range(3, m.height - 3):
             m.set_lower(x, y, t["stone"])
     gen.stamp(m, cs.obj("crate"), 9, 4)
-    gen.stamp(m, cs.obj("way_out"), 9, m.height - 6, overlap=True)
+    gen.stamp(m, cs.obj("way_out"), 9, m.height - 7, overlap=True)
 
 
 def _box3(m, t, cs, rng, gen) -> None:
@@ -456,7 +462,7 @@ def _box3(m, t, cs, rng, gen) -> None:
         gen.stamp(m, cs.obj("fence"), fx, 8, overlap=True)
     gen.stamp(m, cs.obj("rack"), 3, 3)
     gen.stamp(m, cs.obj("machine"), 15, 3)
-    gen.stamp(m, cs.obj("way_out"), 9, m.height - 6, overlap=True)
+    gen.stamp(m, cs.obj("way_out"), 9, m.height - 7, overlap=True)
 
 
 def _box4(m, t, cs, rng, gen) -> None:
@@ -471,7 +477,7 @@ def _box4(m, t, cs, rng, gen) -> None:
     gen.stamp(m, cs.obj("desk"), 8, 7)
     gen.stamp(m, cs.obj("board"), 3, 3, overlap=True)
     gen.stamp(m, cs.obj("rack"), 15, 6)
-    gen.stamp(m, cs.obj("way_out"), 9, m.height - 6, overlap=True)
+    gen.stamp(m, cs.obj("way_out"), 9, m.height - 7, overlap=True)
 
 
 def _prem1(m, t, cs, rng, gen) -> None:
@@ -483,7 +489,7 @@ def _prem1(m, t, cs, rng, gen) -> None:
     for y in range(3, m.height - 3):                # the aisle
         for x in range(9, 12):
             m.set_lower(x, y, t["stone"])
-    gen.stamp(m, cs.obj("way_out"), 9, m.height - 6, overlap=True)
+    gen.stamp(m, cs.obj("way_out"), 9, m.height - 7, overlap=True)
 
 
 def _prem2(m, t, cs, rng, gen) -> None:
@@ -502,7 +508,7 @@ def _prem2(m, t, cs, rng, gen) -> None:
         for x in range(10, 14):
             m.set_lower(x, y, t["stone"])
     gen.stamp(m, cs.obj("gate_lobotomy"), 11, 4)
-    gen.stamp(m, cs.obj("way_out"), 9, m.height - 6, overlap=True)
+    gen.stamp(m, cs.obj("way_out"), 9, m.height - 7, overlap=True)
 
 
 def _prem3(m, t, cs, rng, gen) -> None:
@@ -513,7 +519,7 @@ def _prem3(m, t, cs, rng, gen) -> None:
             gen.stamp(m, cs.obj("rack"), rx, ry)
     for x in range(3, m.width - 3):                 # the picking aisle
         m.set_lower(x, 7, t["stone"])
-    gen.stamp(m, cs.obj("way_out"), 9, m.height - 6, overlap=True)
+    gen.stamp(m, cs.obj("way_out"), 9, m.height - 7, overlap=True)
 
 
 def _prem4(m, t, cs, rng, gen) -> None:
@@ -528,7 +534,7 @@ def _prem4(m, t, cs, rng, gen) -> None:
     gen.stamp(m, cs.obj("transmitter"), 6, 3)
     gen.stamp(m, cs.obj("rack"), 12, 3)
     gen.stamp(m, cs.obj("desk"), 11, 9)
-    gen.stamp(m, cs.obj("way_out"), 9, m.height - 6, overlap=True)
+    gen.stamp(m, cs.obj("way_out"), 9, m.height - 7, overlap=True)
 
 
 LAYOUTS = {
@@ -585,8 +591,13 @@ def events(world, worlds: dict) -> None:
     m.add_event("arrive", 0, 0, [_arrival_event(world)])
 
     home = worlds[CHANNELS[area.channel]]
+    # On the *bottom row of the exit object itself*, which is the tile the
+    # player is facing when they stand on the arrival square.  It used to go
+    # three rows below the object's top, which in a fifteen-row map is inside
+    # the wall -- so every hidden room in the game was a room you could not
+    # leave.
     ox, oy = world.landmarks["out"][0]
-    _place(world, "the way out", ox + 1, oy + 3,
+    _place(world, "the way out", ox, oy + 2,
            [_door(home.map_id, *home.spawn, sound="StepStone",
                   leaving=world.key, entering=home.key)])
 

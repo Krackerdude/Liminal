@@ -14,7 +14,7 @@ from __future__ import annotations
 
 from . import kin
 from .dreamer import Dreamer, dreamer_block
-from .canvas import Canvas
+from .canvas import Canvas, TRANSPARENT
 from .charsets import (Body, creature_block, gleam_block, draw_block_cat, draw_cloud_ladder,
                        draw_cone, draw_floating_eye, draw_long_bird,
                        draw_mailbox, draw_pawn, draw_seedling, draw_shade,
@@ -109,6 +109,35 @@ PLAYER_SLOTS_B = [
 # The last one is the only one that damages the picture, and it damages it the
 # way a transmitter does: whole rows displaced sideways, not pixels scattered.
 
+# --- the two that were built wrong --------------------------------------------
+# Everybody else in the game keeps the drawing they were given.  These two do
+# not, for two different reasons.
+#
+# **The commuter** was drawn on the old generic body — the one that predates
+# the player sprite entirely — so standing next to the player they read as
+# being from another game.  They are still the commuter: their own colours,
+# their own cap, their own bag.  What changed is that they are built like a
+# person in this game is built.
+#
+# **The effect pickup** pointed at a charset called ``Objects`` that the build
+# has never once produced.  A missing charset does not draw nothing; the
+# engine draws a blank figure, so the thing that hands the player every effect
+# in the game was a white silhouette in all fourteen worlds.  It is a person
+# now, and deliberately a *pale* one — whoever leaves these things lying about
+# is barely there.
+REBUILT: dict[str, Dreamer] = {
+    "commuter": Dreamer(skin=(226, 194, 168), hair=(72, 62, 58),
+                        shirt=(96, 116, 92), trousers=(58, 56, 66),
+                        shoe=(42, 40, 48), carry="can",
+                        feature="wide_hat", feature_color=(120, 128, 104)),
+}
+
+GIVER = Dreamer(skin=(226, 224, 232), hair=(158, 156, 172),
+                shirt=(196, 194, 206), trousers=(136, 134, 150),
+                shoe=(104, 102, 118), translucent=True,
+                glow=(232, 226, 214), feature_color=(226, 224, 232))
+
+
 RECEPTIONS = ("faces", "faces2", "faces3", "faces4")
 CHANNEL_SUFFIX = {"faces": "", "faces2": "_g", "faces3": "_y", "faces4": "_r"}
 
@@ -161,10 +190,18 @@ def _tune(cell: Canvas, channel: str, facing: int, frame: int) -> None:
             cell.px[row] = np.roll(cell.px[row], shift, axis=0)
 
 
-def _received(draw, channel: str):
+def _received(draw, channel: str, name: str = ""):
     """One design, as it comes through on one channel."""
+    from .dreamer import dreamer_cell
+
+    rebuilt = REBUILT.get(name)
+
     def render(cell: Canvas, facing: int, frame: int) -> None:
-        draw(cell, facing, frame)
+        if rebuilt is not None:
+            cell.paste(dreamer_cell(rebuilt, facing, frame), 0, 0,
+                       mask=TRANSPARENT)
+        else:
+            draw(cell, facing, frame)
         _tune(cell, channel, facing, frame)
     return render
 
@@ -177,7 +214,7 @@ GROVE_SHEETS: dict[str, list[tuple[str, object]]] = {}
 GROVE_CAST: dict[str, list[str]] = {}
 for _channel in RECEPTIONS:
     _suffix = CHANNEL_SUFFIX[_channel]
-    _entries = [(f"{_base}{_suffix}", _received(_draw, _channel))
+    _entries = [(f"{_base}{_suffix}", _received(_draw, _channel, _base))
                 for _base, _draw in GROVE_ROSTER.items()]
     GROVE_CAST[_channel] = [name for name, _ in _entries]
     # eight to a sheet, so sixteen designs is two sheets per channel
@@ -440,11 +477,18 @@ def _sheets() -> dict[str, list[tuple[str, object]]]:
     written in.
     """
     out = dict(CAST)
-    out.update(GROVE_SHEETS)
     for world, entries in EXTRA.items():
         out[f"Kin{world.title()}"] = list(entries)
     for world, designs in BESPOKE.items():
         out[f"Kin{world.title()}"] = list(designs.items())
+    # The grove's sheets go on last and win outright.  ``slot_of`` resolves a
+    # design name by searching the sheets in order, and the four channels were
+    # *also* still listed under KinFaces from before the roster existed -- so
+    # every unsuffixed grove name (which is all of channel one) resolved to the
+    # stale sheet, and edits to the real one changed nothing on screen.
+    for stale in [k for k in out if k.startswith("KinFaces")]:
+        del out[stale]
+    out.update(GROVE_SHEETS)
     return out
 
 
@@ -467,6 +511,9 @@ def build_sheets() -> dict[str, Canvas]:
     # attached to.  An explicitly empty sheet is the only way to mean "no
     # graphic" and be believed.
     out["Blank"] = sheet([])
+    # The charset every effect pickup in the game asks for, and which has
+    # never existed.  One slot is all it needs.
+    out["Objects"] = sheet([dreamer_block(GIVER)])
     # every interactable in the game wears this
     out["Gleam"] = gleam_block()
     # The player is the author's own artwork, transcribed out of the reference

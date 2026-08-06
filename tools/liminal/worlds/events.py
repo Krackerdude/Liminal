@@ -98,8 +98,15 @@ def _carriageway(world: World) -> set[int]:
     return _PAVED[world.key]
 
 
-def _free_tile(world: World, x: int, y: int, *, radius: int = 6) -> tuple[int, int]:
+def _free_tile(world: World, x: int, y: int, *, radius: int = 1) -> tuple[int, int]:
     """Nudge a placement off any tile it has no business standing on.
+
+    The nudge is **one tile**, and that is the whole point of it.  It used to
+    search out to six, which meant an event whose intended tile was occupied
+    could end up most of a room away from the thing it belonged to — the
+    prompt for the bed turned up underneath the bed, and a player pressing the
+    action key in an empty corner got a line about furniture.  An event that
+    cannot be placed beside its object is better dropped than moved.
 
     Two things disqualify a tile.  Another event is already there — two events
     sharing a tile is legal, and the engine will happily run one of them
@@ -127,8 +134,8 @@ def _free_tile(world: World, x: int, y: int, *, radius: int = 6) -> tuple[int, i
                 spot = ((x + dx) % m.width, (y + dy) % m.height)
                 if free(spot):
                     return spot
-    # nothing clear within reach: take any tile no other event is on, so a
-    # crowded corner loses its road check rather than losing its event
+    # nothing clear within reach: take any adjacent tile no other event is on,
+    # so a crowded corner loses its road check rather than losing its event
     for step in range(1, radius + 1):
         for dy in range(-step, step + 1):
             for dx in range(-step, step + 1):
@@ -832,6 +839,9 @@ def dream_events(world: World, worlds: dict[str, World],
         zones = list(getattr(world.plan, "zones", []) or [])
         base = SW_INTERACT_BASE + _interact_next[0]
         designs = WORLD_CAST.get(key, [])
+        from . import gen
+
+        art = system.art if system.art in world.chipset.objects else ""
         for n in range(system.count):
             # across *all* zones, not the occupied third: the verb has to be
             # in the empty rooms too, or the empty rooms hold nothing
@@ -839,6 +849,31 @@ def dream_events(world: World, worlds: dict[str, World],
                 ix, iy = _near(world, zones[n % len(zones)], rng)
             else:
                 ix, iy = world.spot(rng, pad=2)
+
+            # The thing itself, put down before the event that talks about it.
+            # A verb whose object is never drawn gives the world sixteen
+            # prompts describing furniture that does not exist — the grove had
+            # sixteen telephones in it and not one telephone.  If the object
+            # will not fit here, this interactable simply does not happen.
+            if art:
+                grid = world.chipset.obj(art)
+                # Three tries before giving up on this one.  A single attempt
+                # lost ten of the grove's sixteen to whatever happened to be
+                # standing there, and a verb that only appears six times in a
+                # world this size is not a verb.
+                for attempt in range(3):
+                    ox, oy = ix - grid.cols // 2, iy - grid.rows
+                    if gen.stamp(world.map, grid, ox, oy, pad=1):
+                        break
+                    if zones:
+                        ix, iy = _near(world, zones[(n + attempt * 5)
+                                                    % len(zones)], rng)
+                    else:
+                        ix, iy = world.spot(rng, pad=2)
+                else:
+                    continue
+                # and the event goes on the tile in front of its own face
+                ix, iy = ox + grid.cols // 2, oy + grid.rows
             switch = base + n
             live = system.live and n % system.live == 0
 

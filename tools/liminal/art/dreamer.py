@@ -101,6 +101,49 @@ def _source(facing: int, frame: int) -> Canvas:
     return cell
 
 
+# The reference's own palette, sorted by what each colour *is*, read off the
+# artwork by printing the down-facing idle cell as a letter map.  It exists so
+# that a character who is meant to be built like the player can be built like
+# the player instead of approximated.
+SOURCE = {
+    "skin_hot": (231, 163, 144), "skin_lit": (212, 192, 156),
+    "skin_mid": (195, 156, 134), "skin_deep": (62, 17, 28),
+    "hair_lit": (71, 69, 87), "hair_mid": (60, 56, 73),
+    "hair_shade": (54, 49, 65),
+    "brow_lit": (95, 55, 40), "brow_mid": (84, 37, 27),
+    "shirt_lit": (14, 134, 193), "shirt_mid": (11, 104, 149),
+    "shirt_shade": (3, 83, 122),
+    "trouser_mid": (9, 47, 81), "trouser_shade": (6, 27, 46),
+    "shoe_lit": (49, 16, 103), "shoe_mid": (48, 8, 87),
+    "shoe_shade": (23, 6, 79),
+}
+
+
+def _recolour(skin, hair, shirt, trousers, shoe) -> dict:
+    """Five base colours, each expanded through the shared material ramp."""
+    from .material import Material
+
+    table = {}
+    groups = ((skin, ("skin_hot", "skin_lit", "skin_mid", "skin_deep")),
+              (hair, ("hair_lit", "hair_mid", "hair_shade")),
+              (shirt, ("shirt_lit", "shirt_mid", "shirt_shade")),
+              (trousers, ("trouser_mid", "trouser_shade")),
+              (shoe, ("shoe_lit", "shoe_mid", "shoe_shade")))
+    for base, keys in groups:
+        if not base:
+            continue
+        m = Material("part", base)
+        ramp = {"hot": m.hot, "lit": m.lit, "mid": m.mid, "shade": m.shade,
+                "deep": m.deep}
+        for key in keys:
+            table[SOURCE[key]] = ramp[key.rsplit("_", 1)[1]]
+    if hair:
+        m = Material("hair", hair)
+        table[SOURCE["brow_lit"]] = blend(m.mid, (156, 78, 46), 0.5)
+        table[SOURCE["brow_mid"]] = blend(m.shade, (132, 56, 34), 0.5)
+    return table
+
+
 @dataclass
 class Dreamer:
     """One of the thirteen selves.
@@ -114,6 +157,19 @@ class Dreamer:
     carry: str = ""
     feature: str = ""
     feature_color: RGB = (198, 190, 176)
+    skin: RGB | None = None
+    hair: RGB | None = None
+    shirt: RGB | None = None
+    trousers: RGB | None = None
+    shoe: RGB | None = None
+
+    @property
+    def palette(self) -> dict:
+        if not any((self.skin, self.hair, self.shirt, self.trousers,
+                    self.shoe)):
+            return {}
+        return _recolour(self.skin, self.hair, self.shirt, self.trousers,
+                         self.shoe)
 
 
 # --- what an effect adds -----------------------------------------------------
@@ -193,7 +249,13 @@ def dreamer_cell(spec: Dreamer, facing: int, frame: int) -> Canvas:
             halo = Canvas(CELL_W, CELL_H, TRANSPARENT)
             halo.blob(CX, 16, radius, blend(spec.glow, (255, 255, 255), amount))
             cell.paste(halo, 0, 0, mask=TRANSPARENT)
-    cell.paste(_source(facing, frame), 0, 0, mask=TRANSPARENT)
+    art = _source(facing, frame)
+    table = spec.palette
+    if table:
+        art = art.copy()
+        for old, new in table.items():
+            art.px[np.all(art.px == np.array(old, np.uint8), axis=-1)] = new
+    cell.paste(art, 0, 0, mask=TRANSPARENT)
 
     _feature(cell, spec, facing)
     _carried(cell, spec, facing, frame)

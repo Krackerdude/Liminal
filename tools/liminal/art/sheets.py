@@ -327,9 +327,14 @@ def _wall_face(mats: dict, side: str, low: bool = False) -> Canvas:
             mt.seam(art, 0, 2, TILE, 3, pl.hot, pl.lit)
             mt.plane(art, 0, 5, TILE, 11, pl.lit)
     elif side == "s":
-        mt.plane(art, 0, 0, TILE, 4, pl.shade)     # the floor join, in shadow
-        mt.seam(art, 0, 4, TILE, 3, pl.shade, pl.mid)
-        mt.plane(art, 0, 7, TILE, 9, pl.mid)
+        if low:
+            mt.plane(art, 0, 0, TILE, 11, pl.mid)
+            mt.seam(art, 0, 11, TILE, 3, pl.mid, pl.lit)
+            mt.plane(art, 0, 14, TILE, 2, pl.lit)
+        else:
+            mt.plane(art, 0, 0, TILE, 4, pl.shade)  # the floor join, in shadow
+            mt.seam(art, 0, 4, TILE, 3, pl.shade, pl.mid)
+            mt.plane(art, 0, 7, TILE, 9, pl.mid)
     elif side == "w":                              # faces east: lit
         mt.plane(art, 0, 0, 4, TILE, pl.shade)
         mt.seam(art, 4, 0, 3, TILE, pl.shade, pl.mid, vertical=True)
@@ -638,6 +643,239 @@ def build_room() -> ChipsetBuild:
     _animate(cb, pal, "room")
     _decals(cb, pal, "room", floor)
     return _finish(cb, floor)
+
+
+def build_hall() -> ChipsetBuild:
+    """The corridor outside the room, and every floor of the building.
+
+    One chipset for the whole block.  A building whose floors are each drawn
+    from their own art is a set of unrelated rooms with a number written on
+    them; a building whose floors are the same corridor in different light is
+    a building.  What changes between floors is the grading, the fittings that
+    have survived, and how much of the light still works.
+
+    The materials are the room's own — the same plaster, the same section
+    through a wall — because you are meant to walk out of your own door and
+    recognise the substance of the place.  What is different is the floor:
+    the flat has boards and the corridor has contract tile, which is the
+    cheapest possible way to say that one of them is yours.
+    """
+    pal = PALETTES["room"]
+    cb = ChipsetBuilder("hall", pal)
+    mats = _room_materials()
+    PLASTER, CORE = mats["plaster"], mats["core"]
+    WOOD, METAL = mats["wood"], mats["metal"]
+    LAMP, LEAF = mats["lamp"], mats["leaf"]
+    SKY = mats["sky"]
+
+    TILEFLOOR = mt.Material("tilefloor", (84, 80, 88))
+    CARPET = mt.Material("carpet", (86, 58, 62))
+
+    # --- the floor: contract tile, laid in a grid, with the grout a value
+    # down.  Institutional on purpose.
+    def _lino(shift: int) -> Canvas:
+        art = Canvas(TILE, TILE, TILEFLOOR.mid)
+        mt.tiles(art, 0, 0, TILE, TILE, TILEFLOOR, size=8)
+        if shift:
+            mt.seam(art, 0, shift, TILE, 3, TILEFLOOR.mid, TILEFLOOR.shade)
+        return art
+
+    lino = _lino(0)
+    cb.add("ground", lino)
+    cb.add("ground_b", _lino(6))
+    cb.add("path", _lino(11))
+    cb.add("void", ct.flat(mats["skin"].deep), passable=False)
+    cb.add("black", ct.flat((0, 0, 0)), passable=False)
+
+    # the runner down the middle of it, which is the only soft thing here
+    runner = Canvas(TILE, TILE, CARPET.mid)
+    mt.weave(runner, 0, 0, TILE, TILE, CARPET, pitch=4)
+    cb.add("runner", runner)
+    runner_w = runner.copy()
+    mt.plane(runner_w, 0, 0, 2, TILE, CARPET.shade)
+    cb.add("runner_w", runner_w)
+    runner_e = runner.copy()
+    mt.plane(runner_e, TILE - 2, 0, 2, TILE, CARPET.shade)
+    cb.add("runner_e", runner_e)
+
+    # --- the walls, in section, exactly as the room's are
+    for side in ("n", "s", "w", "e"):
+        cb.add(f"cut_{side}", _wall_cut(mats, side), passable=False)
+        cb.add(f"face_{side}", _wall_face(mats, side), passable=False)
+    cb.add("face_n_low", _wall_face(mats, "n", low=True), passable=False)
+    cb.add("face_s_low", _wall_face(mats, "s", low=True), passable=False)
+
+    # --- a flat's front door.  Everything about it says somebody lives here
+    # and nothing about it opens: five panels, a spyhole, a number plate and
+    # a mat that has not been shaken out.
+    def _flat_door(number: bool) -> Canvas:
+        art = ct._canvas(2, 2)
+        mt.plane(art, 0, 0, 32, 32, WOOD.deep)              # the architrave
+        mt.plane(art, 0, 0, 32, 2, WOOD.shade)
+        mt.plane(art, 2, 2, 28, 30, WOOD.shade)             # the reveal
+        mt.plane(art, 4, 3, 24, 29, WOOD.mid)               # the leaf
+        mt.plane(art, 4, 3, 24, 2, WOOD.lit)
+        for py, ph in ((6, 8), (16, 6), (24, 6)):
+            mt.plane(art, 7, py, 18, ph, WOOD.shade)
+            mt.plane(art, 8, py + 1, 16, ph - 2, WOOD.mid)
+            art.hline(py, 7, 24, WOOD.deep)
+            art.hline(py + ph - 1, 7, 24, WOOD.lit)
+        art.blob(16, 5, 1.4, METAL.deep)                    # the spyhole
+        art.blob(24, 15, 1.8, METAL.lit)                    # the handle
+        if number:
+            mt.plane(art, 12, 1, 8, 4, METAL.shade)         # the number plate
+            mt.plane(art, 12, 1, 8, 1, METAL.lit)
+        return art
+
+    cb.add_object("flat_door", _flat_door(True), solid="all")
+    cb.add_object("flat_door_plain", _flat_door(False), solid="all")
+
+    # --- the lift.  It has a call button and an indicator and it is not
+    # coming; the indicator is the joke and it is only told once.
+    lift = ct._canvas(2, 2)
+    mt.plane(lift, 0, 0, 32, 32, METAL.deep)
+    mt.plane(lift, 1, 1, 30, 30, METAL.shade)
+    mt.plane(lift, 3, 4, 26, 27, METAL.mid)                 # the two leaves
+    mt.plane(lift, 3, 4, 26, 2, METAL.lit)
+    lift.vline(15, 4, 30, METAL.deep)
+    lift.vline(16, 4, 30, METAL.lit)
+    for gy in range(8, 30, 4):                              # brushed steel
+        lift.hline(gy, 4, 28, METAL.shade)
+    mt.plane(lift, 11, 0, 10, 4, METAL.deep)                # the indicator
+    mt.plane(lift, 12, 1, 8, 2, LAMP.shade)
+    lift.blob(29, 17, 1.6, LAMP.mid)                        # the call button
+    cb.add_object("lift", lift, solid="all")
+
+    # --- the stairs.  Two attempts at this were unreadable and both failed
+    # the same way: a flight seventeen pixels wide with a tread every six is,
+    # from directly above, a ladder — and two of them side by side with a
+    # well between is two ladders.  A staircase reads at this size only when
+    # the treads run the *full* width of the object, so there is one flight
+    # per end of the corridor: up at the west, down at the east.
+    def _flight(rising: bool) -> Canvas:
+        art = ct._canvas(3, 4)
+        w, h = 48, 64
+        mt.plane(art, 0, 0, w, h, CORE.deep)
+        mt.plane(art, 0, 0, 4, h, CORE.shade)           # the shaft walls
+        mt.plane(art, w - 4, 0, 4, h, CORE.deep)
+        treads = list(range(6, h - 8, 6))
+        for index, ty in enumerate(treads):
+            # the far end of a rising flight is in light and of a falling one
+            # in shadow: that is the only thing telling you which it is
+            t_ = 1 - index / max(1, len(treads) - 1)
+            level = t_ if rising else 1 - t_
+            tread = (PLASTER.lit if level > 0.66 else
+                     PLASTER.mid if level > 0.33 else PLASTER.shade)
+            nose = (PLASTER.hot if level > 0.66 else
+                    PLASTER.lit if level > 0.33 else PLASTER.mid)
+            mt.plane(art, 4, ty, w - 8, 6, tread)
+            art.hline(ty, 4, w - 5, nose)               # the nosing
+            art.hline(ty + 5, 4, w - 5, PLASTER.deep)   # the riser under it
+        # where the flight goes: out of sight either way, but light one way
+        mt.plane(art, 4, 0, w - 8, 6, PLASTER.hot if rising else (12, 12, 18))
+        if rising:
+            mt.seam(art, 4, 4, w - 8, 3, PLASTER.hot, PLASTER.lit)
+        # the landing at the corridor end, which is what you step onto
+        mt.plane(art, 0, h - 8, w, 8, PLASTER.mid)
+        mt.plane(art, 0, h - 8, w, 2, PLASTER.lit)
+        mt.seam(art, 0, h - 4, w, 4, PLASTER.mid, PLASTER.shade)
+        # handrails down both sides, over everything
+        for hx in (5, w - 7):
+            art.vline(hx, 2, h - 9, METAL.mid)
+            art.vline(hx + 1, 2, h - 9, METAL.shade)
+        for hy in range(4, h - 10, 7):
+            art.rect(6, hy, 1, 4, METAL.deep)
+            art.rect(w - 8, hy, 1, 4, METAL.deep)
+        return art
+
+    cb.add_object("stair_up", _flight(True), solid="all")
+    cb.add_object("stair_down", _flight(False), solid="all")
+
+    # --- the fittings that survive in a corridor
+    radiator = ct._canvas(1, 1)
+    mt.plane(radiator, 1, 4, 14, 11, METAL.shade)
+    mt.plane(radiator, 1, 4, 14, 2, METAL.lit)
+    for rx in range(2, 15, 2):
+        radiator.vline(rx, 6, 13, METAL.mid)
+    cb.add_object("radiator", radiator, solid="all")
+
+    # A bracket and a shade.  Small and square it read as a notice screwed to
+    # the wall; it needs the bracket above it and a wider shade below to be a
+    # light at all at this size.
+    sconce = ct._canvas(1, 2)
+    mt.plane(sconce, 6, 2, 4, 5, METAL.shade)               # the bracket
+    mt.plane(sconce, 6, 2, 2, 5, METAL.mid)
+    mt.plane(sconce, 2, 7, 12, 8, LAMP.mid)                 # the shade
+    mt.plane(sconce, 3, 7, 10, 3, LAMP.hot)
+    mt.seam(sconce, 2, 13, 12, 2, LAMP.mid, LAMP.shade)
+    sconce.vline(2, 7, 14, LAMP.lit)
+    sconce.vline(13, 7, 14, LAMP.shade)
+    mt.plane(sconce, 4, 15, 8, 2, LAMP.shade)
+    cb.add_object("sconce", sconce, solid="none", upper=True, above=True)
+
+    sconce_dead = ct._canvas(1, 2)
+    mt.plane(sconce_dead, 6, 2, 4, 5, METAL.shade)
+    mt.plane(sconce_dead, 2, 7, 12, 8, METAL.shade)
+    mt.plane(sconce_dead, 3, 7, 10, 3, METAL.mid)
+    mt.plane(sconce_dead, 4, 15, 8, 2, METAL.deep)
+    cb.add_object("sconce_dead", sconce_dead, solid="none", upper=True,
+                  above=True)
+
+    dead = ct._canvas(1, 2)
+    POT = mt.Material("pot", (96, 88, 82))
+    DEAD = mt.Material("dead", (98, 90, 64))
+    mt.plane(dead, 3, 19, 10, 12, POT.mid)
+    mt.plane(dead, 3, 19, 10, 2, POT.lit)
+    mt.plane(dead, 4, 29, 8, 2, POT.deep)
+    for dx, dy in ((-4, 8), (-1, 12), (3, 9), (5, 5)):
+        dead.line(8, 19, 8 + dx, 19 - dy, DEAD.shade)
+        dead.dot(8 + dx, 19 - dy, DEAD.mid)
+    cb.add_object("dead_plant", dead, solid="all")
+
+    notice = ct._canvas(2, 2)
+    mt.plane(notice, 1, 2, 30, 26, WOOD.deep)
+    mt.plane(notice, 3, 4, 26, 22, mt.Material("cork", (108, 84, 62)).mid)
+    for nx, ny, nw, nh in ((5, 6, 9, 7), (17, 7, 9, 6), (7, 16, 11, 7),
+                           (20, 15, 6, 8)):
+        mt.plane(notice, nx, ny, nw, nh, PLASTER.lit)
+        mt.plane(notice, nx, ny, nw, 1, PLASTER.hot)
+        for ly in range(ny + 2, ny + nh - 1, 2):
+            notice.hline(ly, nx + 1, nx + nw - 2, PLASTER.shade)
+    cb.add_object("notice", notice, solid="all")
+
+    boxes = ct._canvas(3, 2)
+    mt.plane(boxes, 1, 2, 46, 26, METAL.shade)
+    mt.plane(boxes, 1, 2, 46, 2, METAL.lit)
+    for by in (5, 16):
+        for bx in range(3, 45, 8):
+            mt.plane(boxes, bx, by, 7, 10, METAL.mid)
+            mt.plane(boxes, bx, by, 7, 1, METAL.lit)
+            boxes.hline(by + 3, bx + 1, bx + 5, METAL.deep)   # the slot
+            boxes.dot(bx + 5, by + 7, LAMP.shade)             # the lock
+    cb.add_object("mailboxes", boxes, solid="all")
+
+    # --- the way out, which is not one.  Wired glass with nothing behind it:
+    # the street is not modelled, not dark, not anything.  There is no outside.
+    entrance = ct._canvas(3, 2)
+    mt.plane(entrance, 0, 0, 48, 32, METAL.deep)
+    mt.plane(entrance, 1, 1, 46, 30, METAL.shade)
+    for ox in (3, 25):
+        mt.plane(entrance, ox, 3, 20, 27, (6, 6, 10))
+        for gx in range(ox + 2, ox + 20, 4):                # the wire in it
+            entrance.vline(gx, 4, 28, (18, 18, 26))
+        for gy in range(6, 29, 4):
+            entrance.hline(gy, ox + 1, ox + 18, (18, 18, 26))
+        entrance.vline(ox, 3, 29, METAL.mid)
+        entrance.vline(ox + 19, 3, 29, METAL.deep)
+    mt.plane(entrance, 23, 1, 2, 30, METAL.mid)
+    for hy in range(13, 20):                                # the push bars
+        entrance.dot(19, hy, METAL.lit)
+        entrance.dot(28, hy, METAL.lit)
+    cb.add_object("entrance", entrance, solid="all")
+
+    _shadows(cb, pal)
+    _animate(cb, pal, "room")
+    return _finish(cb, lino)
 
 
 def build_balcony() -> ChipsetBuild:
@@ -1737,6 +1975,7 @@ def build_stars() -> ChipsetBuild:
 BUILDERS: dict[str, Callable[[], ChipsetBuild]] = {
     "room": build_room,
     "balcony": build_balcony,
+    "hall5": build_hall,
     "nexus": build_nexus,
     "pink": build_pink,
     "numbers": build_numbers,

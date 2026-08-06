@@ -43,7 +43,8 @@ from . import systems as sys
 from .cast_lookup import charset_slot
 from ..art.cast import WORLD_CAST
 from .layout import solid_ids
-from .worlds import DREAM_ORDER, POPULATION, WORLD_ORDER, World
+from .worlds import (BLOCK_ORDER, DREAM_ORDER, HOME_DOOR, HOME_FLOOR,
+                     POPULATION, WORLD_ORDER, World)
 
 # Interactables draw as the world's own door graphic at a small size, which
 # reads as "part of the architecture" rather than as an item lying about.
@@ -360,45 +361,11 @@ def room_events(world: World, worlds: dict[str, World]) -> None:
     desk.msg("there is nothing written on it.")
     _place(world, "desk", 3, 7, [Page(script=desk, trigger=TRIGGER_ACTION)])
 
-    # The room's door.  Every world has exactly one, and this is the only one
-    # in the game that does not lead anywhere — the way out of here is the bed.
-    # Nobody ever says so.
-    door = Script()
-    door.se("Wrong", volume=40)
-    door.msg("it does not open.")
-    _place(world, "door", 3, 3, [Page(script=door, trigger=TRIGGER_ACTION)])
-
-    # The rest of the room.  None of it does anything; all of it has been
-    # here longer than the player has, which is the only thing the room is
-    # trying to say.
-    shelf = Script()
-    shelf.msg("the spines have gone the colour of the wall.", "",
-              "you have read all of them",
-              "and you could not say what any of them were about.")
-    _place(world, "shelf", 14, 10, [Page(script=shelf, trigger=TRIGGER_ACTION)])
-
-    clock = Script()
-    with clock.if_var(VR_DREAM_DISTANCE, 1, 1):
-        clock.se("Watch", volume=34)
-        clock.msg("it is later than it was.", "",
-                  "it is always later than it was.")
-    with clock.if_var(VR_DREAM_DISTANCE, 0):
-        clock.msg("the hands have not moved since you looked.")
-    _place(world, "clock", 16, 3, [Page(script=clock, trigger=TRIGGER_ACTION)])
-
-    plant = Script()
-    plant.msg("it is doing better than it has any right to.", "",
-              "you do not remember watering it.")
-    _place(world, "plant", 6, 11, [Page(script=plant, trigger=TRIGGER_ACTION)])
-
-    lamp = Script()
-    lamp.msg("it is the only warm thing in here.")
-    _place(world, "lamp", 9, 5, [Page(script=lamp, trigger=TRIGGER_ACTION)])
-
-    slippers = Script()
-    slippers.msg("they are pointed at the bed.")
-    _place(world, "slippers", 8, 7,
-           [Page(script=slippers, trigger=TRIGGER_ACTION)])
+    # The flat's front door.  It used to be the one door in the game that
+    # went nowhere; there is a building on the other side of it now.
+    _place(world, "door", 3, 3,
+           [_door(worlds["hall4"].map_id, *worlds["hall4"].spawn,
+                  sound="Latch", leaving="room", entering="hall4")])
 
     stand = Script()
     stand.msg("a glass of water you do not remember pouring.")
@@ -444,6 +411,155 @@ def balcony_events(world: World, worlds: dict[str, World]) -> None:
     bucket = Script()
     bucket.msg("there is water in it.", "", "it has not rained.")
     _place(world, "bucket", 7, 11, [Page(script=bucket, trigger=TRIGGER_ACTION)])
+
+
+# --- the building -------------------------------------------------------------
+
+# What is written on the doors that do not open.  One line each, none of them
+# about the player, and the same door says the same thing on every floor —
+# which is how you find out there are only so many kinds of neighbour.
+BEHIND = (
+    ("a television, turned down.",),
+    ("nothing at all.",),
+    ("something being moved, slowly, across a floor.",),
+    ("two people who stop when you stop.",),
+    ("a tap running.",),
+    ("nothing. it has been nothing every time.",),
+    ("a chain on the inside.",),
+)
+
+# Going down, the corridor says less and means more by it.
+FLOOR_NOTE = {
+    0: ("the top floor.", "", "the ceiling is very close up here."),
+    1: (),
+    2: ("the third floor.", "", "one of these was yours once."),
+    3: ("the second floor.", "", "the carpet stops halfway along."),
+    4: ("the ground floor.", "", "it is much colder down here."),
+}
+
+
+def _locked(index: int) -> Script:
+    s = Script()
+    s.se("Latch", volume=38)
+    with s.if_else_switch(SW_EARS_ACTIVE) as arm:
+        with arm(True):
+            s.msg("it does not open.")
+        with arm(False):
+            s.msg("it does not open.")
+            s.wait(6)
+            s.msg("through it:", "", *BEHIND[index % len(BEHIND)])
+    return s
+
+
+def block_events(world: World, worlds: dict[str, World]) -> None:
+    """One floor of the apartment block.
+
+    Every door but two is locked, and the two are the stairs.  Nothing here
+    is a puzzle: the building is a real place that happens to have exactly
+    one thing you can do in it, and the point of the locked doors is that
+    somebody is behind each one.
+    """
+    m = world.map
+    depth = BLOCK_ORDER.index(world.key)
+    m.add_event("arrive", 0, 0, [_arrival_event(world)])
+
+    # the stairs.  Up is nearer the far wall, down nearer the near one, on
+    # every floor without exception.
+    if depth > 0:
+        above = worlds[BLOCK_ORDER[depth - 1]]
+        _place(world, "stair up", 4, 8,
+               [_door(above.map_id, 4, 9, sound="StepStone",
+                      leaving=world.key, entering=above.key)])
+    if world.key != "lobby":
+        below = worlds[BLOCK_ORDER[depth + 1]]
+        _place(world, "stair down", 15, 8,
+               [_door(below.map_id, 15, 9, sound="StepStone",
+                      leaving=world.key, entering=below.key)])
+
+    # the flats
+    index = 0
+    for side, row, front in (("north", 2, 4), ("south", 10, 9)):
+        for x, _ in world.landmarks.get(side, []):
+            if world.key == HOME_FLOOR and side == "north" and x == HOME_DOOR:
+                _place(world, "your door", x, front,
+                       [_door(worlds["room"].map_id, *worlds["room"].spawn,
+                              sound="Latch", leaving=world.key,
+                              entering="room")])
+            else:
+                _place(world, f"{side} {x}", x, front,
+                       [Page(script=_locked(index + depth),
+                             trigger=TRIGGER_ACTION)])
+            index += 1
+
+    lift = Script()
+    lift.se("Buzzer", volume=34)
+    lift.msg("the button lights.")
+    lift.wait(20)
+    lift.msg("the indicator does not change.")
+    with lift.if_var(VR_DREAM_DISTANCE, 2, 1):
+        lift.wait(10)
+        lift.msg("it has read the same floor since you moved in",
+                 "and you have never once wondered which one.")
+    _place(world, "the lift", 15, 9, [Page(script=lift, trigger=TRIGGER_ACTION)])
+
+    if world.key != "lobby":
+        board = Script()
+        board.msg("a board of notices behind glass.", "",
+                  "none of them are new",
+                  "and none of them are about anybody you know.")
+        _place(world, "the board", 3, 9,
+               [gleam(script=board, trigger=TRIGGER_ACTION)])
+
+    note = FLOOR_NOTE.get(depth)
+    if note:
+        landing = Script()
+        landing.msg(*note)
+        _place(world, "the landing", 4, 9,
+               [gleam(script=landing, trigger=TRIGGER_ACTION)])
+
+    if world.key == "lobby":
+        _lobby(world)
+
+
+def _lobby(world: World) -> None:
+    """The ground floor.  Same corridor, none of the light, and the only
+    door in the building that is meant to lead outside."""
+    out = Script()
+    out.se("Latch", volume=44)
+    out.msg("locked.")
+    out.wait(8)
+    out.msg("there is glass in it and nothing behind the glass.")
+    with out.if_var(VR_DREAM_DISTANCE, 4, 1):
+        out.wait(10)
+        out.se("Watch", volume=40)
+        out.msg("you have never been outside this building.", "",
+                "you have never once thought about that until now.")
+    _place(world, "the way out", 10, 9,
+           [Page(script=out, trigger=TRIGGER_ACTION)])
+
+    boxes = Script()
+    boxes.msg("a wall of little brass doors.", "",
+              "one of them has your number on it",
+              "and it has never had anything in it.")
+    _place(world, "the boxes", 8, 4,
+           [Page(script=boxes, trigger=TRIGGER_ACTION)])
+
+    notice = Script()
+    notice.msg("four notices, all of them curled.", "",
+               "the newest one is about the lift.")
+    with notice.if_var(VR_DREAM_DISTANCE, 3, 1):
+        notice.wait(8)
+        notice.msg("it is dated, and the date is wrong",
+                   "in a way you cannot put a number on.")
+    _place(world, "the notices", 13, 4,
+           [gleam(script=notice, trigger=TRIGGER_ACTION)])
+
+    dark = Script()
+    dark.se("Heartbeat", volume=30)
+    dark.msg("the last light down here is at the far end", "",
+             "and it is behind you.")
+    _place(world, "the dark", 16, 8,
+           [Page(script=dark, trigger=TRIGGER_ACTION)])
 
 
 # --- the nexus ---------------------------------------------------------------

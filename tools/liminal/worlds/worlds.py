@@ -72,6 +72,14 @@ class World:
 TINTS: dict[str, tuple[int, int, int, int]] = {
     "room": (104, 100, 94, 96),          # warm, slightly faded
     "balcony": (96, 98, 110, 84),        # night air, colder than indoors
+    # Down the block the light fails by degrees and the colour goes with it.
+    # The ground floor is not merely darker: it is the one floor where the
+    # grading stops pretending there is any light source at all.
+    "hall5": (88, 88, 104, 74),
+    "hall4": (92, 90, 104, 78),
+    "hall3": (84, 84, 100, 70),
+    "hall2": (74, 74, 92, 60),
+    "lobby": (58, 58, 76, 40),
     "nexus": (86, 88, 108, 78),          # cold, desaturated, low
     "pink": (110, 96, 102, 104),         # pushed towards its own pink
     "numbers": (96, 104, 102, 92),       # clinical
@@ -110,6 +118,8 @@ TINTS: dict[str, tuple[int, int, int, int]] = {
 OVERLAYS: dict[str, tuple[str, int]] = {
     "room": ("Grain", 88),
     "balcony": ("Grain", 84),
+    "hall5": ("Grain", 84), "hall4": ("Grain", 86), "hall3": ("Grain", 80),
+    "hall2": ("VignetteSoft", 72), "lobby": ("Vignette", 58),
     "nexus": ("Vignette", 62),
     "pink": ("HazePink", 90),
     "numbers": ("Grain", 92),
@@ -140,7 +150,9 @@ OVERLAYS: dict[str, tuple[str, int]] = {
 }
 
 MUSIC: dict[str, str] = {
-    "room": "Room", "balcony": "Room", "nexus": "Nexus", "pink": "Pink", "numbers": "Numbers",
+    "room": "Room", "balcony": "Room", "nexus": "Nexus",
+    "hall5": "Room", "hall4": "Room", "hall3": "Room", "hall2": "Deep",
+    "lobby": "Deep", "pink": "Pink", "numbers": "Numbers",
     "blocks": "Blocks", "stairs": "Stairs", "sand": "Sand", "faces": "Faces",
     "hands": "Hands", "checker": "Checker", "toys": "Toys", "neon": "Neon",
     "umbrellas": "Umbrellas", "stars": "Stars",
@@ -153,6 +165,9 @@ MUSIC: dict[str, str] = {
 TITLES: dict[str, str] = {
     "room": "the room",
     "balcony": "outside",
+    "hall5": "the fifth floor", "hall4": "the fourth floor",
+    "hall3": "the third floor", "hall2": "the second floor",
+    "lobby": "the ground floor",
     "nexus": "the doors",
     "pink": "brick",
     "numbers": "counting",
@@ -185,6 +200,7 @@ TITLES: dict[str, str] = {
 # meant to read as *emptied*, not as unfinished — and the room is yours.
 POPULATION: dict[str, int] = {
     "room": 0, "balcony": 0, "nexus": 3,
+    "hall5": 0, "hall4": 0, "hall3": 0, "hall2": 0, "lobby": 0,
     "pink": 20, "numbers": 20, "blocks": 16, "stairs": 0, "sand": 15,
     "faces": 19, "hands": 0, "checker": 17, "toys": 20, "neon": 20,
     "umbrellas": 16, "stars": 16,
@@ -219,7 +235,14 @@ MURAL_OF = {"neon2": "eye", "neon3": "spiral", "neon4": "mouth",
 # you the whole way to the bottom.
 ASCENT_ORDER = ["umbrellas2", "umbrellas3", "umbrellas4", "umbrellas5"]
 
-WORLD_ORDER = ["room", "balcony", "nexus", *DREAM_ORDER, *STAIR_FLOORS,
+
+# The apartment block.  Five floors of the same corridor: the flat is on the
+# fourth, there is one above it, two below, and then the ground floor, which
+# is the only one that is different and the only one you cannot leave from.
+BLOCK_ORDER = ["hall5", "hall4", "hall3", "hall2", "lobby"]
+HOME_FLOOR = "hall4"
+
+WORLD_ORDER = ["room", "balcony", *BLOCK_ORDER, "nexus", *DREAM_ORDER, *STAIR_FLOORS,
                *FACE_CHANNELS[1:], *MURAL_INSIDE_ORDER,
                *ASCENT_ORDER]
 
@@ -228,9 +251,19 @@ DEPTH = {"stairs": 0, "stairs2": 1, "stairs3": 2, "stairs4": 3, "stairs5": 4}
 
 
 def _new(key: str, map_id: int, width: int, height: int, *,
-         loop: bool = True) -> tuple[World, ChipsetBuild, random.Random]:
-    build = BUILDERS[key]()
-    chipset_id = WORLD_ORDER.index(key) + 1
+         loop: bool = True,
+         art: str | None = None) -> tuple[World, ChipsetBuild, random.Random]:
+    """A world, its chipset and its seeded generator.
+
+    ``art`` names a *different* world to take the chipset from, which is how
+    every floor of the apartment block shares one corridor sheet while still
+    being its own map with its own grading.  The stair floors did this by
+    building under the wrong key and then overwriting ``world.key``
+    afterwards; this says it out loud instead.
+    """
+    art = art or key
+    build = BUILDERS[art]()
+    chipset_id = WORLD_ORDER.index(art) + 1
     m = Map(width, height, chipset_id,
             scroll_type=SCROLL_BOTH if loop else SCROLL_NONE,
             fill=build.tiles["ground"])
@@ -405,6 +438,122 @@ def build_balcony(map_id: int) -> World:
     world.spawn = (10, 12)
     world.npcs = []
     return world
+
+
+# --- the building ------------------------------------------------------------
+
+# Where every fitting stands.  One table, used by all five floors, because a
+# corridor whose doors move between storeys is not a building — it is five
+# corridors.  Only the *state* of the fittings changes as you go down.
+NORTH_DOORS = (6, 9, 12)          # the flats on the far side
+SOUTH_DOORS = (6, 9, 13)          # and on the near side
+LIFT_AT = 15                      # which never comes
+HOME_DOOR = 9                     # the player's own, on the fourth floor
+
+
+def _corridor(m, t) -> None:
+    """One storey of the block, cut the same way the flat is.
+
+    Far wall on rows 1-3, near wall on rows 10-12, and a door fits in either
+    because both carry two rows of plaster.  A corridor with doors on only
+    one side is a service passage; a corridor with doors on both is somewhere
+    people live, and that is the whole difference the geometry has to carry.
+    """
+    m.fill_rect(0, 0, m.width, m.height, t["black"])
+    for x in range(1, m.width - 1):
+        m.set_lower(x, 1, t["cut_n"])
+        m.set_lower(x, 2, t["face_n"])
+        m.set_lower(x, 3, t["face_n_low"])
+        m.set_lower(x, 10, t["face_s"])
+        m.set_lower(x, 11, t["face_s_low"])
+        m.set_lower(x, 12, t["cut_s"])
+    for y in range(4, 10):
+        m.set_lower(1, y, t["cut_w"])
+        m.set_lower(2, y, t["face_w"])
+        m.set_lower(m.width - 3, y, t["face_e"])
+        m.set_lower(m.width - 2, y, t["cut_e"])
+        for x in range(3, m.width - 3):
+            key = ("ground_b" if (x * 5 + y * 3) % 9 == 0
+                   else "path" if (x * 3 + y * 7) % 13 == 0 else "ground")
+            m.set_lower(x, y, t[key])
+    for x in range(5, m.width - 3):             # the runner down the middle
+        m.set_lower(x, 6, t["runner_w"])
+        m.set_lower(x, 7, t["runner_e"])
+
+
+def _floor_of(key: str) -> int:
+    return BLOCK_ORDER.index(key)
+
+
+def _build_floor(key: str):
+    """One storey.  Everything shared is in ``_corridor``; this is what is
+    different about being on this particular one."""
+
+    def build(map_id: int) -> World:
+        world, cs, rng = _new(key, map_id, 20, 15, loop=False, art="hall5")
+        m, t = world.map, cs.tiles
+        _corridor(m, t)
+        depth = _floor_of(key)
+        ground = key == "lobby"
+
+        # The stairwell, at the west end of every floor.  Up is nearer the
+        # far wall and down is nearer the near one, on every storey, so which
+        # way you are going is a thing you learn once.
+        # Stairs at both ends, so which way you are going is a place rather
+        # than a choice made at one spot.
+        if depth > 0:
+            gen.stamp(m, cs.obj("stair_up"), 3, 4)
+        if not ground:
+            gen.stamp(m, cs.obj("stair_down"), 14, 4)
+
+        landmarks: dict[str, list[tuple[int, int]]] = {}
+        if ground:
+            # The ground floor keeps the geometry and loses everything that
+            # made the others residential.  No flats, one way out, and it does
+            # not open.
+            gen.stamp(m, cs.obj("mailboxes"), 7, 2, overlap=True)
+            gen.stamp(m, cs.obj("notice"), 12, 2, overlap=True)
+            gen.stamp(m, cs.obj("entrance"), 9, 10, overlap=True)
+            gen.stamp(m, cs.obj("lift"), LIFT_AT, 10, overlap=True)
+            gen.stamp(m, cs.obj("dead_plant"), 6, 8)
+            gen.stamp(m, cs.obj("radiator"), 11, 4)
+            landmarks["entrance"] = [(9, 10)]
+            landmarks["mailboxes"] = [(7, 2)]
+            landmarks["notice"] = [(12, 2)]
+        else:
+            for x in NORTH_DOORS:
+                home = key == HOME_FLOOR and x == HOME_DOOR
+                gen.stamp(m, cs.obj("flat_door" if home else "flat_door_plain"),
+                          x, 2, overlap=True)
+                landmarks.setdefault("north", []).append((x, 2))
+            for x in SOUTH_DOORS:
+                gen.stamp(m, cs.obj("flat_door_plain"), x, 10, overlap=True)
+                landmarks.setdefault("south", []).append((x, 10))
+            gen.stamp(m, cs.obj("lift"), LIFT_AT, 10, overlap=True)
+            gen.stamp(m, cs.obj("radiator"), 11, 4)
+            gen.stamp(m, cs.obj("dead_plant"), 13, 8)
+            gen.stamp(m, cs.obj("notice"), 3, 10, overlap=True)
+            landmarks["notice"] = [(3, 10)]
+        landmarks["lift"] = [(LIFT_AT, 10)]
+
+        # The light.  Every floor loses one more of them, and the ground
+        # floor has one left, which is the only reason anything down there is
+        # visible at all.
+        # The lights go where nothing else is fixed to the wall.  Stamped
+        # over the doors and the mailboxes they simply drew on top of them,
+        # because everything on a wall shares two rows of plaster.
+        lit = (4, 3, 3, 2, 1)[depth]
+        for index, x in enumerate((5, 11, 15, 16, 4) if ground
+                                  else (5, 8, 11, 14, 16)):
+            gen.stamp(m, cs.obj("sconce" if index < lit else "sconce_dead"),
+                      x, 2, overlap=True)
+
+        world.landmarks = landmarks
+        world.spawn = (HOME_DOOR, 4) if key == HOME_FLOOR else (7, 5)
+        world.npcs = []
+        return world
+
+    return build
 
 
 def build_nexus(map_id: int) -> World:
@@ -1807,7 +1956,8 @@ def _face_channel(channel: int):
 
 
 BUILD = {
-    "room": build_room, "balcony": build_balcony, "nexus": build_nexus, "pink": build_pink,
+    "room": build_room, "balcony": build_balcony, "nexus": build_nexus,
+    **{key: _build_floor(key) for key in BLOCK_ORDER}, "pink": build_pink,
     "numbers": build_numbers, "blocks": build_blocks, "stairs": build_stairs,
     "sand": build_sand, "faces": build_faces, "hands": build_hands,
     "checker": build_checker, "toys": build_toys, "neon": build_neon,

@@ -35,6 +35,10 @@ class System:
     done: str = "Appear"
     count: int = 16
     live: int = 5
+    # The chipset object this verb is *done to*.  Without one the world spawns
+    # sixteen events that describe an object which was never drawn — the grove
+    # had sixteen telephones in it and not one telephone.
+    art: str = ""
     # extra maps this world needs beyond its own: floors, states, planes
     layers: int = 0
 
@@ -140,6 +144,7 @@ SYSTEMS: dict[str, System] = {
     # ----------------------------------------------------------------- faces
     "faces": System(
         verb="chase the signal", thing="telephone", count=16, live=4,
+        art="phone_box",
         layers=4,
         before=("there is a dial tone.", "", "it should not have one."),
         after=("the tone is the same as it was.",),

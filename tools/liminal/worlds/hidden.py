@@ -311,9 +311,12 @@ def _cave3(m, t, cs, rng, gen) -> None:
     for n, (bx, by) in enumerate(((3, 3), (16, 3), (3, 11), (16, 10),
                                   (5, 2), (13, 12))):
         gen.stamp(m, cs.obj("boulder" if n % 3 else "boulder_small"), bx, by)
-    for y in range(7, 10):                          # the clean patch
+    for y in range(6, 10):                          # the clean patch
         for x in range(8, 12):
             m.set_lower(x, y, t["smooth"])
+    # Standing at the head of the clean patch, facing it.  Whoever sat here
+    # sat looking at this.
+    gen.stamp(m, cs.obj("gate_purgatory"), 9, 3)
     gen.stamp(m, cs.obj("mouth"), 9, m.height - 6, overlap=True)
 
 
@@ -331,6 +334,10 @@ def _cave4(m, t, cs, rng, gen) -> None:
     for x in range(2, m.width - 2):
         m.set_lower(x, 2, t["wedge"])
         m.set_lower(x, m.height - 3, t["wedge"])
+    # A room with no fault in it, and one thing in it that is not foam.  It is
+    # dead centre, because in a space this regular the middle is the only
+    # place anything can be.
+    gen.stamp(m, cs.obj("gate_hell"), 9, 5)
     gen.stamp(m, cs.obj("mouth"), 9, m.height - 6, overlap=True)
 
 
@@ -346,6 +353,13 @@ def _under1(m, t, cs, rng, gen) -> None:
     for x in range(8, 12):                          # a slab over the junction
         for y in range(7, 9):
             m.set_lower(x, y, t["ground_b"])
+    # The way further down.  It stands at the head of the north run, so the
+    # first thing you see coming down the ladder is the length of the sewer
+    # with something standing at the end of it.
+    for x in range(8, 12):
+        for y in range(3, 6):
+            m.set_lower(x, y, t["ground"])
+    gen.stamp(m, cs.obj("gate_caustic"), 9, 3)
     gen.stamp(m, cs.obj("ladder"), 9, m.height - 6, overlap=True)
 
 
@@ -480,9 +494,14 @@ def _prem2(m, t, cs, rng, gen) -> None:
     for y in range(5, m.height - 4):                # stock, both walls
         for x in (3, 4, 15, 16):
             m.set_lower(x, y, t["bed"])
-    gen.stamp(m, cs.obj("board"), 8, 1, overlap=True)
-    gen.stamp(m, cs.obj("desk"), 8, 9)
-    gen.stamp(m, cs.obj("crate"), 12, 5)
+    gen.stamp(m, cs.obj("board"), 6, 1, overlap=True)
+    gen.stamp(m, cs.obj("desk"), 5, 9)
+    gen.stamp(m, cs.obj("crate"), 6, 5)
+    # There is a door in the back of this office that is not on the plan.
+    for y in range(4, 8):
+        for x in range(10, 14):
+            m.set_lower(x, y, t["stone"])
+    gen.stamp(m, cs.obj("gate_lobotomy"), 11, 4)
     gen.stamp(m, cs.obj("way_out"), 9, m.height - 6, overlap=True)
 
 
@@ -581,6 +600,9 @@ def events(world, worlds: dict) -> None:
              move_type=MOVE_STATIONARY, move_speed=2, move_frequency=3,
              trigger=TRIGGER_ACTION, animation_type=ANIM_CONTINUOUS)])
 
+    if world.key in DESCENTS:
+        _descent(world, area)
+
     px, py = world.landmarks["prize"][0]
     taken = Script()
     taken.msg("you have already been through this.")
@@ -589,6 +611,53 @@ def events(world, worlds: dict) -> None:
         _gleam(script=taken, trigger=TRIGGER_ACTION,
               switch_a=SW_HIDE_FOUND + _index(area), translucent=True),
     ])
+
+
+# --- the four ways further down -----------------------------------------------
+# Not built yet: four mirrors standing in four of the sixteen rooms, each one
+# showing the place on the other side of it.  They are placed now rather than
+# later because where a door *stands* is most of what it means — the one in
+# the sewers is at the head of a long run so you see it before you reach it,
+# the one in the anechoic is dead centre because in a room that regular the
+# middle is the only place anything can be, the one in the dry cave faces the
+# clean patch somebody used to sit on, and the one in the nursery office is
+# behind a door that is not on the plan.
+DESCENTS = {
+    "under1": ("caustic", "the sewers", (
+        "the run keeps going, and it should not.", "",
+        "the brick stops and something else carries on,",
+        "and it is lit from inside itself.")),
+    "cave4": ("hell", "the anechoic", (
+        "there is a door in the wedge wall.", "",
+        "it does not have a frame, a hinge or a handle.", "",
+        "you can hear through it. only through it.")),
+    "cave3": ("purgatory", "the dry cave", (
+        "it is standing at the head of the clean patch,", "facing it.", "",
+        "whoever sat here sat looking at this.")),
+    "prem2": ("lobotomy", "the nursery office", (
+        "there is a door in the back wall.", "",
+        "it is not on the plan, and the plan has everything on it.", "",
+        "there is light coming under it, and it is very warm light.")),
+}
+
+# What each of them says when you try it, which is the same in all four cases
+# and is the point: they are not shut, they are not ready.
+NOT_YET = ("", "not yet.")
+
+
+def _descent(world, area) -> None:
+    """The mirror that goes further down, and what it shows."""
+    from .events import _place
+
+    key, _, lines = DESCENTS[world.key]
+    look = Script()
+    look.se("Watch", volume=44)
+    look.msg(*lines)
+    look.wait(8)
+    look.se("ChimeFar", volume=30)
+    look.msg(*NOT_YET)
+    _place(world, f"the way to {key}", 10, 6,
+           [_gleam(script=look, trigger=TRIGGER_ACTION)])
 
 
 def _channel_design(area: Area) -> str:

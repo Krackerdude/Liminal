@@ -1335,6 +1335,26 @@ def _grove_common(cb: ChipsetBuilder, pal: Palette, look, world: str,
     return ground
 
 
+# The four ways further down.  Each is a mirror standing in a hidden room,
+# and each shows the place on the other side of it rather than the player.
+# The glass takes that place's own colour, which is the only thing telling the
+# player these four are not the twelve other mirrors in the game.
+DESCENTS = {
+    "caustic":   (2, 3, (108, 236, 132), (44, 96, 62)),   # glowing, wet
+    "hell":      (2, 3, (196, 44, 38), (28, 12, 14)),     # dark, and lit red
+    "purgatory": (2, 3, (156, 158, 172), (72, 74, 88)),   # no colour at all
+    "lobotomy":  (2, 3, (250, 232, 178), (216, 176, 120)),  # far too warm
+}
+
+
+def _descent(cb: ChipsetBuilder, pal: Palette, key: str) -> None:
+    cols, rows, glow, leaf = DESCENTS[key]
+    cb.add_object(f"gate_{key}",
+                  ct.door_frame(pal, cols, rows, glow=glow, leaf=leaf,
+                                reflect=ct.REFLECTION[key]),
+                  solid="all")
+
+
 def build_under() -> ChipsetBuild:
     """Under the grove: rock where nobody built, brick where somebody did.
 
@@ -1389,6 +1409,9 @@ def build_under() -> ChipsetBuild:
     cb.add("deep", gv.deep_water(look), passable=False)
     cb.add("dry", gv.dry_channel(look))
     cb.add_object("cable", gv.cable_tray(look, 3, 2), solid="all", upper=True)
+    # two of the four ways further down stand in rooms made of rock
+    for key in ("caustic", "hell", "purgatory"):
+        _descent(cb, pal, key)
     _shadows(cb, pal)
     _animate(cb, pal, "faces")
     return _finish(cb, floor)
@@ -1456,6 +1479,7 @@ def build_premises() -> ChipsetBuild:
     cb.add_object("transformer", gv.transformer(look, 3, 3), solid="all")
     cb.add_object("fence", gv.mesh_fence(look, 2, 2), solid="all", upper=True)
     cb.add_object("transmitter", gv.transmitter(look, 3, 3), solid="all")
+    _descent(cb, pal, "lobotomy")
     _shadows(cb, pal)
     _animate(cb, pal, "faces")
     return _finish(cb, floor)

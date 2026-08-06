@@ -314,6 +314,43 @@ def card(text: str, sub: str = "", *, ink: RGB = (240, 236, 228),
 OVERLAYS: dict[str, "Canvas"] = {}
 
 
+def shudder(vertical: bool, *, color: RGB = (226, 232, 244),
+            span: int = 96, seed: int = 41) -> Canvas:
+    """A band of broken displacement lines, for one edge of the screen.
+
+    The grove's telephone rings from a direction, and the side it rings from
+    is supposed to *move*.  Camera shake is not available — it is banned in
+    this project and it would be the wrong tool anyway, because a shake moves
+    the whole picture and the whole picture is not what is ringing.
+
+    So this is a small picture, positioned over one edge and jittered a few
+    pixels while the ring is sounding.  It is mostly transparent: a scatter of
+    short bright runs that read as nothing at all standing still, and read as
+    that side of the screen quivering the moment they move.  The band fades
+    out at both ends so it can be used on either the left or the right edge
+    without a second asset.
+    """
+    art = Canvas(span if vertical else SCREEN_W,
+                 SCREEN_H if vertical else span, TRANSPARENT)
+    rng = np.random.default_rng(seed)
+    across = art.w if vertical else art.h
+    along = art.h if vertical else art.w
+    for step in range(0, along, 3):
+        # how present the band is here: strongest in the middle of its own
+        # length, gone at both ends
+        for _ in range(2):
+            offset = int(rng.integers(0, across))
+            reach = 1 - abs(offset / max(1, across - 1) - 0.5) * 2
+            if reach < BAYER4[step % 4, offset % 4]:
+                continue
+            run = int(rng.integers(3, 9))
+            if vertical:
+                art.rect(max(0, offset - run // 2), step, run, 1, color)
+            else:
+                art.rect(step, max(0, offset - run // 2), 1, run, color)
+    return art
+
+
 def build_overlays() -> dict[str, Canvas]:
     """Every overlay picture the game can show, by filename."""
     return {
@@ -334,4 +371,6 @@ def build_overlays() -> dict[str, Canvas]:
         "Horizon": horizon_band((250, 240, 214)),
         "White": haze((255, 255, 255)),
         "Black": haze((0, 0, 0)),
+        "ShudderV": shudder(True),
+        "ShudderH": shudder(False),
     }

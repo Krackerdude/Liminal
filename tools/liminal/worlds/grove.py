@@ -10,7 +10,7 @@ and does not stop when you lift it.  From then on the town rings at you
 periodically, from a direction.  Walk that way inside the window and the
 picture changes around you without you having gone anywhere.  Miss it and
 nothing at all happens — no penalty, no message, no second chance on that
-ring.  The next one is along in a few seconds.
+ring.  The next one is along in twenty seconds, on the beat.
 
 **The yards**  Five, buried in the green.  Each is reachable on exactly one
 channel, because on that channel the seam of wood between it and the street
@@ -51,6 +51,27 @@ from .events import gleam
 
 # 0 up, 1 right, 2 down, 3 left — the engine's own order, used for the pan.
 UP, RIGHT, DOWN, LEFT = range(4)
+
+# How long between rings, in tenths of a second.  Fixed rather than random:
+# the window is short and missable on purpose, and a player who cannot feel
+# the beat cannot choose to be ready for it.
+RING_INTERVAL = 200
+
+# Where the shudder sits for each direction, as the *centre* of the picture on
+# a 320x240 screen, and which of the two bands to use.  The band is jittered
+# a few pixels while the ring sounds, so the side the sound came from is the
+# side that visibly moves.  This is not a camera shake and could not be one:
+# a shake moves the whole picture, and the whole picture is not what rang.
+SHUDDER = {
+    UP:    ("ShudderH", 160, 34),
+    RIGHT: ("ShudderV", 286, 120),
+    DOWN:  ("ShudderH", 160, 206),
+    LEFT:  ("ShudderV", 34, 120),
+}
+# How far it moves and how long each nudge takes.  Three pixels at a tenth of
+# a second reads as a quiver; more than that reads as a fault.
+SHUDDER_THROW = 3
+SHUDDER_BEATS = 6
 
 # How long the player has, in tenths of a second, from the ring to having
 # moved.  Two seconds is about eight tiles at walking pace and about two if
@@ -96,11 +117,17 @@ def _ringer(world) -> Page:
     """The periodic ring, and the window it opens.
 
     A parallel process, running the whole time the receiver is in your hands.
-    It waits a random handful of seconds, picks a direction, rings from it —
-    panned in stereo for left and right, and with the camera drifting a single
-    tile toward it, which is the only cue the up and down rings get — and then
-    compares where you were standing against where you are standing two
+    It counts down twenty seconds, picks a direction, and rings from it: panned
+    in stereo, with the camera drifting a single tile that way, and with that
+    edge of the screen visibly quivering for as long as the ring lasts.  Then
+    it compares where you were standing against where you are standing two
     seconds later.
+
+    The interval used to be a random five to ten seconds and the direction cue
+    was stereo and a one-tile pan.  Neither survives contact with a player: a
+    window you cannot anticipate is a window you can only be given, and up and
+    down are not places in a stereo field at all.  A fixed beat and a shudder
+    on the edge it came from fix both without saying anything out loud.
 
     The comparison is deliberately crude.  It does not care what you are
     facing, whether you stopped, or how you got there.  It cares that you went
@@ -113,9 +140,9 @@ def _ringer(world) -> Page:
     s = Script()
     s.comment("the town rings at you, periodically, from a direction")
     with s.loop():
-        # a few seconds, never the same few, counted down a tenth at a time so
-        # the interval can be a variable rather than a constant
-        s.var_random(VR_RING_WAIT, 55, 105)
+        # twenty seconds, counted down a tenth at a time so the interval can
+        # be a variable rather than a constant
+        s.var(VR_RING_WAIT, RING_INTERVAL)
         with s.loop():
             s.wait(1)
             s.var(VR_RING_WAIT, 1, 2)
@@ -126,15 +153,17 @@ def _ringer(world) -> Page:
         s.var_from_event(VR_RING_X, 10001, 1)
         s.var_from_event(VR_RING_Y, 10001, 2)
 
-        # the ring itself, placed in the stereo field and in the camera
+        # the ring itself, placed in the stereo field, in the camera, and now
+        # on the edge of the screen it came from
         for direction, balance in ((UP, 50), (RIGHT, 92), (DOWN, 50), (LEFT, 8)):
             with s.if_var(VR_RING_DIR, direction):
                 s.se("PhoneFar", volume=58, balance=balance,
                      tempo=112 if direction == UP else
                      (88 if direction == DOWN else 100))
                 s.pan(direction, 1, 3, wait=False)
+                _shudder(s, direction)
 
-        s.wait(WINDOW)
+        s.wait(WINDOW - SHUDDER_BEATS * 2)
         s.pan_reset(speed=3, wait=False)
 
         # where you are now, minus where you were: the whole judgement
@@ -159,6 +188,34 @@ def _ringer(world) -> Page:
                         _tune(s, world, nxt)
     return Page(script=s, trigger=TRIGGER_PARALLEL, layer=LAYER_BELOW,
                 switch_a=SW_FACE_HEARD)
+
+
+def _shudder(s: Script, direction: int) -> None:
+    """Jitter one edge of the screen for as long as the phone is ringing.
+
+    A picture, not the camera.  It is shown at the edge the sound is panned
+    to, nudged back and forth by a few pixels a handful of times, and erased —
+    so the cue is local to that side and the rest of the frame never moves.
+
+    Left and right share one band and up and down share the other; the art
+    fades out at both ends of itself so the same picture sits correctly on
+    either edge of the pair.
+    """
+    name, cx, cy = SHUDDER[direction]
+    horizontal = direction in (LEFT, RIGHT)
+    s.show_picture(sys.PIC_SHUDDER, name, cx, cy, transparency=62)
+    for beat in range(SHUDDER_BEATS):
+        throw = SHUDDER_THROW if beat % 2 == 0 else -SHUDDER_THROW
+        # the band moves along its own length, not across it: a strip of
+        # broken lines sliding sideways reads as a wobble, and the same strip
+        # sliding through its own thickness reads as nothing
+        s.move_picture(sys.PIC_SHUDDER,
+                       cx + (0 if horizontal else throw),
+                       cy + (throw if horizontal else 0),
+                       transparency=62 if beat < SHUDDER_BEATS - 2 else 88,
+                       tenths=1, wait=True)
+        s.wait(1)
+    s.erase_picture(sys.PIC_SHUDDER)
 
 
 def _tune(s: Script, world, target_key: str) -> None:

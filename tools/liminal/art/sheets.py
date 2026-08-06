@@ -1336,42 +1336,53 @@ def _grove_common(cb: ChipsetBuilder, pal: Palette, look, world: str,
 
 
 def build_under() -> ChipsetBuild:
-    """Under the grove: rock, brick and standing water.
+    """Under the grove: rock where nobody built, brick where somebody did.
 
-    One chipset for all eight rooms beneath the town — the four caves behind
-    the cracks and the four runs under the manholes — because they are the
-    same substance seen from two entrances.  What tells a cave from a sewer is
-    which walls a map uses, not which chipset it loaded.
+    One chipset for all eight rooms beneath the town, and the whole of the
+    difference between a cave and a sewer lives in it.  A cave is irregular
+    rock, broken stone underfoot and water lying in a shape nothing cut.  A
+    sewer is engineering brick in courses with a channel down the middle of
+    it, because a sewer is a thing that was *made*.
+
+    Nothing down here is furnished.  The first pass gave the caves crates,
+    racking and a rectangle of water, which read as a cellar with a rug in it.
     """
     pal = PALETTES["faces"]
     cb = ChipsetBuilder("under", pal)
     look = gv.CAVE
 
-    floor = gv.cave_floor(look)
+    floor = gv.rubble(look, 0)
     cb.add("ground", floor)
-    cb.add("ground_b", gv.cave_floor(look))
-    cb.add("path", gv.cave_floor(look, wet=True))
-    cb.add("water", gv.water_pool(look), passable=False)
-    cb.add("glow", gv.cave_floor(look, wet=True))
-    cb.add("rug", gv.cave_floor(look, wet=True))
+    cb.add("ground_b", gv.rubble(look, 3))
+    cb.add("path", gv.rubble(look, 5))
+    for n in range(3):
+        cb.add(f"pool_{n}", gv.pool(look, n), passable=False)
+    cb.add("water", gv.pool(look, 1), passable=False)
+    cb.add("glow", gv.rubble(look, 2))
+    cb.add("rug", gv.rubble(look, 4))
     cb.add("void", ct.flat((0, 0, 0)), passable=False)
     cb.add("black", ct.flat((0, 0, 0)), passable=False)
+    for n in range(3):
+        cb.add(f"rock_{n}", gv.rock_face(look, seed=n), passable=False)
     cb.add("rock", gv.rock_face(look), passable=False)
     cb.add("rock_crack", gv.rock_face(look, cracked=True), passable=False)
-    cb.add("brick", gv.brick_wall(look), passable=False)
+    cb.add("brick", gv.sewer_wall(look), passable=False)
+    cb.add("channel", gv.sewer_channel(look), passable=False)
     for side in ("n", "s", "w", "e"):
-        cb.add(f"cut_{side}", gv.rock_face(look), passable=False)
-        cb.add(f"face_{side}", gv.rock_face(look), passable=False)
+        cb.add(f"cut_{side}", gv.rock_face(look, seed=1), passable=False)
+        cb.add(f"face_{side}", gv.rock_face(look, seed=2), passable=False)
     cb.add("face_n_low", gv.rock_face(look), passable=False)
-    cb.add("face_s_low", gv.rock_face(look), passable=False)
+    cb.add("face_s_low", gv.rock_face(look, seed=1), passable=False)
 
-    cb.add_object("crate", gv.crate(look, 2, 2), solid="all")
-    cb.add_object("rack", gv.rack(look, 2, 3), solid="all")
+    cb.add_object("boulder", gv.boulder(look, 2, 2), solid="all")
+    cb.add_object("boulder_small", gv.boulder(look, 1, 1), solid="all")
+    cb.add_object("column", gv.column(look, 1, 4), solid="bottom", upper=True)
+    cb.add_object("mouth", gv.cave_mouth(look, 2, 3), solid="none",
+                  upper=True, above=True)
+    cb.add_object("ladder", gv.ladder(look, 2, 3), solid="none", upper=True,
+                  above=True)
     cb.add_object("lamp", gv.traffic_light(look, 1, 4), solid="bottom",
                   upper=True)
-    cb.add_object("mirror", ct.door_frame(pal, 2, 3, reflect="faces"),
-                  solid="all")
-    cb.add_object("way_out", ct.door_frame(pal, 2, 3, reflect="faces"))
     _shadows(cb, pal)
     _animate(cb, pal, "faces")
     return _finish(cb, floor)
@@ -1414,9 +1425,21 @@ def build_premises() -> ChipsetBuild:
                   upper=True)
     cb.add_object("board", gv.road_sign(look, 2, 3), solid="bottom",
                   upper=True)
-    cb.add_object("mirror", ct.door_frame(pal, 2, 3, reflect="faces"),
-                  solid="all")
-    cb.add_object("way_out", ct.door_frame(pal, 2, 3, reflect="faces"))
+    # The way out is a door, and it is a door.  Every hidden room used the
+    # nexus portal frame, which is a full-length mirror, so a cave read as
+    # somewhere with a mirror in it and an office read as a changing room.
+    door = ct._canvas(2, 3)
+    WOOD = mt.Material("wood", (96, 70, 54))
+    METAL = mt.Material("metal", (104, 108, 118))
+    mt.plane(door, 0, 8, 32, 40, WOOD.deep)
+    mt.plane(door, 3, 10, 26, 38, WOOD.shade)
+    mt.plane(door, 5, 11, 22, 37, WOOD.mid)
+    mt.plane(door, 5, 11, 22, 2, WOOD.lit)
+    for py, ph in ((15, 12), (30, 14)):
+        mt.plane(door, 8, py, 16, ph, WOOD.shade)
+        mt.plane(door, 9, py + 1, 14, ph - 2, WOOD.mid)
+    door.blob(24, 30, 1.9, METAL.lit)
+    cb.add_object("way_out", door, solid="none", upper=True, above=True)
     _shadows(cb, pal)
     _animate(cb, pal, "faces")
     return _finish(cb, floor)

@@ -624,26 +624,159 @@ PREM = Look(
 )
 
 
-def rock_face(look: Look, *, cracked: bool = False) -> Canvas:
-    """A wall of rock, in courses rather than in noise.
+def rock_face(look: Look, *, cracked: bool = False, seed: int = 0) -> Canvas:
+    """Living rock: irregular blocky mass, and nothing on a grid.
 
-    Stone reads as stone because it has bedding: roughly horizontal seams with
-    vertical joints broken between them.  A crack is a single dark run that
-    ignores the bedding, which is exactly why the eye finds it.
+    The first attempt at this laid regular courses with staggered joints,
+    which is a *wall* — somebody built that, and the whole point of a cave is
+    that nobody did.  Rock breaks along its own faults, so this is a handful
+    of unequal chunks at unequal heights, each with light on its upper edge
+    and shadow under it, and the gaps between them are the dark.
     """
     r = look.road
-    art = Canvas(TILE, TILE, r.mid)
-    mt.plane(art, 0, 0, TILE, TILE, r.mid)
-    for row, y in enumerate(range(0, TILE, 6)):
-        art.hline(y, 0, TILE - 1, r.shade)
-        if y + 1 < TILE:
-            art.hline(y + 1, 0, TILE - 1, r.lit)
-        for x in range((row % 2) * 7, TILE, 11):
-            art.vline(x, y + 1, min(TILE - 1, y + 5), r.shade)
+    art = Canvas(TILE, TILE, r.shade)
+    mt.plane(art, 0, 0, TILE, TILE, r.deep)
+    # deterministic, but with no period the eye can pick up at this size
+    lump = ((0, 0, 7, 6), (7, 1, 9, 5), (2, 6, 6, 5), (9, 7, 7, 6),
+            (0, 11, 5, 5), (5, 12, 5, 4), (12, 3, 4, 4))
+    for index, (x, y, w, h) in enumerate(lump):
+        x = (x + seed * 3) % TILE
+        mt.plane(art, x, y, w, h, r.mid)
+        art.hline(y, x, min(TILE - 1, x + w - 1), r.lit)      # the lit top
+        art.hline(y + h - 1, x, min(TILE - 1, x + w - 1), r.deep)
+        art.vline(min(TILE - 1, x + w - 1), y, y + h - 1, r.shade)
+        if index % 3 == 0 and w > 3:
+            art.hline(y + 2, x + 1, x + w - 2, r.shade)       # a bedding line
     if cracked:
+        # one dark run that ignores every fault line, which is exactly why the
+        # eye finds it
         for step in range(TILE):
-            art.dot((5 + step // 3 + (step % 5 == 0)) % TILE, step, r.deep)
-            art.dot((6 + step // 3 + (step % 5 == 0)) % TILE, step, r.shade)
+            x = 6 + (step // 4) - (step % 7 == 0)
+            art.vline(max(0, x), step, step, (0, 0, 0))
+            art.dot(max(0, x + 1), step, r.deep)
+            art.dot(max(0, x - 1), step, r.shade)
+    return art
+
+
+def rubble(look: Look, seed: int = 0) -> Canvas:
+    """A cave floor: broken stone, lying where it fell."""
+    r, c = look.road, look.bark
+    art = Canvas(TILE, TILE, c.mid)
+    mt.plane(art, 0, 0, TILE, TILE, c.mid)
+    chips = ((1, 2, 4, 2), (7, 1, 3, 2), (11, 4, 4, 2), (3, 7, 5, 2),
+             (9, 9, 4, 2), (1, 12, 3, 2), (12, 12, 3, 2))
+    for index, (x, y, w, h) in enumerate(chips):
+        x, y = (x + seed) % TILE, (y + seed * 2) % TILE
+        mt.plane(art, x, y, w, h, r.shade if index % 2 else c.shade)
+        art.hline(y, x, min(TILE - 1, x + w - 1), r.lit if index % 2 else c.lit)
+    return art
+
+
+def pool(look: Look, seed: int = 0) -> Canvas:
+    """Standing water in a cave: a ragged edge, because nothing cut it.
+
+    A rectangle of water on a cave floor is a rug, and it looked like one.
+    """
+    w, c = look.glass, look.bark
+    art = rubble(look, seed)
+    edge = (5, 3, 2, 4, 1, 3, 6, 4, 2, 1, 3, 5, 4, 2, 3, 6)
+    for y in range(TILE):
+        start = edge[(y + seed * 3) % TILE] // 2
+        run = TILE - start - edge[(y * 3 + seed) % TILE] // 3
+        if run <= 0:
+            continue
+        mt.plane(art, start, y, run, 1, w.shade if y % 4 else w.mid)
+        art.dot(start, y, c.deep)
+    art.hline(4, 3, 9, w.lit)
+    art.hline(10, 6, TILE - 3, w.lit)
+    return art
+
+
+def boulder(look: Look, cols: int, rows: int) -> Canvas:
+    """A lump of the ceiling that is now a lump of the floor."""
+    art = _canvas(cols, rows)
+    w, h = cols * TILE, rows * TILE
+    r = look.road
+    art.ellipse(w // 2, h - h // 3 + 2, w * 0.44, h * 0.34, r.deep)
+    art.ellipse(w // 2, h - h // 3, w * 0.42, h * 0.32, r.mid)
+    art.ellipse(int(w * 0.40), h - h // 3 - 3, w * 0.24, h * 0.16, r.lit)
+    art.hline(h - h // 3 - 6, int(w * 0.26), int(w * 0.62), r.shade)
+    foot(art, int(w * 0.16), h - 3, int(w * 0.68), r)
+    return art
+
+
+def column(look: Look, cols: int, rows: int) -> Canvas:
+    """Stalagmite meeting stalactite.  They met a long time ago."""
+    art = _canvas(cols, rows)
+    w, h = cols * TILE, rows * TILE
+    r = look.road
+    for row in range(h):
+        t = abs(row / max(1, h - 1) - 0.5) * 2      # fat at both ends
+        half = max(2, int(w * (0.10 + 0.22 * t)))
+        mt.plane(art, w // 2 - half, row, half * 2, 1, r.mid)
+        art.dot(w // 2 - half, row, r.lit)
+        art.dot(w // 2 + half - 1, row, r.shade)
+    foot(art, w // 2 - 5, h - 2, 10, r)
+    return art
+
+
+def cave_mouth(look: Look, cols: int, rows: int) -> Canvas:
+    """The way back out: a hole in the rock with daylight past it.
+
+    Not a mirror.  Every hidden room used the portal frame the nexus uses,
+    which made a cave read as somewhere with a full-length mirror in it.
+    """
+    art = _canvas(cols, rows)
+    w, h = cols * TILE, rows * TILE
+    r, l = look.road, look.plastic
+    mt.plane(art, 2, 4, w - 4, h - 4, r.shade)             # the surround
+    for step in range(h - 6):                              # a ragged opening
+        t = step / max(1, h - 7)
+        inset = int(4 + 6 * abs(t - 0.55) + (step % 3))
+        mt.plane(art, inset, 6 + step, w - inset * 2, 1, (0, 0, 0))
+        art.dot(inset - 1, 6 + step, r.deep)
+        art.dot(w - inset, 6 + step, r.deep)
+    mt.plane(art, 6, h - 8, w - 12, 4, blend(l.deep, (0, 0, 0), 0.45))
+    art.hline(h - 8, 7, w - 8, l.shade)                    # light, a long way
+    art.hline(4, 3, w - 4, r.lit)                          # the lintel
+    return art
+
+
+def ladder(look: Look, cols: int, rows: int) -> Canvas:
+    """Iron rungs going up, into a circle of the sky."""
+    art = _canvas(cols, rows)
+    w, h = cols * TILE, rows * TILE
+    m = look.metal
+    art.ellipse(w // 2, 6, w * 0.34, 5, (0, 0, 0))
+    art.ellipse(w // 2, 5, w * 0.32, 4.4, blend(m.lit, (0, 0, 0), 0.3))
+    for rung in range(12, h - 2, 6):
+        mt.plane(art, w // 2 - 6, rung, 12, 2, m.mid)
+        art.hline(rung, w // 2 - 6, w // 2 + 5, m.lit)
+    for side in (w // 2 - 7, w // 2 + 5):
+        mt.plane(art, side, 8, 2, h - 10, m.shade)
+        art.vline(side, 8, h - 3, m.mid)
+    return art
+
+
+def sewer_wall(look: Look) -> Canvas:
+    """Engineering brick.  Somebody *did* build this one."""
+    b = mt.Material("brick", (104, 70, 60))
+    art = Canvas(TILE, TILE, b.mid)
+    mt.bricks(art, 0, 0, TILE, TILE, b, course=5, stagger=True)
+    return art
+
+
+def sewer_channel(look: Look) -> Canvas:
+    """The invert: water in a cut channel, running one way."""
+    w = look.glass
+    b = mt.Material("brick", (104, 70, 60))
+    art = Canvas(TILE, TILE, b.mid)
+    mt.plane(art, 0, 0, TILE, TILE, b.shade)
+    mt.plane(art, 0, 3, TILE, 11, w.shade)
+    mt.seam(art, 0, 3, TILE, 3, b.deep, w.shade)
+    art.hline(6, 1, 8, w.lit)
+    art.hline(10, 7, TILE - 2, w.mid)
+    mt.plane(art, 0, 14, TILE, 2, b.deep)
     return art
 
 

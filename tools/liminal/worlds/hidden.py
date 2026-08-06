@@ -70,8 +70,7 @@ class Area:
 
     def __init__(self, key: str, title: str, family: str, channel: int,
                  npc: str, lines: tuple[str, ...],
-                 prize: tuple[str, ...], *, gives: str = "",
-                 rock: bool = True):
+                 prize: tuple[str, ...], *, gives: str = ""):
         self.key = key
         self.title = title
         self.family = family        # crack, cover, hatch, or lock
@@ -80,7 +79,11 @@ class Area:
         self.lines = lines
         self.prize = prize          # what you find, said once
         self.gives = gives          # "key", "remote", or nothing
-        self.rock = rock            # rock and water, or board and paint
+        # What it is made of follows from how you get in, rather than being
+        # stated twice: you go down through rock and water, and up into board
+        # and paint.  Setting it by hand is how four rooms ended up asking a
+        # cave chipset for a filing rack.
+        self.rock = family in ("crack", "cover")
 
 
 # --- the sixteen --------------------------------------------------------------
@@ -167,21 +170,18 @@ AREAS: tuple[Area, ...] = (
          ("[ CONNECTING ]", "", "[ STILL CONNECTING ]"),
          ("a wall of jacks, every one of them patched.", "",
           "the log says four carriers and then, later,",
-          "in a different hand: FIVE."),
-         rock=False),
+          "in a different hand: FIVE.")),
     Area("prem2", "the nursery office", "lock", 1, "ranger",
          ("plan's on the wall.", "", "we planted all of it. every one."),
          ("the planting plan covers the whole town.", "",
           "every tree is on it.", "",
-          "the ones over the cracks are circled."),
-         rock=False),
+          "the ones over the cracks are circled.")),
     Area("prem3", "the depot", "lock", 2, "bough_sleeper",
          ("...they kept a fifth set of everything...", "",
           "...for the fifth one..."),
          ("racking, floor to roof, and all of it labelled.", "",
           "there are four of everything.", "",
-          "there are five of some things."),
-         rock=False),
+          "there are five of some things.")),
     Area("prem4", "the transmitter hut", "lock", 3, "leaf_head",
          ("i sat in here until it grew.", "",
           "you can hear all four at once in here.", "",
@@ -189,7 +189,7 @@ AREAS: tuple[Area, ...] = (
          ("the transmitter is running on all four carriers.", "",
           "on the shelf, next to a cold cup:", "",
           "a television remote."),
-         gives="remote", rock=False),
+         gives="remote"),
 )
 
 BY_KEY = {area.key: area for area in AREAS}
@@ -214,7 +214,14 @@ def _index(area: Area) -> int:
 # --- the maps -----------------------------------------------------------------
 
 def build(key: str):
-    """A hidden room, as its own one-screen map."""
+    """A hidden room, as its own one-screen map.
+
+    Four kinds of place and four different builds.  A cave is not a room with
+    rock wallpaper: it has no straight walls, nothing was carried into it, and
+    the water in it lies in a shape nothing cut.  A sewer *was* built, so it
+    gets courses of brick and a channel running the length of it.  The rooms
+    above ground are rooms, and those are the only two that get furniture.
+    """
     from . import worlds as W
     from . import gen
 
@@ -224,49 +231,109 @@ def build(key: str):
         art = "cave1" if area.rock else "box1"
         world, cs, rng = W._new(key, map_id, 20, 15, loop=False, art=art)
         m, t = world.map, cs.tiles
+        rng = random.Random(hash(key) & 0xffff)
         m.fill_rect(0, 0, m.width, m.height, t["black"])
-
-        # the room: a wall of whatever this place is made of, and a floor
-        wall = "rock" if area.rock else "face_n"
-        for x in range(1, m.width - 1):
-            for y in (1, 2, m.height - 3, m.height - 2):
-                m.set_lower(x, y, t[wall if area.rock else
-                                    ("face_n" if y < 3 else "face_s")])
-        for y in range(3, m.height - 3):
-            m.set_lower(1, y, t[wall if area.rock else "cut_w"])
-            m.set_lower(2, y, t[wall if area.rock else "face_w"])
-            m.set_lower(m.width - 3, y, t[wall if area.rock else "face_e"])
-            m.set_lower(m.width - 2, y, t[wall if area.rock else "cut_e"])
-            for x in range(3, m.width - 3):
-                m.set_lower(x, y, t["ground_b" if (x * 3 + y * 5) % 7 == 0
-                                    else "ground"])
-
-        # what is in it.  A cave gets water and rubble; a room gets racking.
-        if area.rock:
-            for x in range(5, 11):
-                for y in range(7, 10):
-                    m.set_lower(x, y, t["path"])
-            gen.stamp(m, cs.obj("crate"), 4, 4)
-            gen.stamp(m, cs.obj("crate"), 15, 9)
-            gen.stamp(m, cs.obj("rack"), 14, 3)
-        else:
-            gen.stamp(m, cs.obj("rack"), 4, 3)
-            gen.stamp(m, cs.obj("rack"), 7, 3)
-            gen.stamp(m, cs.obj("machine"), 14, 3)
-            gen.stamp(m, cs.obj("crate"), 4, 10)
-            gen.stamp(m, cs.obj("board"), 11, 3)
-            gen.stamp(m, cs.obj("counter"), 12, 9)
-
-        # the way back, always in the same place: the near wall, middle
-        gen.stamp(m, cs.obj("way_out"), 9, m.height - 4, overlap=True)
-
-        world.landmarks = {"out": [(9, m.height - 4)], "prize": [(15, 6)],
-                           "npc": [(6, 7)]}
-        world.spawn = (10, m.height - 5)
+        {"crack": _cave, "cover": _sewer}.get(area.family, _room)(
+            m, t, cs, rng, area)
+        world.landmarks = {"out": [(9, m.height - 5)], "prize": [(15, 5)],
+                           "npc": [(5, 6)]}
+        world.spawn = (9, m.height - 4)
         world.npcs = []
         return world
 
     return make
+
+
+def _cave(m, t, cs, rng, area) -> None:
+    """No straight edges anywhere, and nothing in it that was carried in."""
+    from . import gen
+
+    # the rock, with a ragged inner edge: each row of the chamber is a
+    # different width, so the wall never runs true for more than a tile or two
+    for y in range(m.height):
+        inset = 2 + (0, 1, 0, 2, 1, 0, 1, 2, 0, 1)[y % 10]
+        for x in range(m.width):
+            if x < inset or x >= m.width - inset or y < 2 or y >= m.height - 2:
+                m.set_lower(x, y, t[f"rock_{(x + y) % 3}"])
+            else:
+                m.set_lower(x, y, t["ground" if (x * 3 + y * 5) % 4
+                                    else f"path"])
+    # water, lying where the floor is lowest, in a shape nothing cut
+    for y in range(7, 11):
+        run = (5, 7, 6, 4)[y - 7]
+        for x in range(6, 6 + run):
+            m.set_lower(x, y, t[f"pool_{(x + y) % 3}"])
+    for n, (bx, by) in enumerate(((4, 4), (14, 9), (12, 3), (6, 11))):
+        gen.stamp(m, cs.obj("boulder" if n % 2 else "boulder_small"), bx, by)
+    for cx in (3, 16):
+        gen.stamp(m, cs.obj("column"), cx, 2, overlap=True)
+    gen.stamp(m, cs.obj("mouth"), 9, m.height - 6, overlap=True)
+
+
+def _sewer(m, t, cs, rng, area) -> None:
+    """Somebody built this one, so it is allowed to run true."""
+    from . import gen
+
+    for y in range(m.height):
+        for x in range(m.width):
+            if y < 3 or y >= m.height - 3 or x < 2 or x >= m.width - 2:
+                m.set_lower(x, y, t["brick"])
+            else:
+                m.set_lower(x, y, t["ground_b" if (x + y) % 5 == 0
+                                    else "ground"])
+    for x in range(2, m.width - 2):          # the invert, running one way
+        m.set_lower(x, 7, t["channel"])
+        m.set_lower(x, 8, t["channel"])
+    gen.stamp(m, cs.obj("ladder"), 9, m.height - 6, overlap=True)
+    for bx in (4, 15):
+        gen.stamp(m, cs.obj("boulder_small"), bx, 11)
+
+
+def _room(m, t, cs, rng, area) -> None:
+    """A room above ground, which is the only kind allowed furniture."""
+    from . import gen
+
+    for x in range(1, m.width - 1):
+        m.set_lower(x, 0, t["cut_n"])
+        m.set_lower(x, 1, t["face_n"])
+        m.set_lower(x, 2, t["face_n_low"])
+        m.set_lower(x, m.height - 3, t["face_s"])
+        m.set_lower(x, m.height - 2, t["face_s_low"])
+        m.set_lower(x, m.height - 1, t["cut_s"])
+    for y in range(3, m.height - 3):
+        m.set_lower(1, y, t["cut_w"])
+        m.set_lower(2, y, t["face_w"])
+        m.set_lower(m.width - 3, y, t["face_e"])
+        m.set_lower(m.width - 2, y, t["cut_e"])
+        for x in range(3, m.width - 3):
+            m.set_lower(x, y, t["ground_b" if (x * 3 + y * 5) % 7 == 0
+                                else "ground"])
+    # Every room is furnished differently.  The first pass stamped the same
+    # six things in the same six places, so the signal box and the exchange
+    # were the same photograph with a different caption on it.
+    # Spread by set *and* by position: the rooms are indexed 8-15 and a
+    # plain modulo four gave the signal box and the exchange the same
+    # plan, which is how they ended up being the same photograph.
+    index = AREAS.index(area)
+    index = index + index // 4
+    plans = (
+        (("rack", 3, 3), ("rack", 6, 3), ("board", 10, 3), ("machine", 15, 3),
+         ("crate", 3, 10), ("counter", 13, 9)),
+        (("counter", 4, 3), ("board", 8, 3), ("rack", 14, 3),
+         ("crate", 3, 9), ("crate", 15, 10), ("machine", 11, 9)),
+        (("rack", 3, 3), ("rack", 3, 8), ("rack", 15, 3), ("rack", 15, 8),
+         ("board", 9, 3), ("crate", 9, 10)),
+        (("machine", 3, 3), ("board", 7, 3), ("board", 12, 3),
+         ("counter", 5, 9), ("rack", 15, 3), ("crate", 15, 10)),
+    )
+    mats = ((7, 9, 7, 12), (5, 8, 6, 11), (8, 10, 9, 14), (6, 7, 8, 13))
+    y0, y1, x0, x1 = mats[index % len(mats)]
+    for y in range(y0, y1 + 1):
+        for x in range(x0, x1 + 1):
+            m.set_lower(x, y, t["rug"])
+    for name, ox, oy in plans[index % len(plans)]:
+        gen.stamp(m, cs.obj(name), ox, oy, overlap=name == "board")
+    gen.stamp(m, cs.obj("way_out"), 9, m.height - 6, overlap=True)
 
 
 # --- what happens in them -----------------------------------------------------

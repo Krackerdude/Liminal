@@ -295,7 +295,19 @@ def _place_wide(world: World, name: str, x: int, y: int, pages, *,
             px, py = (ox + dx) % m.width, (oy + dy) % m.height
             if (px, py) in taken:
                 continue
-            if (m.get_lower(px, py) in solid or m.get_upper(px, py) in solid):
+            # Relays go on the object's *own* tiles and nowhere else.  They
+            # used to go on the free tiles around it, which is backwards: a
+            # relay is invisible, an event on the player's layer blocks
+            # movement, and an action event below the player cannot be
+            # triggered at all -- so every wide object in the game was ringed
+            # by invisible bollards you could walk into but never use.  One
+            # thousand three hundred and eighty-one of them.
+            #
+            # On a solid tile a relay costs nothing: the tile already blocks,
+            # and now the whole face of the object answers instead of one
+            # corner of it.
+            if not (m.get_lower(px, py) in solid
+                    or m.get_upper(px, py) in solid):
                 continue
             m.add_event(f"{name} reach {dx},{dy}", px, py, quiet)
             taken.add((px, py))

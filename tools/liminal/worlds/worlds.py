@@ -1157,8 +1157,10 @@ def _faces_layout(world: World, cs) -> None:
     for index, zone in enumerate(glades):
         layout.carpet(m, fld, zone, t, rng, "rings")
         for px, py in ring(zone, 6, inset=4):
-            fur.put("tree" if (px + py) % 3 else "tree_plain", px, py, pad=1)
-        fur.put("stump", zone.cx, zone.cy, pad=1)
+            _street_furniture(fur, m, t,
+                              "tree" if (px + py) % 3 else "tree_plain",
+                              px, py, pad=1)
+        _street_furniture(fur, m, t, "stump", zone.cx, zone.cy, pad=1)
         layout.glow_floor(m, fld, zone, t, "anim_0", ring(zone, 4, inset=2))
 
     world.plan = fld
@@ -1187,6 +1189,53 @@ FACE_POCKETS: tuple[tuple[int, int, int], ...] = (
     (2, 2, 0),      # the compound   — the grove, behind a gate
 )
 FACE_POCKET_NAMES = ("exchange", "nursery", "substation", "studio", "compound")
+
+
+
+# --- the carriageway ----------------------------------------------------------
+
+# The tiles a road is made of, kerbs included.  Nothing that belongs to the
+# town's *fiction* -- a tree, a mast, a shopfront, a front door -- may stand on
+# any of them.  Passability cannot answer this question, because a road is as
+# walkable as a verge; it is a question about what the thing is, and the answer
+# has to be written down somewhere.  This is that place.
+TARMAC = ("road", "road_line", "road_line_h",
+          "kerb", "kerb_n", "kerb_s", "kerb_w", "kerb_e")
+
+
+def tarmac_ids(cs) -> set[int]:
+    return {cs.tiles[k] for k in TARMAC if k in cs.tiles}
+
+
+def on_tarmac(m, road: set[int], x: int, y: int, cols: int, rows: int) -> bool:
+    """Would an object of this size, put here, have a foot in the road?"""
+    return any(m.get_lower((x + c) % m.width, (y + r) % m.height) in road
+               for r in range(rows) for c in range(cols))
+
+
+def off_tarmac(m, road: set[int], x: int, y: int, cols: int, rows: int,
+               *, radius: int = 10, ok=None) -> tuple[int, int] | None:
+    """The nearest place this thing can stand that is not the carriageway.
+
+    An audit of the grove found the abandoned building, the mast, the
+    escalator and every front door standing on a hundred per cent road tiles,
+    and a third of the trees growing out of the tarmac.  Each of those had its
+    own placement code and none of them had ever been told what a road was.
+    """
+    if not on_tarmac(m, road, x, y, cols, rows) and (ok is None or ok(x, y)):
+        return x, y
+    best = None
+    for dy in range(-radius, radius + 1):
+        for dx in range(-radius, radius + 1):
+            px, py = (x + dx) % m.width, (y + dy) % m.height
+            if on_tarmac(m, road, px, py, cols, rows):
+                continue
+            if ok is not None and not ok(px, py):
+                continue
+            cost = dx * dx + dy * dy
+            if best is None or cost < best[0]:
+                best = (cost, (px, py))
+    return best[1] if best else None
 
 
 def _street_furniture(fur, m, t: dict, name: str, x: int, y: int, *,
@@ -2321,8 +2370,15 @@ def place_door(world: World) -> None:
         return (m.get_lower(x, y) not in solid
                 and m.get_upper(x, y) not in solid)
 
+    road = tarmac_ids(world.chipset)
+
     def fits(sx: int, sy: int) -> bool:
         """Is there already room here, without moving anything?"""
+        # A front door opening onto the middle of the carriageway is not a
+        # front door.  Every one of the grove's was.
+        if road and on_tarmac(m, road, sx - 1, sy - grid.rows,
+                              grid.cols, grid.rows + 1):
+            return False
         # somewhere to stand, and somewhere to stand aside
         if not all(standable(sx + dx, sy) for dx in (-1, 0, 1)):
             return False
@@ -2401,7 +2457,31 @@ def place_landmarks(world: World) -> None:
         grid = world.chipset.obj(marks[used])
         x = zone.cx - grid.cols // 2
         y = zone.cy - grid.rows // 2
-        if not fld.open_space(x, y, grid.cols, grid.rows, 1):
+        # A mast or a shopfront standing in the middle of the carriageway is
+        # the one thing in this town that reads as a mistake rather than as a
+        # place, and all three of them were doing it.
+        road = tarmac_ids(world.chipset)
+        if road:
+            # Wide enough to reach the middle of a block from its centre:
+            # the abandoned building is five tiles across and the first
+            # version of this search simply dropped it when it could not find
+            # room within ten, which traded a building in the road for no
+            # building at all.
+            spot = off_tarmac(m, road, x, y, grid.cols, grid.rows, radius=24,
+                              ok=lambda px, py: fld.open_space(
+                                  px, py, grid.cols, grid.rows, 1))
+            if spot is None:
+                spot = off_tarmac(m, road, x, y, grid.cols, grid.rows,
+                                  radius=24)
+            # Never drop a landmark to avoid a road.  Losing the abandoned
+            # building entirely is a worse town than one with the building in
+            # an awkward spot, and the first version of this search did
+            # exactly that to two of the three.
+            if spot is not None:
+                x, y = spot
+            elif not fld.open_space(x, y, grid.cols, grid.rows, 1):
+                continue
+        elif not fld.open_space(x, y, grid.cols, grid.rows, 1):
             continue
         gen.stamp(m, grid, x, y)
         world.landmarks.setdefault("marks", []).append((zone.cx, zone.cy))

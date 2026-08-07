@@ -18,6 +18,7 @@ from __future__ import annotations
 
 import random
 
+from ..art import ui
 from ..art.menu import EFFECTS
 from ..cmds import (MSG_BOTTOM, MSG_MIDDLE, MSG_TOP, MV_FACE_DOWN, MV_FACE_HERO,
                     MV_FACE_LEFT, MV_FACE_RANDOM, MV_FACE_RIGHT, MV_FACE_UP,
@@ -29,6 +30,7 @@ from ..maps import (ANIM_CONTINUOUS, ANIM_FIXED_GRAPHIC, DIR_DOWN, DIR_LEFT,
                     MOVE_RANDOM, MOVE_STATIONARY, TRIGGER_ACTION,
                     TRIGGER_AUTO, TRIGGER_PARALLEL, TRIGGER_TOUCH, Page)
 from ..state import (SW_INTERACT_BASE, SW_WORLD_STATE_BASE, VR_SET_NUMBER,
+                     VR_FILM, VR_FILM_FRAME, VR_FILM_SPEED, VR_FILM_TICK,
                      VR_FALL, VR_FALLS, VR_REG_BASE, REG_NAMES, REG_MAX, REG_US, REG_FAR,
                      REG_LIGHT, REG_WAYS, REG_AGO, REG_YOU,
                      SW_DEEP_UNLOCKED, SW_EARS_ACTIVE, SW_EYE_ACTIVE,
@@ -1194,8 +1196,15 @@ def _numbers_system(world: World, worlds: dict[str, World],
     kill.switch(altered, True)
     kill.switch(SW_WORLD_MEMORY_BASE + index, True)
     kill.call_event(sys.CE_OVERLAY_OFF)
-    kill.show_picture(sys.PIC_OVERLAY, "StaticB", 160, 120, transparency=58,
-                      use_transparent_color=True, effect=2, power=9)
+    # Live static, on the same terms arrival uses, so the world stays wrong in
+    # motion rather than under a photograph of static.
+    kill.var(VR_FILM, sys.films(worlds)[("StaticB", 58)])
+    kill.var(VR_FILM_SPEED, ui.ANIMATED["StaticB"])
+    kill.var(VR_FILM_TICK, 0)
+    kill.var(VR_FILM_FRAME, 0)
+    kill.show_picture(sys.PIC_OVERLAY, "StaticB1", 160, 120, transparency=58,
+                      use_transparent_color=True)
+    kill.call_event(sys.CE_OVERLAY_ON)
     kill.bgm("Wrong", fadein=4, volume=88)
     kill.wait(20)
     kill.msg("it is open.")

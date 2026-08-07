@@ -23,6 +23,7 @@ a die was thrown.
 
 from __future__ import annotations
 
+from ..art import ui
 from ..art.menu import EFFECTS, icon_position
 from . import atmosphere, mechanics
 from ..cmds import (MSG_BOTTOM, MSG_MIDDLE, MSG_TOP, MV_SPEED_UP, PLAYER,
@@ -36,6 +37,7 @@ from ..state import (SW_DEEP_UNLOCKED, SW_EFFECT_ACTIVE, SW_EYE_ACTIVE,
                      VR_MENU_CURSOR, VR_PREV_WORLD, VR_ROLL, VR_SCRATCH,
                      VR_KEY, VR_REG_BASE, REG_MAX, VR_STEPS, VR_STILL,
                      VR_TEMP_X, VR_TEMP_Y,
+                     VR_FILM, VR_FILM_FRAME, VR_FILM_SPEED, VR_FILM_TICK,
                      VR_VISITS_BASE, VR_WORLD)
 
 # Common event numbers.  Referenced by name everywhere else.
@@ -56,6 +58,7 @@ CE_ATMOSPHERE = 13
 # position, and a missing number is a null it will happily dereference.
 CE_KEYBOARD = 14          # drains Ineluki's key queue; see keys.py
 CE_WHEREAMI = 15
+CE_FILM = 16              # turns animated overlays over; see art/ui.py
 
 # Picture layers.  Higher numbers draw in front.
 PIC_OVERLAY = 5           # the world's own film: grain, haze, scanlines
@@ -109,6 +112,99 @@ def boot() -> CommonEvent:
     return CommonEvent(CE_BOOT, "boot", TRIGGER_CALL, None, s)
 
 
+# --- the film ----------------------------------------------------------------
+#
+# RPG Maker 2000 cannot animate a picture.  It can wave one and it can rotate
+# one, and for a vignette or a light shaft that is the right amount of motion,
+# but grain that waves is still the same grain -- the pattern never changes,
+# so it reads as a dirty screen rather than as film.  The only way to actually
+# animate an overlay is to re-show the same picture id with the next frame's
+# file, which is what the film watcher does.
+#
+# A world's film is identified by the pair (picture, opacity) rather than by
+# the world, because a dozen worlds wear grain at the same strength and there
+# is no reason to write that dozen times.  Arrival stores the pair's index in
+# VR_FILM; the watcher turns the index and the frame number back into a
+# filename.
+
+
+def _moves(world) -> bool:
+    """Is this world's overlay one of the ones that animates?"""
+    return world.overlay in ui.ANIMATED
+
+
+def films(worlds) -> dict[tuple[str, int], int]:
+    """Every distinct (picture, opacity) an animated overlay is worn at.
+
+    Numbered from one, because zero in VR_FILM means "this world's overlay
+    does not move" and the watcher leaves it alone.
+    """
+    from .worlds import WORLD_ORDER
+
+    found: dict[tuple[str, int], int] = {}
+    for key in WORLD_ORDER:
+        world = worlds[key]
+        if _moves(world):
+            found.setdefault((world.overlay, world.overlay_opacity),
+                             len(found) + 1)
+    # The overlay a permanently-changed world wears, which arrival shows from
+    # inside its own branch and at its own strength.
+    found.setdefault(("StaticB", 58), len(found) + 1)
+    return found
+
+
+def _first_frame(known: dict[tuple[str, int], int], world) -> str:
+    return f"{world.overlay}1" if _moves(world) else world.overlay
+
+
+def _arm_film(s: Script, known: dict[tuple[str, int], int], world) -> None:
+    """Tell the watcher what this world's overlay is, or that it is still."""
+    if not _moves(world):
+        s.var(VR_FILM_SPEED, 0)
+        return
+    s.var(VR_FILM, known[(world.overlay, world.overlay_opacity)])
+    s.var(VR_FILM_SPEED, ui.ANIMATED[world.overlay])
+    s.var(VR_FILM_TICK, 0)
+    s.var(VR_FILM_FRAME, 0)
+
+
+def film(worlds) -> CommonEvent:
+    """Turn the overlay over, a frame at a time.
+
+    Runs every frame, and on most of them does almost nothing: it adds one to
+    a counter and compares it to how long this world holds a frame for.  Only
+    when the counter comes round does it walk the table and re-show the
+    picture.  Grain turns over about ten times a second, static thirty, dust
+    five; the numbers live in ``ui.ANIMATED`` beside the art they describe.
+
+    Opacity is baked into each branch because Show Picture takes a literal
+    and not a variable -- which is also why the table is keyed by the pair
+    rather than by the picture alone.
+    """
+    known = films(worlds)
+
+    s = Script()
+    s.comment("turn the film over")
+    with s.if_switch(SW_OVERLAY_ON):
+        with s.if_var(VR_FILM_SPEED, 0, 3):        # > 0: this world's film moves
+            s.var(VR_FILM_TICK, 1, op=1)
+            with s.if_var_var(VR_FILM_TICK, VR_FILM_SPEED, 1):   # >=
+                s.var(VR_FILM_TICK, 0)
+                s.var(VR_FILM_FRAME, 1, op=1)
+                with s.if_var(VR_FILM_FRAME, ui.FILM_FRAMES, 1):
+                    s.var(VR_FILM_FRAME, 0)
+                for (picture, opacity), kind in known.items():
+                    with s.if_var(VR_FILM, kind):
+                        for frame in range(ui.FILM_FRAMES):
+                            with s.if_var(VR_FILM_FRAME, frame):
+                                s.show_picture(PIC_OVERLAY,
+                                               f"{picture}{frame + 1}",
+                                               160, 120,
+                                               transparency=opacity,
+                                               use_transparent_color=True)
+    return CommonEvent(CE_FILM, "film", TRIGGER_PARALLEL, None, s)
+
+
 # --- arrival -----------------------------------------------------------------
 
 def arrival(worlds) -> CommonEvent:
@@ -119,6 +215,8 @@ def arrival(worlds) -> CommonEvent:
     a world's identity is data rather than duplicated script.
     """
     from .worlds import WORLD_ORDER
+
+    known = films(worlds)
 
     s = Script()
     # The stock menu was switched off for a while, back when cancel was one of
@@ -138,13 +236,19 @@ def arrival(worlds) -> CommonEvent:
             s.bgm(world.music, fadein=25, volume=82)
             air = atmosphere.of(key)
             if world.overlay:
-                # The film each world wears, moving on the engine's own clock
-                # rather than the interpreter's, so it keeps going while the
-                # player just walks.
-                s.show_picture(PIC_OVERLAY, world.overlay, 160, 120,
+                # The film each world wears.  A still overlay gets the
+                # engine's own wave or rotation and then looks after itself;
+                # one that moves is handed to the film watcher instead, which
+                # cycles it frame by frame.  The two cannot be combined --
+                # re-showing a picture restarts its wave, so a waving grain
+                # would jitter in place rather than wave.
+                _arm_film(s, known, world)
+                s.show_picture(PIC_OVERLAY, _first_frame(known, world),
+                               160, 120,
                                transparency=world.overlay_opacity,
                                use_transparent_color=True,
-                               effect=air.film, power=air.film_power)
+                               effect=0 if _moves(world) else air.film,
+                               power=0 if _moves(world) else air.film_power)
                 s.call_event(CE_OVERLAY_ON)
             # Weather, camera tremor and camera drift, in that order: the
             # first two are set and forgotten, the third has to be re-armed
@@ -159,9 +263,14 @@ def arrival(worlds) -> CommonEvent:
             with s.if_switch(SW_WORLD_STATE_BASE + index - 1):
                 s.tint(58, 62, 60, 24, 10, False)
                 s.bgm("Wrong", fadein=20, volume=80)
-                s.show_picture(PIC_OVERLAY, "StaticB", 160, 120,
-                               transparency=58, use_transparent_color=True,
-                               effect=2, power=9)
+                # A world that has gone wrong wears live static, not a
+                # photograph of static.
+                s.var(VR_FILM, known[("StaticB", 58)])
+                s.var(VR_FILM_SPEED, ui.ANIMATED["StaticB"])
+                s.var(VR_FILM_TICK, 0)
+                s.var(VR_FILM_FRAME, 0)
+                s.show_picture(PIC_OVERLAY, "StaticB1", 160, 120,
+                               transparency=58, use_transparent_color=True)
             s.var(VR_VISITS_BASE + index - 1, 1, op=1)
     # entering anywhere resets the sense of having gone in a circle
     s.var(VR_LOOPS, 0)
@@ -704,5 +813,6 @@ def build(worlds) -> list[CommonEvent]:
         diary_key(),
         atmosphere_watch(worlds),
         keyboard(),
+        film(worlds),
         whereami(worlds),
     ]

@@ -360,23 +360,39 @@ def vignette(color: RGB = (10, 8, 16), strength: float = 1.0,
     return art
 
 
-def scanlines(color: RGB = (12, 14, 20), period: int = 3) -> Canvas:
-    """CRT lines, for the worlds that are being transmitted rather than visited."""
+def scanlines(color: RGB = (12, 14, 20), period: int = 3,
+              offset: int = 0) -> Canvas:
+    """CRT lines, for the worlds that are being transmitted rather than visited.
+
+    ``offset`` slides the lines down by that many pixels.  A set of frames at
+    consecutive offsets rolls the way a real tube rolls when its vertical hold
+    is a little out -- which is the whole reason these worlds have scanlines.
+    """
     art = _screen()
-    for y in range(0, SCREEN_H, period):
+    for y in range(offset % period, SCREEN_H, period):
         art.rect(0, y, SCREEN_W, 1, color)
     return art
 
 
-def dust(seed: int = 0, count: int = 150, color: RGB = (255, 252, 238)) -> Canvas:
-    """Motes floating in light.  Sparse and hand-placed rather than noisy."""
+def dust(seed: int = 0, count: int = 150, color: RGB = (255, 252, 238),
+         twinkle: int = 0) -> Canvas:
+    """Motes floating in light.  Sparse and hand-placed rather than noisy.
+
+    Every frame draws the *same* motes from the same seed, and hides a
+    different sixth of them.  Re-rolling the positions instead would make the
+    dust teleport around the room; hiding a few makes it catch the light and
+    lose it, which is what dust in a sunbeam actually does.
+    """
     art = _screen()
     rng = np.random.default_rng(seed)
-    for _ in range(count):
+    for index in range(count):
         x = int(rng.integers(0, SCREEN_W))
         y = int(rng.integers(0, SCREEN_H))
+        wide = rng.random() < 0.25
+        if (index + twinkle * 5) % 6 == 0:
+            continue
         art.dot(x, y, color)
-        if rng.random() < 0.25:
+        if wide:
             art.dot(x + 1, y, color)
     return art
 
@@ -509,9 +525,53 @@ def shudder(vertical: bool, *, color: RGB = (226, 232, 244),
     return art
 
 
+# How many frames an animated overlay cycles through.  Four is enough for
+# grain to stop reading as a fixed pattern and few enough that the whole set
+# is under thirty extra screens of art.
+FILM_FRAMES = 4
+
+# The overlay families that move, and how many engine frames to hold each
+# frame for.  Everything not listed here is deliberately still: a vignette is
+# the shape of a lens and a haze is the air in a room, and neither of those
+# things flickers.  Grain, static, dust and scanlines are the four that look
+# wrong *because* they were frozen.
+ANIMATED: dict[str, int] = {
+    "Grain": 6, "GrainB": 6,      # ~10Hz: film, which was shot at 24
+    "Static": 2, "StaticB": 2,    # ~30Hz: an untuned channel is never calm
+    "Dust": 12, "DustB": 12,      # ~5Hz: motes turning over slowly
+    "Scanline": 8,                # ~7Hz: one pixel of roll at a time
+}
+
+
+def film_frames() -> dict[str, Canvas]:
+    """The numbered frames of every overlay that moves.
+
+    Named ``Grain1``..``Grain4`` and so on, beside the still ``Grain`` that
+    other things still use.  Grain and static re-roll their noise every frame,
+    because that is what makes them read as grain and static rather than as a
+    texture someone laid over the screen.  Dust and scanlines keep their
+    layout and change one property, so they move rather than seethe.
+    """
+    out: dict[str, Canvas] = {}
+    for index in range(FILM_FRAMES):
+        n = index + 1
+        # A big stride between seeds so consecutive frames share no structure.
+        out[f"Grain{n}"] = grain(seed=3 + index * 101)
+        out[f"GrainB{n}"] = grain(seed=23 + index * 101)
+        out[f"Static{n}"] = static_field(seed=5 + index * 101)
+        out[f"StaticB{n}"] = static_field(seed=17 + index * 101, density=0.7)
+        out[f"Dust{n}"] = dust(seed=11, twinkle=index)
+        out[f"DustB{n}"] = dust(seed=29, count=110, twinkle=index)
+        # Period equal to the frame count so the roll comes back round to
+        # where it started instead of jumping at the end of the cycle.
+        out[f"Scanline{n}"] = scanlines(period=FILM_FRAMES, offset=index)
+    return out
+
+
 def build_overlays() -> dict[str, Canvas]:
     """Every overlay picture the game can show, by filename."""
     return {
+        **film_frames(),
         "Vignette": vignette(strength=1.0),
         "VignetteSoft": vignette(color=(30, 24, 40), strength=0.75, power=3.0),
         "Scanline": scanlines(),

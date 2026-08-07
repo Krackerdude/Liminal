@@ -2513,8 +2513,24 @@ def decorate(world: World) -> None:
         # one room in four gets a painting on its floor
         if murals and index % 4 == 1:
             grid = world.chipset.obj(murals[index % len(murals)])
-            if fld.open_space(zone.cx - 2, zone.cy - 2, grid.cols, grid.rows, 0):
-                gen.stamp(m, grid, zone.cx - 2, zone.cy - 2)
+            mx, my = zone.cx - 2, zone.cy - 2
+            # Never paint one into the carriageway.  A mural writes itself
+            # into the *lower* layer, replacing whatever was there, so a mural
+            # laid across a road stops reading as a road tile at all -- which
+            # is how four four-by-four paintings sat in the middle of the
+            # street through every audit that asked "what is standing on
+            # tarmac".  They were not standing on it.  They had eaten it.
+            road = tarmac_ids(world.chipset)
+            if road and on_tarmac(m, road, mx, my, grid.cols, grid.rows):
+                spot = off_tarmac(m, road, mx, my, grid.cols, grid.rows,
+                                  radius=12,
+                                  ok=lambda px, py: fld.open_space(
+                                      px, py, grid.cols, grid.rows, 0))
+                if spot is None:
+                    continue
+                mx, my = spot
+            if fld.open_space(mx, my, grid.cols, grid.rows, 0):
+                gen.stamp(m, grid, mx, my)
         if index % 3 == 0:
             from .rooms import ring as _ring
             layout.glow_floor(m, fld, zone, t, anim,

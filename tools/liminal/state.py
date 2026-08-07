@@ -146,6 +146,14 @@ VR_FILM_FRAME = 69
 VR_FILM_TICK = 70
 VR_FILM_SPEED = 71
 
+# Where you were standing when the interval took you, so it can put you back.
+# Consecutive: a teleport destination is read from three variables in a row.
+VR_BACK_MAP = 72
+VR_BACK_X = 73
+VR_BACK_Y = 74
+VR_SECRET_ROLL = 75
+VR_STILL_COUNT = 76
+
 # The four things the grove has that can be carried, one found on each
 # channel and every one of them used on a different channel from the one that
 # had it.  They are switches rather than inventory because none of them are
@@ -174,6 +182,15 @@ SW_HIDE_FOUND = SW_HIDE_BASE + 8        # + area index 0..15: taken already
 SW_HIDE_MANHOLE = SW_HIDE_BASE + 24     # the cover is off
 SW_HIDE_ASKED = SW_HIDE_BASE + 25       # somebody asked you to find them
 SW_REMOTE = SW_HIDE_BASE + 26           # the television remote is in your hand
+
+# The secrets.  Nothing in the game refers to these by name to the player and
+# nothing ever confirms one happened; they exist so a thing that happens twice
+# can know it has happened before.
+SW_SECRET_BASE = SW_FACE_BASE + 60
+SW_INTERVAL = SW_SECRET_BASE + 0        # you are in the place between channels
+SW_INTERVAL_SEEN = SW_SECRET_BASE + 1   # it has happened to you at least once
+SW_WATCHED = SW_SECRET_BASE + 2         # the eye has opened on you
+SW_SET_LIT = SW_SECRET_BASE + 3         # a television answered
 
 SW_MURAL_BASE = SW_FACE_BASE + 48
 SW_MURAL_LENS = SW_MURAL_BASE + 0       # the eye
@@ -214,6 +231,10 @@ def _dense(names: dict[int, str]) -> dict[int, str]:
 
 def switch_names(world_names: list[str]) -> dict[int, str]:
     names: dict[int, str] = {}
+    names[SW_INTERVAL] = "in the interval"
+    names[SW_INTERVAL_SEEN] = "the interval has happened"
+    names[SW_WATCHED] = "the eye has opened"
+    names[SW_SET_LIT] = "a television answered"
     for key, index in SW_HAS_EFFECT.items():
         names[index] = f"has {key}"
     names.update({
@@ -267,6 +288,9 @@ def variable_names(world_names: list[str]) -> dict[int, str]:
                   VR_DEBUG_KEY: "debug key", VR_DEBUG_X: "debug x",
                   VR_DEBUG_Y: "debug y",
                   VR_KEY_QUEUE: "the key queue", VR_KEY_DRAIN: "keys left",
+                  VR_BACK_MAP: "the way back", VR_BACK_X: "back x",
+                  VR_BACK_Y: "back y", VR_SECRET_ROLL: "the roll",
+                  VR_STILL_COUNT: "how long you have stood still",
                   VR_FILM: "the film", VR_FILM_FRAME: "film frame",
                   VR_FILM_TICK: "film tick", VR_FILM_SPEED: "film speed",
                   VR_MURAL_MAP: "the way back", VR_MURAL_X: "back x",

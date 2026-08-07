@@ -36,11 +36,12 @@ from __future__ import annotations
 import os
 import random
 
-from ..cmds import MV_FACE_HERO, Script
+from ..cmds import MSG_BOTTOM, MSG_MIDDLE, MV_FACE_HERO, Script
 from ..maps import (ANIM_CONTINUOUS, LAYER_BELOW, LAYER_SAME, MOVE_RANDOM,
                     MOVE_STATIONARY, TRIGGER_ACTION, TRIGGER_AUTO,
                     TRIGGER_PARALLEL, Page)
-from ..state import (SW_FACE_BULB, SW_FACE_COIN, SW_FACE_ENDED, SW_FACE_HEARD,
+from ..state import (SW_INTERVAL, SW_INTERVAL_SEEN, VR_SECRET_ROLL,
+                     SW_FACE_BULB, SW_FACE_COIN, SW_FACE_ENDED, SW_FACE_HEARD,
                      SW_FACE_MAST, SW_FACE_SEED, SW_FACE_TAPE, VR_CHANNEL,
                      VR_AMBIENCE, VR_RING_DIR, VR_RING_WAIT, VR_RING_X,
                      VR_RING_Y)
@@ -219,6 +220,67 @@ def _shudder(s: Script, direction: int) -> None:
     s.erase_picture(sys.PIC_SHUDDER)
 
 
+# One channel change in twenty-five does not arrive on the next channel.
+#
+# The player is not told this can happen, and nothing afterwards confirms it
+# did.  It reuses the no-signal map because that map is the same town -- so
+# the place is somewhere they have walked, at an hour it has never been, which
+# is worse than anywhere invented for the purpose.
+INTERVAL_ODDS = 25
+INTERVAL_AT = (60, 63)
+
+
+def _interval(s: Script, world) -> None:
+    """The place between channels.
+
+    The tuner does not land.  Everything that makes the grove a town is taken
+    away one piece at a time -- the music, then the light, then the film --
+    and the player is left standing in it until they press something.  What
+    answers is not shown properly and never explained.
+    """
+    s.comment("the interval")
+    # Coordinates in variables, map as a literal: the engine's variable
+    # teleport takes a fixed map and two variables, so the way back is the
+    # channel this happened on, which is known when the script is written.
+    s.var_from_event(VR_RING_X, 10001, 1)
+    s.var_from_event(VR_RING_Y, 10001, 2)
+    s.switch(SW_INTERVAL, True)
+
+    s.bgm_fadeout(2)
+    s.call_event(sys.CE_OVERLAY_OFF)
+    s.fade_out(19)                       # INSTANT: the picture simply stops
+    s.teleport(_MAP_IDS["faces4"], *INTERVAL_AT)
+    s.tint(8, 8, 12, 0, 0, True)
+    s.fade_in(19)
+    s.se("Carrier", volume=70)
+    s.wait(12)
+    s.se("Heartbeat", volume=54)
+    s.wait(16)
+    # The one thing in the game that addresses the player directly, and it
+    # does not say anything -- it waits.  A message box with no text and no
+    # way past it except pressing the key.
+    s.msg_options(MSG_MIDDLE)
+    s.msg("")
+    s.se("Heartbeat", volume=70)
+    s.show_picture(sys.PIC_FLASH, "Eye", 160, 120, transparency=40,
+                   use_transparent_color=True)
+    s.wait(8)
+    s.se("Breath", volume=80)
+    s.wait(20)
+    s.msg("        it is not your turn.")
+    s.se("StaticBurst", volume=88)
+    s.flash(255, 255, 255, 31, 3, True)
+    s.erase_picture(sys.PIC_FLASH)
+    s.switch(SW_INTERVAL_SEEN, True)
+    s.switch(SW_INTERVAL, False)
+    s.fade_out(19)
+    s.teleport_var(_MAP_IDS[world.key], VR_RING_X, VR_RING_Y)
+    s.tint(100, 100, 100, 100, 0, True)
+    s.call_event(sys.CE_ARRIVE)
+    s.fade_in(atmosphere.of("faces").enter)
+    s.msg_options(MSG_BOTTOM)
+
+
 def _tune(s: Script, world, target_key: str) -> None:
     """The picture changes and you do not move.
 
@@ -227,6 +289,18 @@ def _tune(s: Script, world, target_key: str) -> None:
     transition standing on the tile they were walking across, facing the way
     they were walking, with a different town around them.
     """
+    # The roll happens before anything else, so a channel change that is
+    # going to go wrong never plays the sound of one that went right.
+    s.var_random(VR_SECRET_ROLL, 1, INTERVAL_ODDS)
+    with s.if_else_var(VR_SECRET_ROLL, 1) as arm:
+        with arm(False):
+            _interval(s, world)
+        with arm(True):
+            _tuned(s, world, target_key)
+
+
+def _tuned(s: Script, world, target_key: str) -> None:
+    """The change that actually lands."""
     s.se("Tune", volume=72)
     s.flash(240, 236, 226, 22, 2, False)
     s.bgm_fadeout(4)

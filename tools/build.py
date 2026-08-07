@@ -219,6 +219,19 @@ def author_events(worlds: dict[str, W.World]) -> int:
     for key in W.MURAL_INSIDE_ORDER:
         rng = random.Random(zlib.crc32(f"mural:{key}".encode()))
         murals.inside_events(worlds[key], worlds, rng)
+
+    # Everything is placed; now check the player can actually get to it.
+    # Forty-odd places in this codebase add an event directly, each with its
+    # own idea of where its thing belongs, and none of them can see the
+    # finished world.  Asking once, here, is cheaper and more reliable than
+    # teaching all of them -- and whatever this cannot rescue, the validator
+    # refuses to ship.
+    from liminal.worlds import reach
+    rehomed = []
+    for key in W.WORLD_ORDER:
+        rehomed += reach.rehome(worlds[key])
+    if rehomed:
+        print(f"  moved {len(rehomed)} unreachable events onto usable ground")
     # The ascent.  The forest at the bottom only gets the umbrellas that lift
     # you; it already has its door, its effect and its residents.
     ascent.register(worlds)

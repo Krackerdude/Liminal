@@ -1065,3 +1065,318 @@ def cable_tray(look: Look, cols: int, rows: int) -> Canvas:
         art.hline(row, 2, w - 3, tone.lit)
     foot(art, 0, h - 3, w, m)
     return art
+
+
+# --- the four ways in ---------------------------------------------------------
+# A playthrough found the grove's hidden half unfindable, and the reason was
+# not that it was well hidden: the crack, the cover, the hatch and the locked
+# door had interactions and *no art at all*.  Four invisible gleams on open
+# grass, in a town a hundred and forty tiles across.  The player walked past
+# the place the entrance was and correctly reported there was nothing there.
+#
+# Each of these is a thing you can find by looking, which is the only kind of
+# hiding this game is allowed to do.
+
+
+def _bedded(ground: Canvas, cols: int, rows: int) -> Canvas:
+    """A drawing surface already covered in the ground it will stand on.
+
+    The four entrances live on the **lower** layer, which is the one rule this
+    codebase has about layers turned on its head, and it is not a preference:
+    the grove's chipsets have 139 of their 144 upper-layer slots spent, and
+    four objects need twenty-two.  Block F is a hard format limit and there is
+    no arguing with it.
+
+    The cost of the lower layer is that an object carries its ground with it,
+    so each of these bakes in the surface it is actually placed on -- turf for
+    the ones in the clearings, road for the one in the carriageway -- and
+    ``hidden.entrances`` puts them where that surface is.  It is a bargain
+    struck with the format rather than a design.
+    """
+    art = Canvas(cols * TILE, rows * TILE, (0, 0, 0))
+    for row in range(rows):
+        for col in range(cols):
+            art.paste(ground, col * TILE, row * TILE)
+    return art
+
+
+def rock_split(look: Look, cols: int = 2, rows: int = 3) -> Canvas:
+    """An outcrop with a split in it, shoulder wide.
+
+    Rock, in a town made of grass and asphalt, is already the odd thing on the
+    screen; the split then reads as the reason the rock is there.  The dark of
+    it runs the full height and does not narrow, because a crack that tapers
+    looks like damage and a crack that does not looks like a way through.
+    """
+    art = _bedded(turf(look, 0), cols, rows)
+    w, h = cols * TILE, rows * TILE
+    r = look.road
+    # The mass, in unequal chunks -- the same rule rock_face works by.
+    solid(art, 0, TILE, w, h - TILE, r, cap=r)
+    for index, (x, y, cw, ch) in enumerate(
+            ((0, TILE - 5, 11, 9), (12, TILE - 2, 12, 8),
+             (2, TILE + 12, 9, 7), (w - 9, TILE + 9, 9, 8))):
+        mt.plane(art, x, y, cw, ch, r.mid)
+        art.hline(y, x, min(w - 1, x + cw - 1), r.lit)
+        art.hline(y + ch - 1, x, min(w - 1, x + cw - 1), r.deep)
+    # The split: straight down the middle, black, with the light catching one
+    # lip of it and the other lip in shadow.
+    mid = w // 2
+    for y in range(TILE - 4, h):
+        lean = (y - TILE) // 14
+        art.vline(mid + lean, y, y, (0, 0, 0))
+        art.vline(mid + lean - 1, y, y, (0, 0, 0))
+        art.dot(mid + lean - 2, y, r.shade)
+        art.dot(mid + lean + 1, y, r.lit if y % 5 else r.deep)
+    # A little of what is inside, at the bottom, so it reads as depth.
+    art.rect(mid - 3, h - 6, 6, 6, (0, 0, 0))
+    return art
+
+
+def manhole(look: Look, cols: int = 2, rows: int = 2) -> Canvas:
+    """A cover seated in the road, with the rim proud of the asphalt.
+
+    Flat, because it is flat, and legible only because the metal takes the
+    light differently from the tarmac around it.  It is the one entrance that
+    is *not* hidden by being out of the way -- it is hidden by being the most
+    ordinary object in a town.
+    """
+    art = _bedded(road(look), cols, rows)
+    w, h = cols * TILE, rows * TILE
+    m, r = look.metal, look.road
+    cx, cy = w / 2, h / 2 + 1
+    art.ellipse(cx, cy + 1, w * 0.40, h * 0.30, r.deep)      # the seat
+    art.ellipse(cx, cy, w * 0.38, h * 0.28, m.shade)         # the rim
+    art.ellipse(cx, cy, w * 0.32, h * 0.23, m.mid)           # the plate
+    # Cast pattern: concentric, because every cover in the world is.
+    art.ellipse(cx, cy, w * 0.22, h * 0.15, m.shade)
+    art.ellipse(cx, cy, w * 0.20, h * 0.13, m.mid)
+    for step in range(-3, 4):
+        art.vline(int(cx + step * 3), int(cy - 4), int(cy + 4), m.deep)
+    art.hline(int(cy - h * 0.26), int(cx - w * 0.24), int(cx + w * 0.24), m.lit)
+    # The two slots you would put a bar through.
+    art.rect(int(cx - w * 0.28), int(cy - 1), 3, 2, (0, 0, 0))
+    art.rect(int(cx + w * 0.28) - 2, int(cy - 1), 3, 2, (0, 0, 0))
+    return art
+
+
+def hatch_shed(look: Look, cols: int = 2, rows: int = 3) -> Canvas:
+    """Something small with a way up into it, and a hatch left open.
+
+    Board and paint rather than rock, because the three rooms this leads to
+    are all built things -- a signal box, a greenhouse, a substation -- and
+    the entrance should say which half of the hidden world it belongs to
+    before the player is through it.
+    """
+    art = _bedded(turf(look, 0), cols, rows)
+    w, h = cols * TILE, rows * TILE
+    b, m = look.bark, look.metal
+    solid(art, 1, TILE, w - 2, h - TILE - 1, b, cap=b)
+    # Boarding, vertical, with one board darker than its neighbours.
+    for x in range(2, w - 2, 4):
+        art.vline(x, TILE + 2, h - 3, b.shade if (x // 4) % 3 else b.deep)
+    # The hatch itself, up under the eaves and standing open on its hinge.
+    hx, hy, hw, hh = w // 2 - 6, TILE + 3, 12, 10
+    art.rect(hx, hy, hw, hh, (0, 0, 0))
+    art.rect(hx + 1, hy + 1, hw - 2, hh - 2, blend(b.deep, (0, 0, 0), 0.6))
+    art.rect(hx - 3, hy - 1, 3, hh + 2, b.lit)               # the flap, open
+    art.vline(hx - 3, hy - 1, hy + hh, b.shade)
+    # A ladder standing in it, which is the part that says "up".
+    for y in range(hy + 2, hy + hh, 3):
+        art.hline(y, hx + 2, hx + hw - 3, m.lit)
+    art.vline(hx + 2, hy + 1, hy + hh - 1, m.mid)
+    art.vline(hx + hw - 3, hy + 1, hy + hh - 1, m.mid)
+    return art
+
+
+def locked_door(look: Look, tag: tuple[int, int, int],
+                cols: int = 2, rows: int = 3) -> Canvas:
+    """A door that does not open, painted the colour of the key that opens it.
+
+    The paint is the only instruction the game ever gives about the locks, and
+    it gives it without a word: four doors, four colours, and the colour of
+    each one is the channel its key is on rather than the channel it stands
+    on.  So it has to be unmistakably a *colour* and not a shade -- the tag
+    band runs the full width of the door and is the brightest thing on it.
+    """
+    art = _bedded(paving(look), cols, rows)
+    w, h = cols * TILE, rows * TILE
+    b, m = look.bark, look.metal
+    solid(art, 0, 2, w, h - 2, b, cap=b)
+    # The opening, recessed, with the door sitting inside it.
+    dx, dy, dw, dh = 3, 8, w - 6, h - 10
+    art.rect(dx - 1, dy - 1, dw + 2, dh + 2, b.deep)
+    art.rect(dx, dy, dw, dh, blend(tag, (0, 0, 0), 0.45))
+    art.rect(dx + 1, dy + 1, dw - 2, dh - 3, tag)
+    # Two panels, so it reads as a door and not as a painted rectangle.
+    for row in range(2):
+        py = dy + 4 + row * (dh // 2 - 1)
+        art.rect(dx + 3, py, dw - 6, dh // 2 - 6, blend(tag, (0, 0, 0), 0.30))
+        art.hline(py, dx + 3, dx + dw - 4, blend(tag, (255, 255, 255), 0.35))
+    # Handle, keyhole, and the shine along the hinge side.
+    art.rect(dx + dw - 6, dy + dh // 2 - 1, 3, 2, m.lit)
+    art.dot(dx + dw - 5, dy + dh // 2 + 2, (0, 0, 0))
+    art.vline(dx + 1, dy + 1, dy + dh - 3, blend(tag, (255, 255, 255), 0.25))
+    return art
+
+
+# --- the town going under -----------------------------------------------------
+# A grove with a brown brick boundary is not a grove, and a road with no crack
+# in it is a road somebody is still maintaining.  These are the tiles that say
+# the town lost.
+
+
+def hedge(look: Look, seed: int = 0, base: tuple[int, int, int] | None = None
+          ) -> Canvas:
+    """Massed greenery, dark and bushy, as a boundary you cannot see through.
+
+    The grove's secondary boundary was a brown strata band -- the generic
+    fallback, inherited because the motif table had no opinion about this
+    world -- so a third of the town was walled in masonry.  This is the same
+    job done in leaves: overlapping lobes, each lit on the crown and dark
+    underneath, with no straight edge anywhere in it.
+    """
+    # The boundary has to be one material.  Left to its own leaf colour the
+    # hedge came out grey-blue on the channel whose wall is near-black red,
+    # so the two halves of the same fence read as two different fences.  The
+    # caller passes the wall's own base and both are built from it.
+    l = mt.Material("hedge", base) if base else look.leaf
+    g = look.grass if base is None else l
+    art = Canvas(TILE, TILE, blend(l.deep, (0, 0, 0), 0.35))
+    mt.plane(art, 0, 0, TILE, TILE, blend(l.deep, (0, 0, 0), 0.30))
+    lobes = ((3, 3, 6), (11, 5, 5), (6, 10, 6), (13, 12, 4), (0, 8, 4),
+             (8, 1, 4), (1, 14, 5), (14, 0, 4))
+    for index, (cx, cy, r) in enumerate(lobes):
+        cx = (cx + seed * 5) % TILE
+        body = l.shade if index % 3 else blend(l.mid, l.deep, 0.4)
+        art.blob(cx, cy, r, body)
+        art.blob(cx - 1, cy - 1, max(1, r - 2), blend(body, l.lit, 0.35))
+        art.dot(cx - 1, cy - r + 1, l.lit)
+    # a few blades catching the light along the top, so it reads as growth
+    for x in range(0, TILE, 3):
+        art.dot((x + seed) % TILE, (x * 5) % 4, blend(g.lit, l.lit, 0.5))
+    return art
+
+
+# --- what is left in the street -----------------------------------------------
+
+def overtaken_house(look: Look, cols: int = 5, rows: int = 5) -> Canvas:
+    """A house the growth has got to, with the house still legible.
+
+    The one this replaces was named a house and drawn as a canopy over two
+    tan lobes -- the greenery had eaten it so completely that nothing said
+    building.  A ruin has to be readable as the thing it used to be or it is
+    just terrain, so the roof line, the windows and the door survive here and
+    the ivy goes *over* them.
+    """
+    art = _bedded(turf(look, 0), cols, rows)
+    w, h = cols * TILE, rows * TILE
+    b, m, gl = look.bark, look.metal, look.glass
+    l, g = look.leaf, look.grass
+
+    wall_top = h // 3
+    solid(art, 4, wall_top, w - 8, h - wall_top - 4, b, cap=b)
+    # pitched roof: two slopes meeting at a ridge, drawn as steps
+    ridge = wall_top - 2
+    for step in range(ridge - 8, ridge + 1):
+        inset = (ridge - step)
+        mt.plane(art, 4 + inset, step, w - 8 - inset * 2, 1,
+                 m.shade if step % 2 else m.mid)
+    art.hline(ridge - 8, 4 + 8, w - 13, m.lit)
+    art.hline(ridge, 4, w - 5, blend(m.deep, (0, 0, 0), 0.3))
+    # two windows and a door, all still there
+    for wx in (10, w - 24):
+        art.rect(wx, wall_top + 6, 12, 11, (0, 0, 0))
+        art.rect(wx + 1, wall_top + 7, 10, 9, gl.shade)
+        art.vline(wx + 6, wall_top + 7, wall_top + 15, b.deep)
+        art.hline(wall_top + 11, wx + 1, wx + 10, b.deep)
+    dx = w // 2 - 6
+    art.rect(dx, h - 22, 12, 18, (0, 0, 0))
+    art.rect(dx + 1, h - 21, 10, 17, blend(b.deep, (0, 0, 0), 0.35))
+    art.dot(dx + 9, h - 13, m.lit)
+    # the ivy: up one corner, across the eaves, and a swag over one window
+    for y in range(ridge, h - 4):
+        x = 5 + ((y * 3) % 4)
+        art.dot(x, y, l.shade if y % 2 else l.mid)
+        art.dot(x + 1, y, l.deep)
+        if y % 3 == 0:
+            art.dot(x + 2, y, l.lit)
+    for x in range(6, w - 6, 3):
+        art.dot(x, ridge + 1 + (x % 3), l.mid)
+        art.dot(x + 1, ridge + 2 + (x % 2), l.deep)
+    for x in range(10, 24):
+        art.dot(x, wall_top + 6 + ((x * 5) % 3), l.shade)
+    for x in range(0, w, 4):
+        art.dot((x + 2) % w, h - 5, g.mid)
+        art.dot(x, h - 4, g.shade)
+    return art
+
+
+def telly(look: Look, channel: int, cols: int = 2, rows: int = 2) -> Canvas:
+    """A television left in the grass, still showing what it is receiving.
+
+    The grove is one town received four ways, and nothing in it ever says so.
+    This does: a set someone dumped on a verge, tipped back on its legs, with
+    a picture on it that belongs to the channel the player is standing in.
+    The chassis is identical on all four -- same bezel, same knobs, same dead
+    plastic -- so the only thing that differs is the signal, which is the
+    whole claim the world makes about itself.
+
+    Wrecked cars were the first attempt at a per-channel object and they were
+    a recolour of one shape.  This is the opposite: one shape, four pictures.
+    """
+    art = _bedded(turf(look, 0), cols, rows)
+    w, h = cols * TILE, rows * TILE
+    case, glass, m = look.plastic, look.glass, look.metal
+    shell = blend(case.mid, (52, 48, 46), 0.55)
+
+    art.ellipse(w // 2, h - 4, w * 0.36, 3, (0, 0, 0))
+    # the box, with the bezel proud of the screen
+    solid(art, 3, 6, w - 6, h - 12, mt.Material("case", shell), cap=None)
+    art.rect(4, 7, w - 8, h - 14, blend(shell, (255, 255, 255), 0.10))
+    sx, sy, sw, sh = 6, 9, w - 19, h - 19
+    art.rect(sx - 1, sy - 1, sw + 2, sh + 2, (0, 0, 0))
+
+    if channel == 0:            # the grove: a picture, and it is this town
+        art.rect(sx, sy, sw, sh, blend(glass.mid, (40, 60, 50), 0.45))
+        art.hline(sy + sh - 4, sx, sx + sw - 1, blend(look.grass.mid, (0, 0, 0), 0.2))
+        art.rect(sx + 2, sy + sh - 8, 3, 5, look.bark.shade)     # a mast
+        art.rect(sx + sw - 5, sy + sh - 7, 3, 4, look.road.shade)
+        art.hline(sy + 1, sx, sx + sw - 1, blend(glass.lit, (0, 0, 0), 0.3))
+    elif channel == 1:          # overgrown: the set has been got into
+        art.rect(sx, sy, sw, sh, blend(glass.deep, (0, 0, 0), 0.3))
+        for n in range(sh):
+            art.dot(sx + (n * 5) % sw, sy + n, look.leaf.shade)
+            art.dot(sx + (n * 5 + 1) % sw, sy + n, look.leaf.deep)
+        art.dot(sx + 2, sy + 2, look.leaf.lit)
+        art.dot(sx + sw - 3, sy + sh - 3, look.leaf.lit)
+    elif channel == 2:          # off-colour: the picture with the colour gone
+        art.rect(sx, sy, sw, sh, (86, 88, 92))
+        for index in range(sw // 2):
+            band = 60 + index * 14
+            art.vline(sx + index * 2, sy, sy + sh - 1,
+                      (min(band, 210), min(band, 210), min(band + 4, 214)))
+        art.hline(sy + sh // 2, sx, sx + sw - 1, (34, 34, 38))
+    else:                       # no signal: it is not receiving anything
+        art.rect(sx, sy, sw, sh, (16, 14, 18))
+        for y in range(sy, sy + sh):
+            for x in range(sx, sx + sw):
+                if (x * 7 + y * 13 + (x ^ y)) % 3 == 0:
+                    art.dot(x, y, (208, 206, 202) if (x + y) % 2 else (72, 70, 74))
+        art.hline(sy + 2, sx, sx + sw - 1, (240, 238, 234))
+        art.hline(sy + sh - 4, sx, sx + sw - 1, (160, 158, 156))
+
+    # the control panel: two knobs and a speaker grille, on the right
+    px = sx + sw + 2
+    art.rect(px, sy, w - px - 4, sh, blend(shell, (0, 0, 0), 0.25))
+    art.blob(px + 2, sy + 3, 2, m.shade)
+    art.blob(px + 2, sy + 3, 1, m.lit)
+    art.blob(px + 2, sy + 8, 2, m.shade)
+    for gy in range(sy + 12, sy + sh - 1, 2):
+        art.hline(gy, px + 1, w - 6, blend(shell, (0, 0, 0), 0.45))
+    # legs, and the grass coming up round them
+    art.rect(5, h - 6, 3, 3, blend(shell, (0, 0, 0), 0.5))
+    art.rect(w - 8, h - 6, 3, 3, blend(shell, (0, 0, 0), 0.5))
+    for x in range(2, w - 2, 3):
+        art.dot(x, h - 4 - (x % 2), look.grass.shade)
+    return art

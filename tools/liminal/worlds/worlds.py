@@ -497,6 +497,70 @@ LIFT_AT = 15                      # which never comes
 HOME_DOOR = 9                     # the player's own, on the fourth floor
 
 
+def open_floor(world: World) -> set[tuple[int, int]]:
+    """Every tile of a finished interior that nothing is standing on."""
+    m, solid = world.map, solid_ids(world.chipset)
+    return {(x, y) for y in range(m.height) for x in range(m.width)
+            if m.get_lower(x, y) not in solid and m.get_upper(x, y) not in solid}
+
+
+def clear_cuts(world: World, floor: set[tuple[int, int]], ground: int) -> int:
+    """Take out any decoration that has sealed part of an interior off.
+
+    The big worlds have had this since the beginning -- ``repair_connectivity``
+    is the same idea -- but the interiors were built by hand and trusted, and
+    they should not have been.  One dead plant, one tile wide, stood in the
+    middle of the fourth floor's corridor and cut the lift and one of the flat
+    doors off from the rest of the building; the same plant is on every storey.
+    Nobody could have seen that by looking at the map, and nobody did.
+
+    ``floor`` is the bare interior as it was before anything was stamped on
+    it, so this can tell a prop from a wall: only tiles that *used* to be
+    walkable are ever cleared, and only the ones directly hemming in a
+    stranded pocket.  Decoration that hugs a wall and blocks nothing survives,
+    which is the entire reason this is not simply "delete every prop".
+    """
+    m, solid = world.map, solid_ids(world.chipset)
+    removed = 0
+    for _ in range(8):
+        reachable = _fill(world, floor)
+        stranded = {spot for spot in floor
+                    if spot not in reachable and spot in open_floor(world)}
+        if not stranded:
+            break
+        # The props hemming the pocket in: solid now, walkable by design.
+        walls = {((x + dx) % m.width, (y + dy) % m.height)
+                 for x, y in stranded
+                 for dx, dy in ((1, 0), (-1, 0), (0, 1), (0, -1))}
+        cut = [spot for spot in walls & floor
+               if m.get_lower(*spot) in solid or m.get_upper(*spot) in solid]
+        if not cut:
+            break
+        for x, y in cut:
+            m.set_lower(x, y, ground)
+            m.set_upper(x, y, maps.EMPTY_UPPER)
+            removed += 1
+    return removed
+
+
+def _fill(world: World, floor: set[tuple[int, int]]) -> set[tuple[int, int]]:
+    """Flood the interior from the arrival tile across tiles only."""
+    m, solid = world.map, solid_ids(world.chipset)
+    start = (world.spawn[0] % m.width, world.spawn[1] % m.height)
+    seen: set[tuple[int, int]] = set()
+    stack = [start]
+    while stack:
+        x, y = stack.pop()
+        if (x, y) in seen:
+            continue
+        if m.get_lower(x, y) in solid or m.get_upper(x, y) in solid:
+            continue
+        seen.add((x, y))
+        for dx, dy in ((1, 0), (-1, 0), (0, 1), (0, -1)):
+            stack.append(((x + dx) % m.width, (y + dy) % m.height))
+    return seen
+
+
 def _corridor(m, t) -> None:
     """One storey of the block, cut the same way the flat is.
 
@@ -539,6 +603,9 @@ def _build_floor(key: str):
         world, cs, rng = _new(key, map_id, 20, 15, loop=False, art="hall5")
         m, t = world.map, cs.tiles
         _corridor(m, t)
+        # The corridor as it is before anything stands in it, so the
+        # connectivity repair below can tell a prop from a wall.
+        bare = open_floor(world)
         depth = _floor_of(key)
         ground = key == "lobby"
 
@@ -597,6 +664,7 @@ def _build_floor(key: str):
         world.landmarks = landmarks
         world.spawn = (HOME_DOOR, 4) if key == HOME_FLOOR else (7, 5)
         world.npcs = []
+        clear_cuts(world, bare, t["ground"])
         return world
 
     return build
@@ -1056,7 +1124,7 @@ def _faces_layout(world: World, cs) -> None:
     # Junctions get the municipal furniture: lights on every corner, a shelter,
     # a phone box still lit, a car nobody came back for.
     street = ["traffic_light", "shelter", "phone_box", "car", "vending",
-              "road_sign"]
+              "road_sign", "telly"]
     for index, zone in enumerate(junctions):
         layout.carpet(m, fld, zone, t, rng, "full",
                       patterns=["pattern_0", "pattern_1"])
@@ -1089,8 +1157,10 @@ def _faces_layout(world: World, cs) -> None:
     for index, zone in enumerate(glades):
         layout.carpet(m, fld, zone, t, rng, "rings")
         for px, py in ring(zone, 6, inset=4):
-            fur.put("tree" if (px + py) % 3 else "tree_plain", px, py, pad=1)
-        fur.put("stump", zone.cx, zone.cy, pad=1)
+            _street_furniture(fur, m, t,
+                              "tree" if (px + py) % 3 else "tree_plain",
+                              px, py, pad=1)
+        _street_furniture(fur, m, t, "stump", zone.cx, zone.cy, pad=1)
         layout.glow_floor(m, fld, zone, t, "anim_0", ring(zone, 4, inset=2))
 
     world.plan = fld
@@ -1119,6 +1189,53 @@ FACE_POCKETS: tuple[tuple[int, int, int], ...] = (
     (2, 2, 0),      # the compound   — the grove, behind a gate
 )
 FACE_POCKET_NAMES = ("exchange", "nursery", "substation", "studio", "compound")
+
+
+
+# --- the carriageway ----------------------------------------------------------
+
+# The tiles a road is made of, kerbs included.  Nothing that belongs to the
+# town's *fiction* -- a tree, a mast, a shopfront, a front door -- may stand on
+# any of them.  Passability cannot answer this question, because a road is as
+# walkable as a verge; it is a question about what the thing is, and the answer
+# has to be written down somewhere.  This is that place.
+TARMAC = ("road", "road_line", "road_line_h",
+          "kerb", "kerb_n", "kerb_s", "kerb_w", "kerb_e")
+
+
+def tarmac_ids(cs) -> set[int]:
+    return {cs.tiles[k] for k in TARMAC if k in cs.tiles}
+
+
+def on_tarmac(m, road: set[int], x: int, y: int, cols: int, rows: int) -> bool:
+    """Would an object of this size, put here, have a foot in the road?"""
+    return any(m.get_lower((x + c) % m.width, (y + r) % m.height) in road
+               for r in range(rows) for c in range(cols))
+
+
+def off_tarmac(m, road: set[int], x: int, y: int, cols: int, rows: int,
+               *, radius: int = 10, ok=None) -> tuple[int, int] | None:
+    """The nearest place this thing can stand that is not the carriageway.
+
+    An audit of the grove found the abandoned building, the mast, the
+    escalator and every front door standing on a hundred per cent road tiles,
+    and a third of the trees growing out of the tarmac.  Each of those had its
+    own placement code and none of them had ever been told what a road was.
+    """
+    if not on_tarmac(m, road, x, y, cols, rows) and (ok is None or ok(x, y)):
+        return x, y
+    best = None
+    for dy in range(-radius, radius + 1):
+        for dx in range(-radius, radius + 1):
+            px, py = (x + dx) % m.width, (y + dy) % m.height
+            if on_tarmac(m, road, px, py, cols, rows):
+                continue
+            if ok is not None and not ok(px, py):
+                continue
+            cost = dx * dx + dy * dy
+            if best is None or cost < best[0]:
+                best = (cost, (px, py))
+    return best[1] if best else None
 
 
 def _street_furniture(fur, m, t: dict, name: str, x: int, y: int, *,
@@ -2174,12 +2291,19 @@ def enforce_density(world: World) -> int:
 
 
 def snap_spawn(world: World) -> None:
-    """Move the arrival point onto ground the player can actually stand on.
+    """Move the arrival point onto ground the player can actually leave.
 
     A builder picks a spawn from its own geometry — the centre of a terrace,
     the middle of an avenue — and decoration or a stepped zone shape can end
     up putting a wall there.  The player then arrives inside solid rock and
     the entire world reads as unreachable.  Search outward for real floor.
+
+    Standing on floor is not enough on its own.  The neon deep world put the
+    player in a one-tile alcove with a single way out, ``place_door`` then
+    stood the door in that one gap, and because an event on the player's layer
+    blocks, the world was a world you arrived in and could never take a step
+    in.  So a spawn needs **two** ways out: one for the door to occupy and one
+    to walk through.
     """
     fld = world.plan
     if fld is None:
@@ -2194,8 +2318,25 @@ def snap_spawn(world: World) -> None:
                 and m.get_lower(x, y) not in solid
                 and m.get_upper(x, y) not in solid)
 
-    if standable(sx, sy):
+    def ways_out(x: int, y: int) -> int:
+        return sum(standable(x + dx, y + dy)
+                   for dx, dy in ((1, 0), (-1, 0), (0, 1), (0, -1)))
+
+    def good(x: int, y: int) -> bool:
+        return standable(x, y) and ways_out(x, y) >= 2
+
+    if good(sx, sy):
         return
+    for radius in range(1, max(m.width, m.height) // 2):
+        for dy in range(-radius, radius + 1):
+            for dx in range(-radius, radius + 1):
+                if max(abs(dx), abs(dy)) != radius:
+                    continue
+                if good(sx + dx, sy + dy):
+                    world.spawn = ((sx + dx) % m.width, (sy + dy) % m.height)
+                    return
+    # Nothing in the whole world has two ways out, which should be impossible
+    # in a world with any corridor in it.  Take open ground over a dead end.
     for radius in range(1, max(m.width, m.height) // 2):
         for dy in range(-radius, radius + 1):
             for dx in range(-radius, radius + 1):
@@ -2229,8 +2370,15 @@ def place_door(world: World) -> None:
         return (m.get_lower(x, y) not in solid
                 and m.get_upper(x, y) not in solid)
 
+    road = tarmac_ids(world.chipset)
+
     def fits(sx: int, sy: int) -> bool:
         """Is there already room here, without moving anything?"""
+        # A front door opening onto the middle of the carriageway is not a
+        # front door.  Every one of the grove's was.
+        if road and on_tarmac(m, road, sx - 1, sy - grid.rows,
+                              grid.cols, grid.rows + 1):
+            return False
         # somewhere to stand, and somewhere to stand aside
         if not all(standable(sx + dx, sy) for dx in (-1, 0, 1)):
             return False
@@ -2309,7 +2457,31 @@ def place_landmarks(world: World) -> None:
         grid = world.chipset.obj(marks[used])
         x = zone.cx - grid.cols // 2
         y = zone.cy - grid.rows // 2
-        if not fld.open_space(x, y, grid.cols, grid.rows, 1):
+        # A mast or a shopfront standing in the middle of the carriageway is
+        # the one thing in this town that reads as a mistake rather than as a
+        # place, and all three of them were doing it.
+        road = tarmac_ids(world.chipset)
+        if road:
+            # Wide enough to reach the middle of a block from its centre:
+            # the abandoned building is five tiles across and the first
+            # version of this search simply dropped it when it could not find
+            # room within ten, which traded a building in the road for no
+            # building at all.
+            spot = off_tarmac(m, road, x, y, grid.cols, grid.rows, radius=24,
+                              ok=lambda px, py: fld.open_space(
+                                  px, py, grid.cols, grid.rows, 1))
+            if spot is None:
+                spot = off_tarmac(m, road, x, y, grid.cols, grid.rows,
+                                  radius=24)
+            # Never drop a landmark to avoid a road.  Losing the abandoned
+            # building entirely is a worse town than one with the building in
+            # an awkward spot, and the first version of this search did
+            # exactly that to two of the three.
+            if spot is not None:
+                x, y = spot
+            elif not fld.open_space(x, y, grid.cols, grid.rows, 1):
+                continue
+        elif not fld.open_space(x, y, grid.cols, grid.rows, 1):
             continue
         gen.stamp(m, grid, x, y)
         world.landmarks.setdefault("marks", []).append((zone.cx, zone.cy))
@@ -2341,8 +2513,24 @@ def decorate(world: World) -> None:
         # one room in four gets a painting on its floor
         if murals and index % 4 == 1:
             grid = world.chipset.obj(murals[index % len(murals)])
-            if fld.open_space(zone.cx - 2, zone.cy - 2, grid.cols, grid.rows, 0):
-                gen.stamp(m, grid, zone.cx - 2, zone.cy - 2)
+            mx, my = zone.cx - 2, zone.cy - 2
+            # Never paint one into the carriageway.  A mural writes itself
+            # into the *lower* layer, replacing whatever was there, so a mural
+            # laid across a road stops reading as a road tile at all -- which
+            # is how four four-by-four paintings sat in the middle of the
+            # street through every audit that asked "what is standing on
+            # tarmac".  They were not standing on it.  They had eaten it.
+            road = tarmac_ids(world.chipset)
+            if road and on_tarmac(m, road, mx, my, grid.cols, grid.rows):
+                spot = off_tarmac(m, road, mx, my, grid.cols, grid.rows,
+                                  radius=12,
+                                  ok=lambda px, py: fld.open_space(
+                                      px, py, grid.cols, grid.rows, 0))
+                if spot is None:
+                    continue
+                mx, my = spot
+            if fld.open_space(mx, my, grid.cols, grid.rows, 0):
+                gen.stamp(m, grid, mx, my)
         if index % 3 == 0:
             from .rooms import ring as _ring
             layout.glow_floor(m, fld, zone, t, anim,

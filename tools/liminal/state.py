@@ -137,6 +137,15 @@ VR_STAR_STEP = 61
 VR_KEY_QUEUE = 66
 VR_KEY_DRAIN = 67
 
+# The overlay film.  RPG Maker cannot animate a picture, so an animated
+# overlay is the same picture id re-shown with the next frame's file: which
+# combination of picture and opacity this world wears, which frame of it is
+# up, how long the frame has been up, and how long a frame lasts here.
+VR_FILM = 68
+VR_FILM_FRAME = 69
+VR_FILM_TICK = 70
+VR_FILM_SPEED = 71
+
 # The four things the grove has that can be carried, one found on each
 # channel and every one of them used on a different channel from the one that
 # had it.  They are switches rather than inventory because none of them are
@@ -258,6 +267,8 @@ def variable_names(world_names: list[str]) -> dict[int, str]:
                   VR_DEBUG_KEY: "debug key", VR_DEBUG_X: "debug x",
                   VR_DEBUG_Y: "debug y",
                   VR_KEY_QUEUE: "the key queue", VR_KEY_DRAIN: "keys left",
+                  VR_FILM: "the film", VR_FILM_FRAME: "film frame",
+                  VR_FILM_TICK: "film tick", VR_FILM_SPEED: "film speed",
                   VR_MURAL_MAP: "the way back", VR_MURAL_X: "back x",
                   VR_MURAL_Y: "back y", VR_STAR_ORDER: "the order",
                   VR_STAR_STEP: "how many points"})

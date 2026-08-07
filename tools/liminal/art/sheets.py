@@ -12,6 +12,7 @@ its sheet with props that exist nowhere else in the game.
 
 from __future__ import annotations
 
+from dataclasses import replace
 from typing import Callable
 
 from . import chipsets as ct
@@ -220,11 +221,24 @@ def _decals(cb: ChipsetBuilder, pal: Palette, world: str, ground: Canvas) -> Non
            "coil": "strata", "teeth": "checker", "rays": "starfield",
            "cumulus": "scallops", "cornice": "strata", "lockers": "checker",
            "cards": "grid"}.get(motif, "brick")
-    cb.add("wall_alt", ct.wall_band(pal, alt, accent=pal.accent_soft),
-           passable=False)
-    cb.add("wall_alt_face", ct.wall_band(pal, alt, face=True,
-                                         accent=pal.accent_soft),
-           passable=False)
+    # The grove's second boundary was a brown strata band -- the generic
+    # fallback, because the alt table had no opinion about a world whose
+    # motif is "trunks".  Two thousand six hundred tiles of masonry in a map
+    # called the grove.  All four channels get massed hedge instead, in their
+    # own reception's colours.
+    if world in gv.LOOKS:
+        look = gv.LOOKS[world]
+        # Built from the same base the primary wall uses, so a channel's
+        # boundary is one colour whatever tile of it you are looking at.
+        tint = WALL_COLORS.get(world, {}).get("base")
+        cb.add("wall_alt", gv.hedge(look, 0, tint), passable=False)
+        cb.add("wall_alt_face", gv.hedge(look, 1, tint), passable=False)
+    else:
+        cb.add("wall_alt", ct.wall_band(pal, alt, accent=pal.accent_soft),
+               passable=False)
+        cb.add("wall_alt_face", ct.wall_band(pal, alt, face=True,
+                                             accent=pal.accent_soft),
+               passable=False)
 
 
 # The unique structures each world is remembered for.  They go on the upper
@@ -1284,6 +1298,26 @@ def build_sand() -> ChipsetBuild:
     return _finish(cb, ground)
 
 
+# What colour each channel's locked door is painted.  Read straight off
+# hidden.OPENS: the door on a channel is painted for the channel its key comes
+# from, not for the one it stands on, so the four of them make a closed loop
+# and none is a hint about where it is standing.
+CHANNEL_OF = {"faces": 0, "faces2": 1, "faces3": 2, "faces4": 3}
+
+
+LOCK_COLOUR = {
+    "faces":  (122, 214, 138),      # green   -- the key is on overgrown
+    "faces2": (168, 170, 186),      # grey    -- the key is on off-colour
+    "faces3": (214, 76, 62),        # red     -- the key is on no signal
+    "faces4": (232, 186, 92),       # amber   -- the key is on the grove
+}
+
+
+def _overtaken(pal, cols: int = 5, rows: int = 5):
+    """The overgrown channel's ruined house, in that channel's own materials."""
+    return gv.overtaken_house(gv.OVERGROWN, cols, rows)
+
+
 def _grove_common(cb: ChipsetBuilder, pal: Palette, look, world: str,
                   *, tree_rows: int = 4, bare: bool = False,
                   cap: tuple[int, int, int] = (216, 128, 118)) -> Canvas:
@@ -1326,12 +1360,29 @@ def _grove_common(cb: ChipsetBuilder, pal: Palette, look, world: str,
     cb.add_object("phone_box", gv.phone_box(look, 2, 3), solid="bottom",
                   upper=True)
     cb.add_object("car", gv.dead_car(look, 3, 2), solid="all", upper=True)
+    # One chassis, four pictures: the set says which channel you are standing
+    # in without anybody explaining that there are channels.
+    cb.add_object("telly", gv.telly(look, CHANNEL_OF[world], 2, 2),
+                  solid="all")
     cb.add_object("vending", gv.vending_machine(look, 2, 3), solid="bottom",
                   upper=True)
     cb.add_object("road_sign", gv.road_sign(look, 2, 3), solid="bottom",
                   upper=True)
     cb.add_object("door", ct.door_frame(pal, 2, 3,
                                         reflect=_reflection(cb.name)))
+
+    # The four ways into the hidden half.  Every channel carries all four,
+    # because the street plan is shared tile for tile and a channel missing an
+    # object is a channel whose geometry has drifted -- and because the same
+    # entrance standing in the same place on all four receptions is the whole
+    # trick the hidden half is built on.
+    cb.add_object("crack", gv.rock_split(look, 2, 3), solid="all")
+    cb.add_object("cover", gv.manhole(look, 2, 2), solid="all")
+    cb.add_object("hatch", gv.hatch_shed(look, 2, 3), solid="all")
+    # Painted the colour of the channel whose key opens it, which is the only
+    # instruction the game gives about the locks.
+    cb.add_object("lock", gv.locked_door(look, LOCK_COLOUR[world], 2, 3),
+                  solid="all")
     return ground
 
 
@@ -1699,6 +1750,7 @@ def build_faces4() -> ChipsetBuild:
                   solid="bottom", upper=True)
     cb.add_object("car", gv.dead_car(gv.NO_SIGNAL, 3, 2), solid="all",
                   upper=True)
+    cb.add_object("telly", gv.telly(gv.NO_SIGNAL, 3, 2, 2), solid="all")
     cb.add_object("vending", gv.vending_machine(gv.NO_SIGNAL, 2, 3),
                   solid="bottom", upper=True)
     cb.add_object("road_sign", gv.road_sign(gv.NO_SIGNAL, 2, 3),
@@ -1706,6 +1758,15 @@ def build_faces4() -> ChipsetBuild:
 
     cb.add_object("door", ct.door_frame(pal, 2, 3,
                                     reflect=_reflection(cb.name)))
+
+    # The four ways in, which this channel carries like the other three: the
+    # street plan is shared tile for tile, so an entrance missing here is an
+    # entrance that exists on three receptions of one town and not the fourth.
+    cb.add_object("crack", gv.rock_split(gv.NO_SIGNAL, 2, 3), solid="all")
+    cb.add_object("cover", gv.manhole(gv.NO_SIGNAL, 2, 2), solid="all")
+    cb.add_object("hatch", gv.hatch_shed(gv.NO_SIGNAL, 2, 3), solid="all")
+    cb.add_object("lock", gv.locked_door(gv.NO_SIGNAL, LOCK_COLOUR["faces4"],
+                                         2, 3), solid="all")
     _shadows(cb, pal)
     _landmarks(cb, pal, "faces4")
     _animate(cb, pal, "faces4")
@@ -2119,7 +2180,7 @@ LANDMARKS.update({
     "faces": [("facade", lm.apartment_facade, {"cols": 5, "rows": 7}),
               ("escalator", lm.escalator, {"cols": 3, "rows": 5}),
               ("mast", lm.broadcast_mast, {"cols": 3, "rows": 7})],
-    "faces2": [("house", lm.swallowed_house, {"cols": 5, "rows": 5}),
+    "faces2": [("house", _overtaken, {"cols": 5, "rows": 5}),
                ("mast", lm.broadcast_mast, {"cols": 3, "rows": 7})],
     "faces3": [("dishes", lm.dish_array, {"cols": 5, "rows": 4}),
                ("mast", lm.broadcast_mast, {"cols": 3, "rows": 7})],

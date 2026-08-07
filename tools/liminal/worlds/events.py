@@ -18,6 +18,7 @@ from __future__ import annotations
 
 import random
 
+from ..art import ui
 from ..art.menu import EFFECTS
 from ..cmds import (MSG_BOTTOM, MSG_MIDDLE, MSG_TOP, MV_FACE_DOWN, MV_FACE_HERO,
                     MV_FACE_LEFT, MV_FACE_RANDOM, MV_FACE_RIGHT, MV_FACE_UP,
@@ -29,6 +30,7 @@ from ..maps import (ANIM_CONTINUOUS, ANIM_FIXED_GRAPHIC, DIR_DOWN, DIR_LEFT,
                     MOVE_RANDOM, MOVE_STATIONARY, TRIGGER_ACTION,
                     TRIGGER_AUTO, TRIGGER_PARALLEL, TRIGGER_TOUCH, Page)
 from ..state import (SW_INTERACT_BASE, SW_WORLD_STATE_BASE, VR_SET_NUMBER,
+                     VR_FILM, VR_FILM_FRAME, VR_FILM_SPEED, VR_FILM_TICK,
                      VR_FALL, VR_FALLS, VR_REG_BASE, REG_NAMES, REG_MAX, REG_US, REG_FAR,
                      REG_LIGHT, REG_WAYS, REG_AGO, REG_YOU,
                      SW_DEEP_UNLOCKED, SW_EARS_ACTIVE, SW_EYE_ACTIVE,
@@ -38,7 +40,7 @@ from ..state import (SW_INTERACT_BASE, SW_WORLD_STATE_BASE, VR_SET_NUMBER,
                      SW_TALL_ACTIVE, SW_WOKE_ONCE, SW_WORLD_MEMORY_BASE,
                      SW_WORLD_SECRET_BASE, VR_DREAM_DISTANCE, VR_EQUIPPED,
                      VR_LOOPS, VR_ROLL, VR_SCRATCH, VR_VISITS_BASE, VR_WORLD)
-from . import atmosphere, interact
+from . import atmosphere, interact, reach
 from . import systems as sys
 from .cast_lookup import charset_slot
 from ..art.cast import WORLD_CAST
@@ -214,12 +216,51 @@ def _at_edge(world: World, zone, rng: random.Random) -> tuple[int, int]:
     return _near(world, zone, rng)
 
 
+_OPEN: dict[int, set[tuple[int, int]]] = {}
+
+
+def _open_tiles(world: World) -> set[tuple[int, int]]:
+    """Where the player can get to in this world, worked out once.
+
+    Computed from the finished tiles before the authoring pass starts hanging
+    events on them, and then reused.  Re-running the flood fill for every
+    placement would be correct and unusably slow; the tiles are what decide
+    almost all of it, and the build's own reachability check has the last word
+    with every event in place.
+    """
+    cached = _OPEN.get(id(world.map))
+    if cached is None:
+        cached = _OPEN[id(world.map)] = reach.walkable(world)
+    return cached
+
+
 def _place(world: World, name: str, x: int, y: int, pages) -> None:
-    """Add an event at the first tile near ``(x, y)`` that is not taken."""
-    world.map.add_event(name, *_free_tile(world, x, y), pages)
+    """Add an event where the player can actually use it.
+
+    ``(x, y)`` is a request, not an instruction.  A playthrough found items
+    sitting behind walls, residents on the far side of water and prizes inside
+    rock -- every one of them placed at a coordinate that made sense to the
+    code that chose it and was unreachable in the finished world.  So the
+    asked-for tile is taken when it works and the nearest tile that works is
+    taken when it does not.
+
+    What "works" depends on what the thing is.  Something you walk into has to
+    be on ground you can reach; something you talk to has to have ground you
+    can reach beside it.  Anything with no usable tile within reach is placed
+    where it was asked for and left for the validator to fail the build over,
+    because silently moving it half a world away is how the prompt for the bed
+    ended up under the bed.
+    """
+    trigger = pages[0].trigger if pages else TRIGGER_ACTION
+    spot = reach.spot_for(world, x, y,
+                          stand_on=trigger in reach.STOOD_ON,
+                          avoid={(e.x, e.y) for e in world.map.events},
+                          open_tiles=_open_tiles(world), radius=8)
+    world.map.add_event(name, *(spot or _free_tile(world, x, y)), pages)
 
 
-def _place_object(world: World, obj: str, pages, *, at=None) -> None:
+def _place_object(world: World, obj: str, pages, *, at=None,
+                  name: str | None = None) -> None:
     """Put an interaction on every tile the object actually occupies.
 
     This is the only correct way to do it and it took a playtest to see why.
@@ -237,6 +278,7 @@ def _place_object(world: World, obj: str, pages, *, at=None) -> None:
     """
     m = world.map
     x, y = at if at is not None else world.landmarks[obj][0]
+    label = name or obj
     grid = world.chipset.obj(obj)
     taken = {(e.x, e.y) for e in m.events}
     solid = solid_ids(world.chipset)
@@ -252,7 +294,7 @@ def _place_object(world: World, obj: str, pages, *, at=None) -> None:
             col, row = index % max(1, grid.cols), index // max(1, grid.cols)
             if spot in taken:
                 continue
-            m.add_event(f"{obj} {col},{row}" if (col or row) else obj,
+            m.add_event(f"{label} {col},{row}" if (col or row) else label,
                         spot[0], spot[1], pages)
             taken.add(spot)
 
@@ -923,9 +965,23 @@ def dream_events(world: World, worlds: dict[str, World],
                 # lost ten of the grove's sixteen to whatever happened to be
                 # standing there, and a verb that only appears six times in a
                 # world this size is not a verb.
+                from .worlds import off_tarmac, tarmac_ids
+                road = tarmac_ids(world.chipset)
                 for attempt in range(3):
                     ox, oy = ix - grid.cols // 2, iy - grid.rows
-                    if gen.stamp(world.map, grid, ox, oy, pad=1):
+                    # A verb's object is a thing in the town, so it obeys the
+                    # town's one rule about roads.  Sixteen telephone boxes
+                    # were being dropped wherever the zone sampler pointed,
+                    # and seven of them landed in the carriageway.
+                    if road:
+                        spot = off_tarmac(world.map, road, ox, oy,
+                                          grid.cols, grid.rows, radius=8)
+                        if spot is None:
+                            ox = None
+                        else:
+                            ox, oy = spot
+                    if ox is not None and gen.stamp(world.map, grid, ox, oy,
+                                                    pad=1):
                         break
                     if zones:
                         ix, iy = _near(world, zones[(n + attempt * 5)
@@ -1194,8 +1250,15 @@ def _numbers_system(world: World, worlds: dict[str, World],
     kill.switch(altered, True)
     kill.switch(SW_WORLD_MEMORY_BASE + index, True)
     kill.call_event(sys.CE_OVERLAY_OFF)
-    kill.show_picture(sys.PIC_OVERLAY, "StaticB", 160, 120, transparency=58,
-                      use_transparent_color=True, effect=2, power=9)
+    # Live static, on the same terms arrival uses, so the world stays wrong in
+    # motion rather than under a photograph of static.
+    kill.var(VR_FILM, sys.films(worlds)[("StaticB", 58)])
+    kill.var(VR_FILM_SPEED, ui.ANIMATED["StaticB"])
+    kill.var(VR_FILM_TICK, 0)
+    kill.var(VR_FILM_FRAME, 0)
+    kill.show_picture(sys.PIC_OVERLAY, "StaticB1", 160, 120, transparency=58,
+                      use_transparent_color=True)
+    kill.call_event(sys.CE_OVERLAY_ON)
     kill.bgm("Wrong", fadein=4, volume=88)
     kill.wait(20)
     kill.msg("it is open.")

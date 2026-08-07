@@ -65,7 +65,7 @@ def tile_patch(sheet: Canvas, tile_id: int, scale: int) -> np.ndarray | None:
 TRANS = np.array((255, 0, 255), np.uint8)
 
 
-def render(world, scale: int) -> Canvas:
+def _tiles(world, scale: int) -> Canvas:
     m, sheet = world.map, world.chipset.sheet
     art = Canvas(m.width * scale, m.height * scale, (0, 0, 0))
     cache: dict[int, np.ndarray | None] = {}
@@ -87,6 +87,17 @@ def render(world, scale: int) -> Canvas:
                 target = art.px[py:py + scale, px:px + scale]
                 target[solid] = up[solid]
 
+    return art
+
+
+def render_plain(world, scale: int) -> Canvas:
+    """The map with nothing drawn over it."""
+    return _tiles(world, scale)
+
+
+def render(world, scale: int) -> Canvas:
+    m = world.map
+    art = _tiles(world, scale)
     # Markers sit on top, ringed in black and white so they stay legible on a
     # world whose own palette is fluorescent.
     residents = set(_resident_names(world.key))

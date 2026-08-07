@@ -278,7 +278,21 @@ def _receiver(world) -> None:
         Page(script=kept, trigger=TRIGGER_ACTION, layer=LAYER_SAME,
              switch_a=SW_FACE_HEARD),
     ]
+    # Five east and two south of the crossing, which put it squarely in the
+    # carriageway: the junction's road band runs from two north to two south
+    # of the centre line, so the +2 was inside it.  The box is nudged onto the
+    # verge rather than being given a different fixed offset, because the one
+    # thing this town has proved is that fixed offsets do not know what they
+    # are standing on.
+    from .worlds import off_tarmac, tarmac_ids
+    grid = world.chipset.obj("phone_box")
     bx, by = (jx + 5) % world.map.width, (jy + 2) % world.map.height
+    road = tarmac_ids(world.chipset)
+    if road:
+        spot = off_tarmac(world.map, road, bx, by, grid.cols, grid.rows,
+                          radius=8)
+        if spot is not None:
+            bx, by = spot
     if gen.stamp(world.map, world.chipset.obj("phone_box"), bx, by, pad=1):
         _place_object(world, "phone_box", pages, at=(bx, by))
     else:

@@ -1124,7 +1124,7 @@ def _faces_layout(world: World, cs) -> None:
     # Junctions get the municipal furniture: lights on every corner, a shelter,
     # a phone box still lit, a car nobody came back for.
     street = ["traffic_light", "shelter", "phone_box", "car", "vending",
-              "road_sign"]
+              "road_sign", "telly"]
     for index, zone in enumerate(junctions):
         layout.carpet(m, fld, zone, t, rng, "full",
                       patterns=["pattern_0", "pattern_1"])

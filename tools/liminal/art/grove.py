@@ -1256,3 +1256,127 @@ def hedge(look: Look, seed: int = 0, base: tuple[int, int, int] | None = None
     for x in range(0, TILE, 3):
         art.dot((x + seed) % TILE, (x * 5) % 4, blend(g.lit, l.lit, 0.5))
     return art
+
+
+# --- what is left in the street -----------------------------------------------
+
+def overtaken_house(look: Look, cols: int = 5, rows: int = 5) -> Canvas:
+    """A house the growth has got to, with the house still legible.
+
+    The one this replaces was named a house and drawn as a canopy over two
+    tan lobes -- the greenery had eaten it so completely that nothing said
+    building.  A ruin has to be readable as the thing it used to be or it is
+    just terrain, so the roof line, the windows and the door survive here and
+    the ivy goes *over* them.
+    """
+    art = _bedded(turf(look, 0), cols, rows)
+    w, h = cols * TILE, rows * TILE
+    b, m, gl = look.bark, look.metal, look.glass
+    l, g = look.leaf, look.grass
+
+    wall_top = h // 3
+    solid(art, 4, wall_top, w - 8, h - wall_top - 4, b, cap=b)
+    # pitched roof: two slopes meeting at a ridge, drawn as steps
+    ridge = wall_top - 2
+    for step in range(ridge - 8, ridge + 1):
+        inset = (ridge - step)
+        mt.plane(art, 4 + inset, step, w - 8 - inset * 2, 1,
+                 m.shade if step % 2 else m.mid)
+    art.hline(ridge - 8, 4 + 8, w - 13, m.lit)
+    art.hline(ridge, 4, w - 5, blend(m.deep, (0, 0, 0), 0.3))
+    # two windows and a door, all still there
+    for wx in (10, w - 24):
+        art.rect(wx, wall_top + 6, 12, 11, (0, 0, 0))
+        art.rect(wx + 1, wall_top + 7, 10, 9, gl.shade)
+        art.vline(wx + 6, wall_top + 7, wall_top + 15, b.deep)
+        art.hline(wall_top + 11, wx + 1, wx + 10, b.deep)
+    dx = w // 2 - 6
+    art.rect(dx, h - 22, 12, 18, (0, 0, 0))
+    art.rect(dx + 1, h - 21, 10, 17, blend(b.deep, (0, 0, 0), 0.35))
+    art.dot(dx + 9, h - 13, m.lit)
+    # the ivy: up one corner, across the eaves, and a swag over one window
+    for y in range(ridge, h - 4):
+        x = 5 + ((y * 3) % 4)
+        art.dot(x, y, l.shade if y % 2 else l.mid)
+        art.dot(x + 1, y, l.deep)
+        if y % 3 == 0:
+            art.dot(x + 2, y, l.lit)
+    for x in range(6, w - 6, 3):
+        art.dot(x, ridge + 1 + (x % 3), l.mid)
+        art.dot(x + 1, ridge + 2 + (x % 2), l.deep)
+    for x in range(10, 24):
+        art.dot(x, wall_top + 6 + ((x * 5) % 3), l.shade)
+    for x in range(0, w, 4):
+        art.dot((x + 2) % w, h - 5, g.mid)
+        art.dot(x, h - 4, g.shade)
+    return art
+
+
+def telly(look: Look, channel: int, cols: int = 2, rows: int = 2) -> Canvas:
+    """A television left in the grass, still showing what it is receiving.
+
+    The grove is one town received four ways, and nothing in it ever says so.
+    This does: a set someone dumped on a verge, tipped back on its legs, with
+    a picture on it that belongs to the channel the player is standing in.
+    The chassis is identical on all four -- same bezel, same knobs, same dead
+    plastic -- so the only thing that differs is the signal, which is the
+    whole claim the world makes about itself.
+
+    Wrecked cars were the first attempt at a per-channel object and they were
+    a recolour of one shape.  This is the opposite: one shape, four pictures.
+    """
+    art = _bedded(turf(look, 0), cols, rows)
+    w, h = cols * TILE, rows * TILE
+    case, glass, m = look.plastic, look.glass, look.metal
+    shell = blend(case.mid, (52, 48, 46), 0.55)
+
+    art.ellipse(w // 2, h - 4, w * 0.36, 3, (0, 0, 0))
+    # the box, with the bezel proud of the screen
+    solid(art, 3, 6, w - 6, h - 12, mt.Material("case", shell), cap=None)
+    art.rect(4, 7, w - 8, h - 14, blend(shell, (255, 255, 255), 0.10))
+    sx, sy, sw, sh = 6, 9, w - 19, h - 19
+    art.rect(sx - 1, sy - 1, sw + 2, sh + 2, (0, 0, 0))
+
+    if channel == 0:            # the grove: a picture, and it is this town
+        art.rect(sx, sy, sw, sh, blend(glass.mid, (40, 60, 50), 0.45))
+        art.hline(sy + sh - 4, sx, sx + sw - 1, blend(look.grass.mid, (0, 0, 0), 0.2))
+        art.rect(sx + 2, sy + sh - 8, 3, 5, look.bark.shade)     # a mast
+        art.rect(sx + sw - 5, sy + sh - 7, 3, 4, look.road.shade)
+        art.hline(sy + 1, sx, sx + sw - 1, blend(glass.lit, (0, 0, 0), 0.3))
+    elif channel == 1:          # overgrown: the set has been got into
+        art.rect(sx, sy, sw, sh, blend(glass.deep, (0, 0, 0), 0.3))
+        for n in range(sh):
+            art.dot(sx + (n * 5) % sw, sy + n, look.leaf.shade)
+            art.dot(sx + (n * 5 + 1) % sw, sy + n, look.leaf.deep)
+        art.dot(sx + 2, sy + 2, look.leaf.lit)
+        art.dot(sx + sw - 3, sy + sh - 3, look.leaf.lit)
+    elif channel == 2:          # off-colour: the picture with the colour gone
+        art.rect(sx, sy, sw, sh, (86, 88, 92))
+        for index in range(sw // 2):
+            band = 60 + index * 14
+            art.vline(sx + index * 2, sy, sy + sh - 1,
+                      (min(band, 210), min(band, 210), min(band + 4, 214)))
+        art.hline(sy + sh // 2, sx, sx + sw - 1, (34, 34, 38))
+    else:                       # no signal: it is not receiving anything
+        art.rect(sx, sy, sw, sh, (16, 14, 18))
+        for y in range(sy, sy + sh):
+            for x in range(sx, sx + sw):
+                if (x * 7 + y * 13 + (x ^ y)) % 3 == 0:
+                    art.dot(x, y, (208, 206, 202) if (x + y) % 2 else (72, 70, 74))
+        art.hline(sy + 2, sx, sx + sw - 1, (240, 238, 234))
+        art.hline(sy + sh - 4, sx, sx + sw - 1, (160, 158, 156))
+
+    # the control panel: two knobs and a speaker grille, on the right
+    px = sx + sw + 2
+    art.rect(px, sy, w - px - 4, sh, blend(shell, (0, 0, 0), 0.25))
+    art.blob(px + 2, sy + 3, 2, m.shade)
+    art.blob(px + 2, sy + 3, 1, m.lit)
+    art.blob(px + 2, sy + 8, 2, m.shade)
+    for gy in range(sy + 12, sy + sh - 1, 2):
+        art.hline(gy, px + 1, w - 6, blend(shell, (0, 0, 0), 0.45))
+    # legs, and the grass coming up round them
+    art.rect(5, h - 6, 3, 3, blend(shell, (0, 0, 0), 0.5))
+    art.rect(w - 8, h - 6, 3, 3, blend(shell, (0, 0, 0), 0.5))
+    for x in range(2, w - 2, 3):
+        art.dot(x, h - 4 - (x % 2), look.grass.shade)
+    return art

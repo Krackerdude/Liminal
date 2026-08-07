@@ -130,6 +130,13 @@ VR_DEBUG_Y = 65          # counts down to the grove's next ambient sound
 VR_STAR_ORDER = 60
 VR_STAR_STEP = 61
 
+# The keyboard.  Ineluki's Key Patch hands presses over one at a time through
+# a queue, so these two are the whole of the wider keyboard: the number the
+# queue just gave up, and how many more presses this frame is willing to take
+# before it lets go.  See ``keys.py``.
+VR_KEY_QUEUE = 66
+VR_KEY_DRAIN = 67
+
 # The four things the grove has that can be carried, one found on each
 # channel and every one of them used on a different channel from the one that
 # had it.  They are switches rather than inventory because none of them are
@@ -250,6 +257,7 @@ def variable_names(world_names: list[str]) -> dict[int, str]:
                   VR_AMBIENCE: "until the next sound",
                   VR_DEBUG_KEY: "debug key", VR_DEBUG_X: "debug x",
                   VR_DEBUG_Y: "debug y",
+                  VR_KEY_QUEUE: "the key queue", VR_KEY_DRAIN: "keys left",
                   VR_MURAL_MAP: "the way back", VR_MURAL_X: "back x",
                   VR_MURAL_Y: "back y", VR_STAR_ORDER: "the order",
                   VR_STAR_STEP: "how many points"})

@@ -53,6 +53,8 @@ CE_WAKE = 11
 CE_DIARY_KEY = 12
 CE_ATMOSPHERE = 13
 CE_DEBUG = 14
+CE_KEYBOARD = 15          # drains Ineluki's key queue; see keys.py
+CE_WHEREAMI = 16
 
 # Picture layers.  Higher numbers draw in front.
 PIC_OVERLAY = 5           # the world's own film: grain, haze, scanlines
@@ -88,6 +90,9 @@ def boot() -> CommonEvent:
     """
     s = Script()
     s.comment("first frame of a new game")
+    # The stock menu is four empty lists in this game; turning it off is
+    # what makes the cancel key available for anything else.
+    s.allow_menu(False)
     s.var(VR_EQUIPPED, 0)
     s.var(VR_DREAM_DISTANCE, 0)
     s.var(VR_EFFECTS_FOUND, 0)
@@ -417,7 +422,15 @@ def diary() -> CommonEvent:
 
 
 def diary_key() -> CommonEvent:
-    """Watches for the shift key and opens the diary."""
+    """Shift opens the diary too.
+
+    Tab is where the diary lives (``keys.py``), but Tab only exists because
+    Ineluki's Key Patch is switched on, and the patch is a thing that can be
+    absent: a platform without raw keyboard support, or a player who launched
+    with ``--no-patch-keypatch``.  Shift needs nothing and costs nothing --
+    it is one of the engine's own seven and no longer wanted for anything
+    else -- so it stays as the way in that cannot fail.
+    """
     s = Script()
     with s.if_switch(SW_MENU_OPEN, False):
         with s.if_switch(SW_MENU_BUSY, False):
@@ -526,38 +539,123 @@ def overlay_off() -> CommonEvent:
     return CommonEvent(CE_OVERLAY_OFF, "overlay off", TRIGGER_CALL, None, s)
 
 
-def debug_readout(worlds) -> CommonEvent:
-    """Hold SHIFT and the game tells you where you are.
+def keyboard() -> CommonEvent:
+    """The wider keyboard, drained one press at a time.
+
+    Ineluki's Key Patch does not answer "is this key down"; it keeps a queue
+    of the keys that have gone down and hands them over one at a time through
+    the variable that nominally holds the music's position.  So this reads
+    that variable repeatedly until it comes back empty, dispatching whatever
+    it finds.  ``keys.py`` explains the arrangement; the two things that
+    matter here are that the queue is LIFO and that empty reads as ``-1``.
+
+    The drain is **counted**, not merely bounded by the empty marker.  With
+    the patch switched off, the same variable returns the real MIDI position,
+    which counts upward and never goes negative -- a loop waiting for ``-1``
+    would spin forever inside a parallel event and take the whole game with
+    it.  Six presses a frame is more than a hand can produce and cheap enough
+    to pay every frame regardless.
+    """
+    from ..state import VR_KEY_DRAIN, VR_KEY_QUEUE
+    from .. import keys as K
+
+    s = Script()
+    s.comment("ineluki: drain the key queue")
+    s.var(VR_KEY_DRAIN, K.DRAIN)
+    with s.loop():
+        with s.if_var(VR_KEY_DRAIN, 0, 2):      # <= 0: enough for one frame
+            s.break_loop()
+        s.var(VR_KEY_DRAIN, 1, op=2)
+        s.var_from_other(VR_KEY_QUEUE, K.MIDI_TICKS)
+        with s.if_var(VR_KEY_QUEUE, 0, 4):      # < 0: the queue is empty
+            s.break_loop()
+        for key in K.KEYS:
+            with s.if_var(VR_KEY_QUEUE, key.value):
+                _PRESSES[key.ineluki](s)
+    return CommonEvent(CE_KEYBOARD, "keyboard", TRIGGER_PARALLEL, None, s)
+
+
+def _open_diary(s: Script) -> None:
+    """Tab: the things you found.  Guarded, because the diary is a stack of
+    pictures that takes several frames to build and several to take apart --
+    a second press part-way through would build it on top of itself."""
+    with s.if_switch(SW_MENU_OPEN, False):
+        with s.if_switch(SW_MENU_BUSY, False):
+            s.switch(SW_MENU_OPEN, True)
+            s.call_event(CE_DIARY)
+
+
+def _show_position(s: Script) -> None:
+    """C: coordinates."""
+    s.call_event(CE_WHEREAMI)
+
+
+# What each registered key does.  Keyed by Ineluki's own name for the key so
+# that the roster in ``keys.py`` stays a list of keys and nothing else; a key
+# named there with no entry here is a build error rather than a key that
+# silently does nothing, which is the failure this game keeps having.
+_PRESSES = {
+    "(tab)": _open_diary,
+    "c": _show_position,
+}
+
+
+def whereami(worlds) -> CommonEvent:
+    """Press C and the game tells you where you are.
 
     A testing aid, and off unless you ask for it: nothing shows until the key
-    is pressed, so a player who never touches shift never learns it exists.
+    is pressed, so a player who never presses it never learns it exists.
 
-    Shift is the one key in this engine that is otherwise unbound -- the
-    action key talks to things, cancel opens the menu, and the directions
-    walk -- so this costs no input the game was already using.
+    It has a key of its own now.  It lived on cancel for exactly as long as
+    the engine's seven buttons were all there was, and cancel was never a
+    good home for it -- a readout that interrupts you every time you try to
+    back out of something is a readout that gets in the way.
 
     RPG Maker cannot draw text on the screen outside a message box, so the
     readout *is* a message box.  It reads the hero's tile straight out of the
     engine rather than tracking it, which means it cannot drift out of step
     with where you actually are.
     """
-    from ..state import VR_DEBUG_KEY, VR_DEBUG_X, VR_DEBUG_Y, VR_WORLD
+    from ..state import VR_DEBUG_X, VR_DEBUG_Y, VR_WORLD
 
     s = Script()
-    s.comment("hold shift: where am i")
-    s.key_input(VR_DEBUG_KEY, wait=False, decision=False, shift=True)
-    with s.if_var(VR_DEBUG_KEY, 7):
-        s.var_from_event(VR_DEBUG_X, PLAYER, 1)
-        s.var_from_event(VR_DEBUG_Y, PLAYER, 2)
-        s.msg_options(MSG_TOP)
-        # Built from the constants rather than typed: the first version had
-        # the world's variable written out as \\v[1] when it is six, so the
-        # readout confidently reported the wrong world.
-        s.msg(f"x \\v[{VR_DEBUG_X}]   y \\v[{VR_DEBUG_Y}]", "",
-              f"world \\v[{VR_WORLD}]")
+    s.var_from_event(VR_DEBUG_X, PLAYER, 1)
+    s.var_from_event(VR_DEBUG_Y, PLAYER, 2)
+    s.msg_options(MSG_TOP)
+    # Built from the constants rather than typed: the first version had the
+    # world's variable written out as \\v[1] when it is six, so the readout
+    # confidently reported the wrong world.
+    s.msg(f"x \\v[{VR_DEBUG_X}]   y \\v[{VR_DEBUG_Y}]", "",
+          f"world \\v[{VR_WORLD}]")
+    s.msg_options(MSG_BOTTOM)
+    return CommonEvent(CE_WHEREAMI, "where am i", TRIGGER_CALL, None, s)
+
+
+def save_key() -> CommonEvent:
+    """Cancel puts the game down.
+
+    Turning off the stock menu at boot is what freed this key, and that menu
+    was also the only way to save -- so whatever took its place had to carry
+    saving, or the game quietly became one you cannot put down.  Now that the
+    coordinates readout has a key of its own, this is all cancel does.
+    """
+    from ..state import VR_DEBUG_KEY
+
+    s = Script()
+    s.comment("cancel: put the game down")
+    s.key_input(VR_DEBUG_KEY, wait=False, decision=False, cancel=True,
+                shift=False)
+    with s.if_var(VR_DEBUG_KEY, 6):
+        s.msg_options(MSG_MIDDLE)
+        s.msg("save?")
+        with s.choice(["yes", "no"], cancel=2) as branch:
+            with branch(0):
+                s.open_save()
+            with branch(1):
+                pass
         s.msg_options(MSG_BOTTOM)
         s.var(VR_DEBUG_KEY, 0)
-    return CommonEvent(CE_DEBUG, "where am i", TRIGGER_PARALLEL, None, s)
+    return CommonEvent(CE_DEBUG, "save key", TRIGGER_PARALLEL, None, s)
 
 
 def atmosphere_watch(worlds) -> CommonEvent:
@@ -626,5 +724,7 @@ def build(worlds) -> list[CommonEvent]:
         wake(worlds),
         diary_key(),
         atmosphere_watch(worlds),
-        debug_readout(worlds),
+        save_key(),
+        keyboard(),
+        whereami(worlds),
     ]

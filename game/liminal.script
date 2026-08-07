@@ -18,5 +18,5 @@ next=step3
 [step3]
 ; where am i
 action=registerkeydownevent
-key=c
+key=p
 value=9002

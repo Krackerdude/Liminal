@@ -67,6 +67,50 @@ class Key:
     does: str           # what it is for, for the script's comments
 
 
+# Keys the Player has already spoken for, and must not be given a second job.
+#
+# The patch reads the *physical* key, underneath the engine's own input layer,
+# so a key that is already bound does both things at once.  The first version
+# of this put the coordinates readout on C, which the Player binds to CANCEL
+# (``input_buttons_desktop.cpp``): pressing it opened the menu on top of the
+# readout every time, and the readout was only visible after backing out of a
+# menu nobody asked for.  That is not a collision this game can detect at
+# runtime -- so it is checked here, at build time, against what the Player
+# actually binds.
+#
+# Read off ``Input::GetDefaultButtonMappings()``.  Only the entries that are
+# also names Ineluki knows are listed; function keys and the mouse cannot
+# collide because Ineluki cannot see them.
+TAKEN = {
+    "w": "up", "k": "up", "s": "down", "j": "down",
+    "a": "left", "h": "left", "d": "right", "l": "right",
+    "z": "decision", "(space)": "decision", "(enter)": "decision",
+    "x": "cancel", "c": "cancel", "v": "cancel", "b": "cancel",
+    "n": "cancel", "(esc)": "cancel",
+    "(lshift runter)": "shift", "(rshift runter)": "shift",
+    "(lshift hoch)": "shift", "(rshift hoch)": "shift",
+    "f": "fast forward", "g": "fast forward",
+    "(strg)": "walk through walls", "(alt)": "walk through walls",
+    "(bildhoch)": "page up", "(bildrunter)": "page down",
+    ".": "the 2003 keypad",
+}
+
+# Free, and worth knowing about before reaching for one:
+#
+#   digits 0-9   bound only to the 2003 number buttons, which a 2000 game
+#                never reads.  The natural home for the television's channels.
+#   e i m o p    the letters nothing else wants
+#   q r t u y
+#   (tab)        bound to nothing at all
+#   (entf) (ende) (pos1) (einfg) (capslock) (numlock) (scrolllock)
+#
+# W A S D are listed as taken above and are *also* masked by the patch, which
+# is a contradiction the engine resolves in the patch's favour: with key
+# support on they stop moving the player.  They are still not free -- a player
+# who walks with WASD has already lost them, and giving them a second job
+# would make that worse rather than better.
+
+
 # Values start high on purpose.  If the patch is ever off, attribute 8 returns
 # a real MIDI position, and a track that has just started sits at 0, 1, 2...
 # Small values would be indistinguishable from a keypress for the first few
@@ -74,8 +118,16 @@ class Key:
 # player has had a chance to notice something is wrong.
 KEYS: tuple[Key, ...] = (
     Key("(tab)", 9001, "things i found"),
-    Key("c", 9002, "where am i"),
+    Key("p", 9002, "where am i"),          # p for position; c was cancel
 )
+
+_clash = {k.ineluki: TAKEN[k.ineluki] for k in KEYS if k.ineluki in TAKEN}
+if _clash:
+    raise SystemExit(
+        "keys.py: these are already engine buttons and would fire twice: "
+        + ", ".join(f"{k} ({why})" for k, why in sorted(_clash.items())))
+if len({k.value for k in KEYS}) != len(KEYS):
+    raise SystemExit("keys.py: two keys share a queue value")
 
 # The list file the Player reads at boot, and the script it names.  Both sit
 # at the top of the game folder; paths in the list are relative to it.

@@ -253,7 +253,11 @@ def _interval(s: Script, world) -> None:
     s.call_event(sys.CE_OVERLAY_OFF)
     s.fade_out(19)                       # INSTANT: the picture simply stops
     s.teleport(_MAP_IDS["faces4"], *INTERVAL_AT)
-    s.tint(8, 8, 12, 0, 0, True)
+    # Dark enough to be wrong, light enough to still be somewhere.  The first
+    # version tinted to eight per cent at zero saturation, which is black --
+    # the whole point is that the player recognises the street they are
+    # standing in, and they were being shown an unlit rectangle.
+    s.tint(34, 34, 46, 20, 0, True)
     s.fade_in(19)
     s.se("Carrier", volume=70)
     s.wait(12)
@@ -265,8 +269,12 @@ def _interval(s: Script, world) -> None:
     s.msg_options(MSG_MIDDLE)
     s.msg("")
     s.se("Heartbeat", volume=70)
-    s.show_picture(sys.PIC_FLASH, "Eye", 160, 120, transparency=40,
+    # The eye is a full-screen drawing.  At forty per cent it is the entire
+    # picture and the town behind it is gone; it wants to be something the
+    # player half-catches, so it comes in as a ghost and never resolves.
+    s.show_picture(sys.PIC_FLASH, "Eye", 160, 120, transparency=88,
                    use_transparent_color=True)
+    s.move_picture(sys.PIC_FLASH, 160, 120, transparency=62, tenths=14)
     s.wait(8)
     s.se("Breath", volume=80)
     s.wait(20)

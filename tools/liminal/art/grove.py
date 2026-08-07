@@ -1065,3 +1065,156 @@ def cable_tray(look: Look, cols: int, rows: int) -> Canvas:
         art.hline(row, 2, w - 3, tone.lit)
     foot(art, 0, h - 3, w, m)
     return art
+
+
+# --- the four ways in ---------------------------------------------------------
+# A playthrough found the grove's hidden half unfindable, and the reason was
+# not that it was well hidden: the crack, the cover, the hatch and the locked
+# door had interactions and *no art at all*.  Four invisible gleams on open
+# grass, in a town a hundred and forty tiles across.  The player walked past
+# the place the entrance was and correctly reported there was nothing there.
+#
+# Each of these is a thing you can find by looking, which is the only kind of
+# hiding this game is allowed to do.
+
+
+def _bedded(ground: Canvas, cols: int, rows: int) -> Canvas:
+    """A drawing surface already covered in the ground it will stand on.
+
+    The four entrances live on the **lower** layer, which is the one rule this
+    codebase has about layers turned on its head, and it is not a preference:
+    the grove's chipsets have 139 of their 144 upper-layer slots spent, and
+    four objects need twenty-two.  Block F is a hard format limit and there is
+    no arguing with it.
+
+    The cost of the lower layer is that an object carries its ground with it,
+    so each of these bakes in the surface it is actually placed on -- turf for
+    the ones in the clearings, road for the one in the carriageway -- and
+    ``hidden.entrances`` puts them where that surface is.  It is a bargain
+    struck with the format rather than a design.
+    """
+    art = Canvas(cols * TILE, rows * TILE, (0, 0, 0))
+    for row in range(rows):
+        for col in range(cols):
+            art.paste(ground, col * TILE, row * TILE)
+    return art
+
+
+def rock_split(look: Look, cols: int = 2, rows: int = 3) -> Canvas:
+    """An outcrop with a split in it, shoulder wide.
+
+    Rock, in a town made of grass and asphalt, is already the odd thing on the
+    screen; the split then reads as the reason the rock is there.  The dark of
+    it runs the full height and does not narrow, because a crack that tapers
+    looks like damage and a crack that does not looks like a way through.
+    """
+    art = _bedded(turf(look, 0), cols, rows)
+    w, h = cols * TILE, rows * TILE
+    r = look.road
+    # The mass, in unequal chunks -- the same rule rock_face works by.
+    solid(art, 0, TILE, w, h - TILE, r, cap=r)
+    for index, (x, y, cw, ch) in enumerate(
+            ((0, TILE - 5, 11, 9), (12, TILE - 2, 12, 8),
+             (2, TILE + 12, 9, 7), (w - 9, TILE + 9, 9, 8))):
+        mt.plane(art, x, y, cw, ch, r.mid)
+        art.hline(y, x, min(w - 1, x + cw - 1), r.lit)
+        art.hline(y + ch - 1, x, min(w - 1, x + cw - 1), r.deep)
+    # The split: straight down the middle, black, with the light catching one
+    # lip of it and the other lip in shadow.
+    mid = w // 2
+    for y in range(TILE - 4, h):
+        lean = (y - TILE) // 14
+        art.vline(mid + lean, y, y, (0, 0, 0))
+        art.vline(mid + lean - 1, y, y, (0, 0, 0))
+        art.dot(mid + lean - 2, y, r.shade)
+        art.dot(mid + lean + 1, y, r.lit if y % 5 else r.deep)
+    # A little of what is inside, at the bottom, so it reads as depth.
+    art.rect(mid - 3, h - 6, 6, 6, (0, 0, 0))
+    return art
+
+
+def manhole(look: Look, cols: int = 2, rows: int = 2) -> Canvas:
+    """A cover seated in the road, with the rim proud of the asphalt.
+
+    Flat, because it is flat, and legible only because the metal takes the
+    light differently from the tarmac around it.  It is the one entrance that
+    is *not* hidden by being out of the way -- it is hidden by being the most
+    ordinary object in a town.
+    """
+    art = _bedded(road(look), cols, rows)
+    w, h = cols * TILE, rows * TILE
+    m, r = look.metal, look.road
+    cx, cy = w / 2, h / 2 + 1
+    art.ellipse(cx, cy + 1, w * 0.40, h * 0.30, r.deep)      # the seat
+    art.ellipse(cx, cy, w * 0.38, h * 0.28, m.shade)         # the rim
+    art.ellipse(cx, cy, w * 0.32, h * 0.23, m.mid)           # the plate
+    # Cast pattern: concentric, because every cover in the world is.
+    art.ellipse(cx, cy, w * 0.22, h * 0.15, m.shade)
+    art.ellipse(cx, cy, w * 0.20, h * 0.13, m.mid)
+    for step in range(-3, 4):
+        art.vline(int(cx + step * 3), int(cy - 4), int(cy + 4), m.deep)
+    art.hline(int(cy - h * 0.26), int(cx - w * 0.24), int(cx + w * 0.24), m.lit)
+    # The two slots you would put a bar through.
+    art.rect(int(cx - w * 0.28), int(cy - 1), 3, 2, (0, 0, 0))
+    art.rect(int(cx + w * 0.28) - 2, int(cy - 1), 3, 2, (0, 0, 0))
+    return art
+
+
+def hatch_shed(look: Look, cols: int = 2, rows: int = 3) -> Canvas:
+    """Something small with a way up into it, and a hatch left open.
+
+    Board and paint rather than rock, because the three rooms this leads to
+    are all built things -- a signal box, a greenhouse, a substation -- and
+    the entrance should say which half of the hidden world it belongs to
+    before the player is through it.
+    """
+    art = _bedded(turf(look, 0), cols, rows)
+    w, h = cols * TILE, rows * TILE
+    b, m = look.bark, look.metal
+    solid(art, 1, TILE, w - 2, h - TILE - 1, b, cap=b)
+    # Boarding, vertical, with one board darker than its neighbours.
+    for x in range(2, w - 2, 4):
+        art.vline(x, TILE + 2, h - 3, b.shade if (x // 4) % 3 else b.deep)
+    # The hatch itself, up under the eaves and standing open on its hinge.
+    hx, hy, hw, hh = w // 2 - 6, TILE + 3, 12, 10
+    art.rect(hx, hy, hw, hh, (0, 0, 0))
+    art.rect(hx + 1, hy + 1, hw - 2, hh - 2, blend(b.deep, (0, 0, 0), 0.6))
+    art.rect(hx - 3, hy - 1, 3, hh + 2, b.lit)               # the flap, open
+    art.vline(hx - 3, hy - 1, hy + hh, b.shade)
+    # A ladder standing in it, which is the part that says "up".
+    for y in range(hy + 2, hy + hh, 3):
+        art.hline(y, hx + 2, hx + hw - 3, m.lit)
+    art.vline(hx + 2, hy + 1, hy + hh - 1, m.mid)
+    art.vline(hx + hw - 3, hy + 1, hy + hh - 1, m.mid)
+    return art
+
+
+def locked_door(look: Look, tag: tuple[int, int, int],
+                cols: int = 2, rows: int = 3) -> Canvas:
+    """A door that does not open, painted the colour of the key that opens it.
+
+    The paint is the only instruction the game ever gives about the locks, and
+    it gives it without a word: four doors, four colours, and the colour of
+    each one is the channel its key is on rather than the channel it stands
+    on.  So it has to be unmistakably a *colour* and not a shade -- the tag
+    band runs the full width of the door and is the brightest thing on it.
+    """
+    art = _bedded(paving(look), cols, rows)
+    w, h = cols * TILE, rows * TILE
+    b, m = look.bark, look.metal
+    solid(art, 0, 2, w, h - 2, b, cap=b)
+    # The opening, recessed, with the door sitting inside it.
+    dx, dy, dw, dh = 3, 8, w - 6, h - 10
+    art.rect(dx - 1, dy - 1, dw + 2, dh + 2, b.deep)
+    art.rect(dx, dy, dw, dh, blend(tag, (0, 0, 0), 0.45))
+    art.rect(dx + 1, dy + 1, dw - 2, dh - 3, tag)
+    # Two panels, so it reads as a door and not as a painted rectangle.
+    for row in range(2):
+        py = dy + 4 + row * (dh // 2 - 1)
+        art.rect(dx + 3, py, dw - 6, dh // 2 - 6, blend(tag, (0, 0, 0), 0.30))
+        art.hline(py, dx + 3, dx + dw - 4, blend(tag, (255, 255, 255), 0.35))
+    # Handle, keyhole, and the shine along the hinge side.
+    art.rect(dx + dw - 6, dy + dh // 2 - 1, 3, 2, m.lit)
+    art.dot(dx + dw - 5, dy + dh // 2 + 2, (0, 0, 0))
+    art.vline(dx + 1, dy + 1, dy + dh - 3, blend(tag, (255, 255, 255), 0.25))
+    return art

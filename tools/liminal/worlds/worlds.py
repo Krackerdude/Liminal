@@ -497,6 +497,70 @@ LIFT_AT = 15                      # which never comes
 HOME_DOOR = 9                     # the player's own, on the fourth floor
 
 
+def open_floor(world: World) -> set[tuple[int, int]]:
+    """Every tile of a finished interior that nothing is standing on."""
+    m, solid = world.map, solid_ids(world.chipset)
+    return {(x, y) for y in range(m.height) for x in range(m.width)
+            if m.get_lower(x, y) not in solid and m.get_upper(x, y) not in solid}
+
+
+def clear_cuts(world: World, floor: set[tuple[int, int]], ground: int) -> int:
+    """Take out any decoration that has sealed part of an interior off.
+
+    The big worlds have had this since the beginning -- ``repair_connectivity``
+    is the same idea -- but the interiors were built by hand and trusted, and
+    they should not have been.  One dead plant, one tile wide, stood in the
+    middle of the fourth floor's corridor and cut the lift and one of the flat
+    doors off from the rest of the building; the same plant is on every storey.
+    Nobody could have seen that by looking at the map, and nobody did.
+
+    ``floor`` is the bare interior as it was before anything was stamped on
+    it, so this can tell a prop from a wall: only tiles that *used* to be
+    walkable are ever cleared, and only the ones directly hemming in a
+    stranded pocket.  Decoration that hugs a wall and blocks nothing survives,
+    which is the entire reason this is not simply "delete every prop".
+    """
+    m, solid = world.map, solid_ids(world.chipset)
+    removed = 0
+    for _ in range(8):
+        reachable = _fill(world, floor)
+        stranded = {spot for spot in floor
+                    if spot not in reachable and spot in open_floor(world)}
+        if not stranded:
+            break
+        # The props hemming the pocket in: solid now, walkable by design.
+        walls = {((x + dx) % m.width, (y + dy) % m.height)
+                 for x, y in stranded
+                 for dx, dy in ((1, 0), (-1, 0), (0, 1), (0, -1))}
+        cut = [spot for spot in walls & floor
+               if m.get_lower(*spot) in solid or m.get_upper(*spot) in solid]
+        if not cut:
+            break
+        for x, y in cut:
+            m.set_lower(x, y, ground)
+            m.set_upper(x, y, maps.EMPTY_UPPER)
+            removed += 1
+    return removed
+
+
+def _fill(world: World, floor: set[tuple[int, int]]) -> set[tuple[int, int]]:
+    """Flood the interior from the arrival tile across tiles only."""
+    m, solid = world.map, solid_ids(world.chipset)
+    start = (world.spawn[0] % m.width, world.spawn[1] % m.height)
+    seen: set[tuple[int, int]] = set()
+    stack = [start]
+    while stack:
+        x, y = stack.pop()
+        if (x, y) in seen:
+            continue
+        if m.get_lower(x, y) in solid or m.get_upper(x, y) in solid:
+            continue
+        seen.add((x, y))
+        for dx, dy in ((1, 0), (-1, 0), (0, 1), (0, -1)):
+            stack.append(((x + dx) % m.width, (y + dy) % m.height))
+    return seen
+
+
 def _corridor(m, t) -> None:
     """One storey of the block, cut the same way the flat is.
 
@@ -539,6 +603,9 @@ def _build_floor(key: str):
         world, cs, rng = _new(key, map_id, 20, 15, loop=False, art="hall5")
         m, t = world.map, cs.tiles
         _corridor(m, t)
+        # The corridor as it is before anything stands in it, so the
+        # connectivity repair below can tell a prop from a wall.
+        bare = open_floor(world)
         depth = _floor_of(key)
         ground = key == "lobby"
 
@@ -597,6 +664,7 @@ def _build_floor(key: str):
         world.landmarks = landmarks
         world.spawn = (HOME_DOOR, 4) if key == HOME_FLOOR else (7, 5)
         world.npcs = []
+        clear_cuts(world, bare, t["ground"])
         return world
 
     return build
@@ -2174,12 +2242,19 @@ def enforce_density(world: World) -> int:
 
 
 def snap_spawn(world: World) -> None:
-    """Move the arrival point onto ground the player can actually stand on.
+    """Move the arrival point onto ground the player can actually leave.
 
     A builder picks a spawn from its own geometry — the centre of a terrace,
     the middle of an avenue — and decoration or a stepped zone shape can end
     up putting a wall there.  The player then arrives inside solid rock and
     the entire world reads as unreachable.  Search outward for real floor.
+
+    Standing on floor is not enough on its own.  The neon deep world put the
+    player in a one-tile alcove with a single way out, ``place_door`` then
+    stood the door in that one gap, and because an event on the player's layer
+    blocks, the world was a world you arrived in and could never take a step
+    in.  So a spawn needs **two** ways out: one for the door to occupy and one
+    to walk through.
     """
     fld = world.plan
     if fld is None:
@@ -2194,8 +2269,25 @@ def snap_spawn(world: World) -> None:
                 and m.get_lower(x, y) not in solid
                 and m.get_upper(x, y) not in solid)
 
-    if standable(sx, sy):
+    def ways_out(x: int, y: int) -> int:
+        return sum(standable(x + dx, y + dy)
+                   for dx, dy in ((1, 0), (-1, 0), (0, 1), (0, -1)))
+
+    def good(x: int, y: int) -> bool:
+        return standable(x, y) and ways_out(x, y) >= 2
+
+    if good(sx, sy):
         return
+    for radius in range(1, max(m.width, m.height) // 2):
+        for dy in range(-radius, radius + 1):
+            for dx in range(-radius, radius + 1):
+                if max(abs(dx), abs(dy)) != radius:
+                    continue
+                if good(sx + dx, sy + dy):
+                    world.spawn = ((sx + dx) % m.width, (sy + dy) % m.height)
+                    return
+    # Nothing in the whole world has two ways out, which should be impossible
+    # in a world with any corridor in it.  Take open ground over a dead end.
     for radius in range(1, max(m.width, m.height) // 2):
         for dy in range(-radius, radius + 1):
             for dx in range(-radius, radius + 1):

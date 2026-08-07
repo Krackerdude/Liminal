@@ -56,6 +56,7 @@ from ..maps import (ANIM_CONTINUOUS, LAYER_BELOW, LAYER_SAME, MOVE_RANDOM,
 from ..state import (SW_HIDE_ASKED, SW_HIDE_DOOR, SW_HIDE_FOUND, SW_HIDE_KEY,
                      SW_HIDE_MANHOLE, SW_REMOTE, VR_DREAM_DISTANCE)
 from . import atmosphere
+from . import reach
 from . import systems as sys
 from .cast_lookup import charset_slot
 
@@ -581,6 +582,18 @@ def _prize(area: Area) -> Script:
     return s
 
 
+def _reachable_spot(world, x: int, y: int, open_tiles) -> tuple[int, int]:
+    """A tile near (x, y) the player can actually walk up to and face.
+
+    Falls back to the requested tile when the room offers nothing better,
+    which cannot happen in a room with any floor in it but is not worth
+    crashing the build over.
+    """
+    found = reach.spot_for(world, x, y, stand_on=False,
+                           open_tiles=open_tiles, radius=10)
+    return found if found is not None else (x, y)
+
+
 def events(world, worlds: dict) -> None:
     """One hidden room: the way out, the resident, and the thing in it."""
     from .events import _door, _place
@@ -590,6 +603,15 @@ def events(world, worlds: dict) -> None:
     from .events import _arrival_event
     m.add_event("arrive", 0, 0, [_arrival_event(world)])
 
+    # Where the resident stands and where the prize sits are chosen against
+    # the *finished* room rather than trusted from the layout.  Sixteen rooms
+    # were each drawn by hand and each of them was then handed the same three
+    # coordinates; where a room's own furniture happened to be standing there,
+    # the resident and the prize went behind it.  That is how the television
+    # remote ended up in a wall.  So the room is walked first, and everything
+    # that is not part of the scenery is put somewhere the player can get to.
+    open_tiles = reach.walkable(world)
+
     home = worlds[CHANNELS[area.channel]]
     # On the *bottom row of the exit object itself*, which is the tile the
     # player is facing when they stand on the arrival square.  It used to go
@@ -597,7 +619,7 @@ def events(world, worlds: dict) -> None:
     # the wall -- so every hidden room in the game was a room you could not
     # leave.
     ox, oy = world.landmarks["out"][0]
-    _place(world, "the way out", ox, oy + 2,
+    _place(world, "the way out", *_reachable_spot(world, ox, oy + 2, open_tiles),
            [_door(home.map_id, *home.spawn, sound="StepStone",
                   leaving=world.key, entering=home.key)])
 
@@ -605,16 +627,16 @@ def events(world, worlds: dict) -> None:
     said = Script()
     said.move_route(0, [MV_FACE_HERO], frequency=8)
     said.msg(*area.lines)
-    nx, ny = world.landmarks["npc"][0]
+    nx, ny = _reachable_spot(world, *world.landmarks["npc"][0], open_tiles)
     m.add_event(area.npc, nx, ny, [
         Page(script=said, charset=sheet, charset_index=slot,
              move_type=MOVE_STATIONARY, move_speed=2, move_frequency=3,
              trigger=TRIGGER_ACTION, animation_type=ANIM_CONTINUOUS)])
 
     if world.key in DESCENTS:
-        _descent(world, area)
+        _descent(world, area, open_tiles)
 
-    px, py = world.landmarks["prize"][0]
+    px, py = _reachable_spot(world, *world.landmarks["prize"][0], open_tiles)
     taken = Script()
     taken.msg("you have already been through this.")
     _place(world, "what is here", px, py, [
@@ -656,7 +678,7 @@ DESCENTS = {
 NOT_YET = ("", "not yet.")
 
 
-def _descent(world, area) -> None:
+def _descent(world, area, open_tiles=None) -> None:
     """The mirror that goes further down, and what it shows."""
     from .events import _place
 
@@ -667,7 +689,8 @@ def _descent(world, area) -> None:
     look.wait(8)
     look.se("ChimeFar", volume=30)
     look.msg(*NOT_YET)
-    _place(world, f"the way to {key}", 10, 6,
+    _place(world, f"the way to {key}",
+           *_reachable_spot(world, 10, 6, open_tiles),
            [_gleam(script=look, trigger=TRIGGER_ACTION)])
 
 
@@ -679,11 +702,81 @@ def _channel_design(area: Area) -> str:
 
 # --- how you get in -----------------------------------------------------------
 
+def _stamp(world, obj: str, x: int, y: int) -> None:
+    """Put the entrance on the map, so there is something to walk up to."""
+    from . import gen
+    gen.stamp(world.map, world.chipset.obj(obj), x, y, overlap=True)
+
+
+# What each entrance is bedded on, and therefore what it has to stand on.
+# These four are lower-layer objects -- Block F had no room left -- so each one
+# carries its own ground, and standing a turf-bedded crack in the carriageway
+# puts a green rectangle in the middle of the road.  The first version did
+# exactly that.
+BEDDING = {"crack": ("ground", "ground_b", "path"),
+           "hatch": ("ground", "ground_b", "path"),
+           "cover": ("road", "road_line", "road_line_h"),
+           "lock":  ("paving", "ground", "ground_b", "path")}
+
+
+def _approachable(world, obj: str, x: int, y: int, open_tiles,
+                  radius: int = 8) -> tuple[int, int]:
+    """Move an entrance until the player can actually walk up to it.
+
+    An entrance is a solid two-by-three object dropped at an offset from a
+    clearing, and a clearing in this town is ringed with trees.  Twice the
+    offset put the crack in the middle of the ring, where it was perfectly
+    visible from nowhere and reachable from nowhere.
+
+    So the footprint is tried against the town as it stands: it is a good spot
+    when at least one tile *outside* the footprint but touching it is ground
+    the player can already reach.  The requested position wins when it
+    qualifies, and the nearest one that does wins when it does not.
+    """
+    m = world.map
+    grid = world.chipset.obj(obj)
+    bed = {world.chipset.tiles[name] for name in BEDDING[obj]
+           if name in world.chipset.tiles}
+
+    def on_its_own_ground(px: int, py: int) -> bool:
+        return all(m.get_lower((px + c) % m.width, (py + r) % m.height) in bed
+                   for r in range(grid.rows) for c in range(grid.cols))
+
+    def touches_floor(px: int, py: int) -> bool:
+        feet = {((px + c) % m.width, (py + r) % m.height)
+                for r in range(grid.rows) for c in range(grid.cols)}
+        for fx, fy in feet:
+            for dx, dy in ((1, 0), (-1, 0), (0, 1), (0, -1)):
+                side = ((fx + dx) % m.width, (fy + dy) % m.height)
+                if side not in feet and side in open_tiles:
+                    return True
+        return False
+
+    if touches_floor(x, y) and on_its_own_ground(x, y):
+        return x, y
+    # Rank on the ground first and the distance second: an entrance five tiles
+    # further along a verge is still in the place it belongs, and one tile into
+    # the carriageway is not.
+    best = None
+    for dy in range(-radius, radius + 1):
+        for dx in range(-radius, radius + 1):
+            px, py = (x + dx) % m.width, (y + dy) % m.height
+            if not touches_floor(px, py):
+                continue
+            rank = (0 if on_its_own_ground(px, py) else 1, dx * dx + dy * dy)
+            if best is None or rank < best[0]:
+                best = (rank, (px, py))
+    return best[1] if best else (x, y)
+
+
 def entrances(world, worlds: dict, rng: random.Random) -> None:
     """The crack, the cover, the hatch and the locked door, on one channel."""
-    from .events import _door, _place
+    from .events import _door, _place_object
+    from . import gen
 
     channel = CHANNELS.index(world.key)
+    # The town as it stands, before any entrance is cut into it.
+    open_tiles = reach.walkable(world)
     spots = list(world.landmarks.get("junctions", [])) or [world.spawn]
     glades = list(world.landmarks.get("glades", [])) or [world.spawn]
 
@@ -698,39 +791,51 @@ def entrances(world, worlds: dict, rng: random.Random) -> None:
         target = worlds[area.key]
         opening = _door(target.map_id, *target.spawn, sound="StepStone",
                         leaving=world.key, entering=area.key)
+        kind = {"crack": "crack", "cover": "cover",
+                "hatch": "hatch"}.get(area.family, "lock")
+        x, y = _approachable(world, kind, x, y, open_tiles)
 
+        # Stamp the thing before hanging the interaction on it.  Every one of
+        # these was an invisible gleam on open grass until a playthrough went
+        # looking for them and correctly reported that the entrance to the
+        # hidden half did not exist.  An interaction with nothing under it is
+        # the same bug as the phantom phone box, and it is worse here, because
+        # this is not a piece of scenery -- it is the way in.
         if area.family == "crack":
             look = Script()
             look.se("StepStone", volume=34)
             look.msg("a split in the rock, shoulder wide.", "",
                      "it does not close up again behind it.")
-            _place(world, "the crack", x, y,
-                   [_gleam(script=look, trigger=TRIGGER_ACTION),
-                    opening])
-            # the first page only ever runs once; the second is the way in
-            _place(world, "into the crack", x, y + 1, [opening])
+            _stamp(world, "crack", x, y)
+            _place_object(world, "crack", [
+                _gleam(script=look, trigger=TRIGGER_ACTION), opening],
+                at=(x, y), name="the crack")
 
         elif area.family == "cover":
             shut = Script()
             shut.se("LowThud", volume=30)
             shut.msg("a cover, seated in the road.", "",
                      "there is no lifting it from up here.")
-            _place(world, "the cover", x, y, [
+            _stamp(world, "cover", x, y)
+            _place_object(world, "cover", [
                 _gleam(script=shut, trigger=TRIGGER_ACTION),
                 _gleam(script=_lift(target), trigger=TRIGGER_ACTION,
                       switch_a=SW_HIDE_MANHOLE),
-            ])
+            ], at=(x, y), name="the cover")
 
         elif area.family == "hatch":
-            _place(world, "the hatch", x, y, [
-                _gleam(script=_hatch(target), trigger=TRIGGER_ACTION)])
+            _stamp(world, "hatch", x, y)
+            _place_object(world, "hatch", [
+                _gleam(script=_hatch(target), trigger=TRIGGER_ACTION)],
+                at=(x, y), name="the hatch")
 
         else:
-            _place(world, "the door", x, y, [
+            _stamp(world, "lock", x, y)
+            _place_object(world, "lock", [
                 _gleam(script=_locked(area), trigger=TRIGGER_ACTION),
                 _gleam(script=_unlock(area, target), trigger=TRIGGER_ACTION,
                       switch_a=SW_HIDE_KEY + NEEDS[area.channel]),
-            ])
+            ], at=(x, y), name="the door")
 
     _the_ask(world, channel)
 

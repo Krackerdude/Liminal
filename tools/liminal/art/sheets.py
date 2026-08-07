@@ -1284,6 +1284,18 @@ def build_sand() -> ChipsetBuild:
     return _finish(cb, ground)
 
 
+# What colour each channel's locked door is painted.  Read straight off
+# hidden.OPENS: the door on a channel is painted for the channel its key comes
+# from, not for the one it stands on, so the four of them make a closed loop
+# and none is a hint about where it is standing.
+LOCK_COLOUR = {
+    "faces":  (122, 214, 138),      # green   -- the key is on overgrown
+    "faces2": (168, 170, 186),      # grey    -- the key is on off-colour
+    "faces3": (214, 76, 62),        # red     -- the key is on no signal
+    "faces4": (232, 186, 92),       # amber   -- the key is on the grove
+}
+
+
 def _grove_common(cb: ChipsetBuilder, pal: Palette, look, world: str,
                   *, tree_rows: int = 4, bare: bool = False,
                   cap: tuple[int, int, int] = (216, 128, 118)) -> Canvas:
@@ -1332,6 +1344,19 @@ def _grove_common(cb: ChipsetBuilder, pal: Palette, look, world: str,
                   upper=True)
     cb.add_object("door", ct.door_frame(pal, 2, 3,
                                         reflect=_reflection(cb.name)))
+
+    # The four ways into the hidden half.  Every channel carries all four,
+    # because the street plan is shared tile for tile and a channel missing an
+    # object is a channel whose geometry has drifted -- and because the same
+    # entrance standing in the same place on all four receptions is the whole
+    # trick the hidden half is built on.
+    cb.add_object("crack", gv.rock_split(look, 2, 3), solid="all")
+    cb.add_object("cover", gv.manhole(look, 2, 2), solid="all")
+    cb.add_object("hatch", gv.hatch_shed(look, 2, 3), solid="all")
+    # Painted the colour of the channel whose key opens it, which is the only
+    # instruction the game gives about the locks.
+    cb.add_object("lock", gv.locked_door(look, LOCK_COLOUR[world], 2, 3),
+                  solid="all")
     return ground
 
 
@@ -1706,6 +1731,15 @@ def build_faces4() -> ChipsetBuild:
 
     cb.add_object("door", ct.door_frame(pal, 2, 3,
                                     reflect=_reflection(cb.name)))
+
+    # The four ways in, which this channel carries like the other three: the
+    # street plan is shared tile for tile, so an entrance missing here is an
+    # entrance that exists on three receptions of one town and not the fourth.
+    cb.add_object("crack", gv.rock_split(gv.NO_SIGNAL, 2, 3), solid="all")
+    cb.add_object("cover", gv.manhole(gv.NO_SIGNAL, 2, 2), solid="all")
+    cb.add_object("hatch", gv.hatch_shed(gv.NO_SIGNAL, 2, 3), solid="all")
+    cb.add_object("lock", gv.locked_door(gv.NO_SIGNAL, LOCK_COLOUR["faces4"],
+                                         2, 3), solid="all")
     _shadows(cb, pal)
     _landmarks(cb, pal, "faces4")
     _animate(cb, pal, "faces4")

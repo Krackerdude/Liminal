@@ -1218,3 +1218,41 @@ def locked_door(look: Look, tag: tuple[int, int, int],
     art.dot(dx + dw - 5, dy + dh // 2 + 2, (0, 0, 0))
     art.vline(dx + 1, dy + 1, dy + dh - 3, blend(tag, (255, 255, 255), 0.25))
     return art
+
+
+# --- the town going under -----------------------------------------------------
+# A grove with a brown brick boundary is not a grove, and a road with no crack
+# in it is a road somebody is still maintaining.  These are the tiles that say
+# the town lost.
+
+
+def hedge(look: Look, seed: int = 0, base: tuple[int, int, int] | None = None
+          ) -> Canvas:
+    """Massed greenery, dark and bushy, as a boundary you cannot see through.
+
+    The grove's secondary boundary was a brown strata band -- the generic
+    fallback, inherited because the motif table had no opinion about this
+    world -- so a third of the town was walled in masonry.  This is the same
+    job done in leaves: overlapping lobes, each lit on the crown and dark
+    underneath, with no straight edge anywhere in it.
+    """
+    # The boundary has to be one material.  Left to its own leaf colour the
+    # hedge came out grey-blue on the channel whose wall is near-black red,
+    # so the two halves of the same fence read as two different fences.  The
+    # caller passes the wall's own base and both are built from it.
+    l = mt.Material("hedge", base) if base else look.leaf
+    g = look.grass if base is None else l
+    art = Canvas(TILE, TILE, blend(l.deep, (0, 0, 0), 0.35))
+    mt.plane(art, 0, 0, TILE, TILE, blend(l.deep, (0, 0, 0), 0.30))
+    lobes = ((3, 3, 6), (11, 5, 5), (6, 10, 6), (13, 12, 4), (0, 8, 4),
+             (8, 1, 4), (1, 14, 5), (14, 0, 4))
+    for index, (cx, cy, r) in enumerate(lobes):
+        cx = (cx + seed * 5) % TILE
+        body = l.shade if index % 3 else blend(l.mid, l.deep, 0.4)
+        art.blob(cx, cy, r, body)
+        art.blob(cx - 1, cy - 1, max(1, r - 2), blend(body, l.lit, 0.35))
+        art.dot(cx - 1, cy - r + 1, l.lit)
+    # a few blades catching the light along the top, so it reads as growth
+    for x in range(0, TILE, 3):
+        art.dot((x + seed) % TILE, (x * 5) % 4, blend(g.lit, l.lit, 0.5))
+    return art

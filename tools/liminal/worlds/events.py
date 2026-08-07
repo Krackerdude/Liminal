@@ -965,9 +965,23 @@ def dream_events(world: World, worlds: dict[str, World],
                 # lost ten of the grove's sixteen to whatever happened to be
                 # standing there, and a verb that only appears six times in a
                 # world this size is not a verb.
+                from .worlds import off_tarmac, tarmac_ids
+                road = tarmac_ids(world.chipset)
                 for attempt in range(3):
                     ox, oy = ix - grid.cols // 2, iy - grid.rows
-                    if gen.stamp(world.map, grid, ox, oy, pad=1):
+                    # A verb's object is a thing in the town, so it obeys the
+                    # town's one rule about roads.  Sixteen telephone boxes
+                    # were being dropped wherever the zone sampler pointed,
+                    # and seven of them landed in the carriageway.
+                    if road:
+                        spot = off_tarmac(world.map, road, ox, oy,
+                                          grid.cols, grid.rows, radius=8)
+                        if spot is None:
+                            ox = None
+                        else:
+                            ox, oy = spot
+                    if ox is not None and gen.stamp(world.map, grid, ox, oy,
+                                                    pad=1):
                         break
                     if zones:
                         ix, iy = _near(world, zones[(n + attempt * 5)

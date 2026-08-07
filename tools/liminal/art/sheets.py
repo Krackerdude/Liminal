@@ -220,11 +220,24 @@ def _decals(cb: ChipsetBuilder, pal: Palette, world: str, ground: Canvas) -> Non
            "coil": "strata", "teeth": "checker", "rays": "starfield",
            "cumulus": "scallops", "cornice": "strata", "lockers": "checker",
            "cards": "grid"}.get(motif, "brick")
-    cb.add("wall_alt", ct.wall_band(pal, alt, accent=pal.accent_soft),
-           passable=False)
-    cb.add("wall_alt_face", ct.wall_band(pal, alt, face=True,
-                                         accent=pal.accent_soft),
-           passable=False)
+    # The grove's second boundary was a brown strata band -- the generic
+    # fallback, because the alt table had no opinion about a world whose
+    # motif is "trunks".  Two thousand six hundred tiles of masonry in a map
+    # called the grove.  All four channels get massed hedge instead, in their
+    # own reception's colours.
+    if world in gv.LOOKS:
+        look = gv.LOOKS[world]
+        # Built from the same base the primary wall uses, so a channel's
+        # boundary is one colour whatever tile of it you are looking at.
+        tint = WALL_COLORS.get(world, {}).get("base")
+        cb.add("wall_alt", gv.hedge(look, 0, tint), passable=False)
+        cb.add("wall_alt_face", gv.hedge(look, 1, tint), passable=False)
+    else:
+        cb.add("wall_alt", ct.wall_band(pal, alt, accent=pal.accent_soft),
+               passable=False)
+        cb.add("wall_alt_face", ct.wall_band(pal, alt, face=True,
+                                             accent=pal.accent_soft),
+               passable=False)
 
 
 # The unique structures each world is remembered for.  They go on the upper

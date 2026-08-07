@@ -1041,13 +1041,31 @@ def _secret_spot(world, name: str) -> tuple[int, int] | None:
         return existing[len(existing) // 2]
     if name not in world.chipset.objects:
         return None
+    from . import reach
+
     m, grid = world.map, world.chipset.obj(name)
     road = tarmac_ids(world.chipset)
+    # Off the road is not enough -- the first version of this stood a stump in
+    # the middle of a stand of trees, where it was off the road, visible from
+    # nowhere and reachable from nowhere.  The spot has to touch ground the
+    # player can already walk on.
+    open_tiles = reach.walkable(world)
+
+    def approachable(px: int, py: int) -> bool:
+        feet = {((px + c) % m.width, (py + r) % m.height)
+                for r in range(grid.rows) for c in range(grid.cols)}
+        for fx, fy in feet:
+            for dx, dy in ((1, 0), (-1, 0), (0, 1), (0, -1)):
+                side = ((fx + dx) % m.width, (fy + dy) % m.height)
+                if side not in feet and side in open_tiles:
+                    return True
+        return False
+
     for jx, jy in world.landmarks.get("junctions", []):
         for dx, dy in ((6, 6), (-8, 6), (6, -8), (-8, -8), (10, 10)):
             x, y = (jx + dx) % m.width, (jy + dy) % m.height
             spot = off_tarmac(m, road, x, y, grid.cols, grid.rows, radius=6)
-            if spot is None:
+            if spot is None or not approachable(*spot):
                 continue
             if gen.stamp(m, grid, spot[0], spot[1], pad=1):
                 return spot
@@ -1216,9 +1234,16 @@ def _secret_reflection(world, channel: int) -> None:
 
     if "door" not in world.chipset.objects:
         return
-    spots = world.landmarks.get("door") or _find_object(world, "door")
-    if not spots:
+    # The second page only exists on the dead channel, and the standing door
+    # only exists on the grove -- so the whole secret was unreachable: one
+    # page, on the one channel that never gets the other page.  The dead
+    # channel stands its own door up now.
+    spot = (world.landmarks.get("door") or [None])[0] if channel == 0 else None
+    if spot is None:
+        spot = _secret_spot(world, "door")
+    if spot is None:
         return
+    spots = [spot]
     plain = Script()
     plain.se("GlassRing", volume=34)
     plain.msg("a door, with nothing behind it.", "",

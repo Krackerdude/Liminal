@@ -36,7 +36,8 @@ from __future__ import annotations
 import os
 import random
 
-from ..cmds import MSG_BOTTOM, MSG_MIDDLE, MV_FACE_HERO, Script
+from ..cmds import MSG_BOTTOM, MSG_MIDDLE, MV_FACE_HERO, PLAYER, Script
+from .. import maps
 from ..maps import (ANIM_CONTINUOUS, LAYER_BELOW, LAYER_SAME, MOVE_RANDOM,
                     MOVE_STATIONARY, TRIGGER_ACTION, TRIGGER_AUTO,
                     TRIGGER_PARALLEL, Page)
@@ -955,9 +956,419 @@ def grove_events(world, worlds: dict, rng: random.Random) -> None:
     _residents(world, rng)
     world.map.add_event("ambience", 2, 1, [_ambience(world)])
     _easter(world, rng)
+    # The ten.  Ordered as they are numbered rather than as they run, so the
+    # list reads the same here as it does in the notes.
+    _secret_sets(world, channel)
+    _secret_watcher(world)
+    _secret_number(world, channel)
+    _secret_house(world, channel)
+    _secret_reflection(world, channel)
+    _secret_shelter(world, channel)
+    _secret_vending(world, channel)
+    _secret_light(world, channel)
+    _secret_stump(world, channel)
     if channel == 0:
         _receiver(world)
         _mast(world)
     for index, spec in enumerate(YARDS):
         if spec["channel"] == channel:
             _yard(world, index, spec, rng)
+
+
+# --- the secrets --------------------------------------------------------------
+#
+# Ten things in the grove that are not signposted, not required, and never
+# confirmed.  The rules they share:
+#
+# * every one needs the player to *do* something -- stand still, come back,
+#   try a thing more times than a reasonable person would;
+# * none of them explains itself, before or after;
+# * none of them blocks anything, so a player who finds none of them still
+#   finishes the town;
+# * the switch each one sets exists so the game can know, not so it can tell.
+#
+# The interval (one channel change in twenty-five) is the first and lives up
+# with the tuner, because it has to happen inside the change itself.
+
+
+def _find_object(world, name: str) -> list[tuple[int, int]]:
+    """Every place a given object was actually stamped.
+
+    Objects placed by the furnisher are not recorded anywhere -- it puts them
+    down and forgets -- so the only honest way to hang an interaction on one
+    is to go and look for it on the finished map.  Matching is done on the
+    first *non-empty* tile of the object and the result offset back to the
+    top-left corner, because the corner tile of a tall prop is usually
+    transparent sky and matching on it finds nothing at all.
+    """
+    grid = world.chipset.obj(name)
+    anchor = None
+    for row in range(grid.rows):
+        for col in range(grid.cols):
+            tile = grid.ids[row][col]
+            if tile and tile != maps.EMPTY_UPPER:
+                anchor = (col, row, tile)
+                break
+        if anchor:
+            break
+    if anchor is None:
+        return []
+    col, row, tile = anchor
+    m = world.map
+    found = []
+    for y in range(m.height):
+        for x in range(m.width):
+            if m.get_upper(x, y) == tile or m.get_lower(x, y) == tile:
+                found.append(((x - col) % m.width, (y - row) % m.height))
+    return found
+
+
+def _secret_spot(world, name: str) -> tuple[int, int] | None:
+    """Where a secret's object is, putting one there if the town has none.
+
+    Several of these hang off street furniture, and street furniture is placed
+    by rules that can legitimately decline every position offered -- which is
+    how the town ended up with a chipset full of bus shelters and not one bus
+    shelter in it.  A secret cannot depend on that.  If the thing it needs is
+    not standing anywhere, the secret stands one up itself, on grass, near a
+    crossing, off the road, the way the hidden half's entrances do.
+    """
+    from .worlds import off_tarmac, tarmac_ids
+    from . import gen
+
+    existing = _find_object(world, name)
+    if existing:
+        return existing[len(existing) // 2]
+    if name not in world.chipset.objects:
+        return None
+    m, grid = world.map, world.chipset.obj(name)
+    road = tarmac_ids(world.chipset)
+    for jx, jy in world.landmarks.get("junctions", []):
+        for dx, dy in ((6, 6), (-8, 6), (6, -8), (-8, -8), (10, 10)):
+            x, y = (jx + dx) % m.width, (jy + dy) % m.height
+            spot = off_tarmac(m, road, x, y, grid.cols, grid.rows, radius=6)
+            if spot is None:
+                continue
+            if gen.stamp(m, grid, spot[0], spot[1], pad=1):
+                return spot
+    return None
+
+
+def _secret_sets(world, channel: int) -> None:
+    """2. The set answers.
+
+    Four goes at the same television.  The first three are a dead screen and
+    the sound of a dead screen; nobody presses a broken telly four times
+    unless they have started to suspect it of something.  The fourth answers
+    with the player's own coordinates, which is the only time the game admits
+    it knows where they are standing.
+    """
+    from .events import _place_object
+    from ..state import SW_SET_LIT, VR_DEBUG_X, VR_DEBUG_Y
+
+    spot = _secret_spot(world, "telly")
+    if spot is None:
+        return
+    spots = [spot]
+    lines = {
+        0: "a picture, and it is this town.",
+        1: "the screen is full of leaves.",
+        2: "colour bars, with no colour in them.",
+        3: "snow. it has always been snow.",
+    }
+    dead = Script()
+    dead.se("StaticBurst", volume=30)
+    dead.msg(lines[channel], "", "the set is not plugged into anything.")
+
+    woke = Script()
+    woke.se("Carrier", volume=64)
+    woke.wait(6)
+    woke.se("StaticBurst", volume=80)
+    woke.flash(240, 236, 226, 24, 2, True)
+    woke.var_from_event(VR_DEBUG_X, PLAYER, 1)
+    woke.var_from_event(VR_DEBUG_Y, PLAYER, 2)
+    woke.msg(f"\\v[{VR_DEBUG_X}].  \\v[{VR_DEBUG_Y}].")
+    woke.se("TapeStop", volume=70)
+    woke.switch(SW_SET_LIT, True)
+
+    for index, (x, y) in enumerate(spots[:6]):
+        pages = [Page(script=dead, trigger=TRIGGER_ACTION)]
+        if index == 0:
+            pages.append(Page(script=woke, trigger=TRIGGER_ACTION,
+                              switch_a=SW_FACE_HEARD))
+        _place_object(world, "telly", pages, at=(x, y), name="the set")
+
+
+def _secret_watcher(world) -> None:
+    """3. The watcher.
+
+    Stand still in the open for forty seconds and something opens above the
+    town.  Forty seconds is a long time in a game that is only walking, so
+    this is a secret for the player who has stopped to look at something.
+    """
+    from .events import _standing_still
+    from ..state import SW_WATCHED
+
+    s = Script()
+    s.se("Breath", volume=44)
+    s.show_picture(sys.PIC_FLASH, "Eye", 160, 120, transparency=70,
+                   use_transparent_color=True)
+    s.wait(10)
+    s.move_picture(sys.PIC_FLASH, 160, 120, transparency=30, tenths=12)
+    s.se("Heartbeat", volume=60)
+    s.wait(14)
+    s.se("Vanish", volume=52)
+    s.erase_picture(sys.PIC_FLASH)
+    s.switch(SW_WATCHED, True)
+    s.wait(600)          # once a minute at the very most
+    world.map.add_event("the watcher", 1, 2,
+                        [_standing_still(world, 40, s)])
+
+
+def _secret_number(world, channel: int) -> None:
+    """4. The wrong number.
+
+    Every phone box in the town gives static.  Lift the same one three times
+    on the dead channel and the static has breathing under it; a fourth time
+    and it uses the word the game has never used.
+    """
+    from .events import _place_object
+    from ..state import SW_INTERVAL_SEEN
+
+    if channel != 3:
+        return
+    spot = _secret_spot(world, "phone_box")
+    if spot is None:
+        return
+    spots = [spot]
+    once = Script()
+    once.se("PhoneNear", volume=40)
+    once.msg("static, and the sound of a room behind it.")
+
+    twice = Script()
+    twice.se("PhoneNear", volume=30)
+    twice.wait(6)
+    twice.se("Breath", volume=76)
+    twice.wait(10)
+    twice.msg("someone is breathing into the other end.")
+    twice.wait(8)
+    twice.msg("\"...you came back.\"")
+    twice.se("TapeStop", volume=64)
+    twice.flash(196, 44, 38, 22, 2, False)
+
+    x, y = spots[len(spots) // 2]
+    _place_object(world, "phone_box", [
+        Page(script=once, trigger=TRIGGER_ACTION),
+        Page(script=twice, trigger=TRIGGER_ACTION,
+             switch_a=SW_INTERVAL_SEEN),
+    ], at=(x, y), name="the wrong number")
+
+
+def _secret_house(world, channel: int) -> None:
+    """5. The house is occupied.
+
+    The ruined house on the overgrown channel has a door, and the door is the
+    only part of it the ivy has not taken.  Knocking does nothing the first
+    time.  It does nothing the second time.  The third time somebody knocks
+    back, and the game does not open the door.
+    """
+    from .events import _place_object
+    from ..state import SW_FACE_SEED
+
+    if channel != 1 or "mark_house" not in world.chipset.objects:
+        return
+    spot = _secret_spot(world, "mark_house")
+    if spot is None:
+        return
+    spots = [spot]
+    quiet = Script()
+    quiet.se("LowThud", volume=40)
+    quiet.msg("you knock.", "", "nothing in there is surprised.")
+
+    answer = Script()
+    answer.se("LowThud", volume=40)
+    answer.wait(14)
+    answer.se("LowThud", volume=64)
+    answer.wait(6)
+    answer.se("LowThud", volume=64)
+    answer.msg("something knocks back.", "", "twice, for your once.")
+    answer.se("Heartbeat", volume=70)
+    answer.wait(12)
+    answer.msg("the handle does not turn.")
+
+    _place_object(world, "mark_house", [
+        Page(script=quiet, trigger=TRIGGER_ACTION),
+        Page(script=answer, trigger=TRIGGER_ACTION, switch_a=SW_FACE_SEED),
+    ], at=spots[0], name="the door of the house")
+
+
+def _secret_reflection(world, channel: int) -> None:
+    """6. The other one.
+
+    Every channel has a door standing on its own in the grass.  On the grove
+    it reflects you.  On the dead channel it reflects you standing somewhere
+    you are not, facing the way you came from, and it is a tile ahead of your
+    own movement -- so the player who walks past it slowly is the only one who
+    catches it.
+    """
+    from .events import _place_object
+    from ..state import SW_WATCHED
+
+    if "door" not in world.chipset.objects:
+        return
+    spots = world.landmarks.get("door") or _find_object(world, "door")
+    if not spots:
+        return
+    plain = Script()
+    plain.se("GlassRing", volume=34)
+    plain.msg("a door, with nothing behind it.", "",
+              "the glass has you in it.")
+
+    wrong = Script()
+    wrong.se("GlassRing", volume=52)
+    wrong.msg("a door, with nothing behind it.")
+    wrong.wait(10)
+    wrong.se("Filament", volume=60)
+    wrong.msg("the glass has you in it,", "", "facing the other way.")
+    wrong.wait(12)
+    wrong.se("Vanish", volume=64)
+    wrong.flash(255, 255, 255, 26, 2, True)
+    wrong.msg("now it does not have anyone in it.")
+
+    _place_object(world, "door", [
+        Page(script=plain, trigger=TRIGGER_ACTION),
+        Page(script=wrong, trigger=TRIGGER_ACTION,
+             switch_a=SW_WATCHED if channel == 3 else None),
+    ] if channel == 3 else [
+        Page(script=plain, trigger=TRIGGER_ACTION),
+    ], at=spots[0], name="the standing door")
+
+
+def _secret_shelter(world, channel: int) -> None:
+    """7. The last bus.
+
+    A timetable in a bus shelter.  On three channels it is a timetable.  On
+    the off-colour channel every departure is the same time, and reading it a
+    second time shows that time getting closer.
+    """
+    from .events import _place_object
+
+    spot = _secret_spot(world, "shelter")
+    if spot is None:
+        return
+    spots = [spot]
+    if channel == 2:
+        read = Script()
+        read.se("Rustle", volume=34)
+        read.msg("a timetable, behind glass.", "",
+                 "every service departs at 4:12.")
+        read.wait(10)
+        read.msg("there are ninety of them.")
+        again = Script()
+        again.se("Rustle", volume=34)
+        again.msg("every service departs at 4:11.")
+        again.wait(8)
+        again.se("Watch", volume=64)
+        again.msg("it was later than this a minute ago.")
+        pages = [Page(script=read, trigger=TRIGGER_ACTION),
+                 Page(script=again, trigger=TRIGGER_ACTION,
+                      switch_a=SW_FACE_COIN)]
+    else:
+        read = Script()
+        read.se("Rustle", volume=34)
+        read.msg("a timetable, behind glass.", "",
+                 "the ink has gone in the sun.")
+        pages = [Page(script=read, trigger=TRIGGER_ACTION)]
+    _place_object(world, "shelter", pages, at=spots[0], name="the timetable")
+
+
+def _secret_vending(world, channel: int) -> None:
+    """8. The machine that owes you.
+
+    A vending machine that takes the coin and gives nothing, on every channel
+    -- except that on the channel *after* the one where it took it, there is
+    something in the tray.  The player has to have carried the loss across a
+    channel change to find out, which almost nobody will do on purpose.
+    """
+    from .events import _place_object
+    from ..state import SW_FACE_BULB
+
+    spot = _secret_spot(world, "vending")
+    if spot is None:
+        return
+    spots = [spot]
+    took = Script()
+    took.se("Coin", volume=60)
+    took.wait(8)
+    took.se("Buzzer", volume=54)
+    took.msg("it takes the coin.", "", "the tray stays empty.")
+
+    paid = Script()
+    paid.se("LowThud", volume=52)
+    paid.msg("there is something in the tray.")
+    paid.wait(8)
+    paid.se("ItemGet", volume=70)
+    paid.msg("a coin, warm, and not the one you put in.")
+    paid.switch(SW_FACE_COIN, True)
+
+    _place_object(world, "vending", [
+        Page(script=took, trigger=TRIGGER_ACTION),
+        Page(script=paid, trigger=TRIGGER_ACTION, switch_a=SW_FACE_BULB),
+    ], at=spots[0], name="the machine")
+
+
+def _secret_light(world, channel: int) -> None:
+    """9. The signal that is for you.
+
+    Every traffic light in the town is dead.  One of them, on the grove, is
+    not -- it changes when the player stands in front of it, and only when
+    they stand in front of it, and it changes to a colour a traffic light
+    does not have.
+    """
+    from .events import _place_object
+
+    if channel != 0:
+        return
+    spots = _find_object(world, "traffic_light")
+    if len(spots) < 4:
+        return
+    look = Script()
+    look.se("Filament", volume=40)
+    look.msg("dead, like the rest of them.")
+    look.wait(12)
+    look.se("Filament", volume=72)
+    look.flash(146, 186, 132, 26, 3, True)
+    look.msg("it goes green.")
+    look.wait(10)
+    look.msg("nothing is coming.", "", "nothing has ever been coming.")
+    _place_object(world, "traffic_light",
+                  [Page(script=look, trigger=TRIGGER_ACTION)],
+                  at=spots[len(spots) // 3], name="the one that works")
+
+
+def _secret_stump(world, channel: int) -> None:
+    """10. What the rings say.
+
+    A stump in a glade.  Counting rings is the sort of thing a player does
+    once and never again, so the count is the secret: it is the number of
+    times this save has walked all the way round the town, and it is right.
+    """
+    from .events import _place_object
+    from ..state import VR_DREAM_DISTANCE
+
+    spot = _secret_spot(world, "stump")
+    if spot is None:
+        return
+    spots = [spot]
+    count = Script()
+    count.se("Rustle", volume=30)
+    count.msg("cut flat, and recently.")
+    count.wait(10)
+    count.msg("you count the rings.")
+    count.wait(8)
+    count.se("Watch", volume=54)
+    count.msg(f"there are \\v[{VR_DREAM_DISTANCE}] of them.")
+    count.wait(10)
+    count.msg("that is not how long a tree takes.")
+    _place_object(world, "stump", [Page(script=count, trigger=TRIGGER_ACTION)],
+                  at=spots[0], name="the stump")

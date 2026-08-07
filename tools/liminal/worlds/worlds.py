@@ -1142,9 +1142,26 @@ def _faces_layout(world: World, cs) -> None:
                         (-3, zone.cy + 3), (3, zone.cy + 3)):
             _street_furniture(fur, m, t, "traffic_light", zone.cx + dx, top,
                               pad=0, centred=False)
-        for slot, (px, py) in enumerate(ring(zone, 4, inset=6)):
-            _street_furniture(fur, m, t, street[(index + slot) % len(street)],
-                              px, py, pad=1)
+        # On the *corners*, not on a ring.  A ring around a crossing is four
+        # points on the two axes, and both axes of a crossing are road, so
+        # every piece of junction furniture in this town was being offered a
+        # position in the carriageway, correctly refused, and never placed.
+        # The whole street set -- shelters, phone boxes, vending machines,
+        # the television, the road signs -- existed in the chipset and stood
+        # nowhere.  Only the diagonals of a crossing are pavement.
+        corners = [(dx, dy) for r in (5, 8, 11)
+                   for dx in (-r, r) for dy in (-r, r)]
+        # Each piece gets to try every corner before giving up, rather than
+        # being offered one and dropped.  A bus shelter is four tiles by three
+        # and will not fit where a road sign will, so one attempt each meant
+        # the big things never appeared anywhere in the town.
+        for slot in range(len(street)):
+            name = street[(index + slot) % len(street)]
+            for corner in range(len(corners)):
+                dx, dy = corners[(slot * 3 + corner) % len(corners)]
+                if _street_furniture(fur, m, t, name,
+                                     zone.cx + dx, zone.cy + dy, pad=1):
+                    break
         # A tree on the verge at the corner of the crossing, not in the
         # middle of it.  It used to stand on the centre line, which was the
         # one thing in this world that read as a mistake rather than as a

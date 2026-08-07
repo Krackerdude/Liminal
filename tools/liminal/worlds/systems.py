@@ -52,9 +52,10 @@ CE_OVERLAY_OFF = 10
 CE_WAKE = 11
 CE_DIARY_KEY = 12
 CE_ATMOSPHERE = 13
-CE_DEBUG = 14
-CE_KEYBOARD = 15          # drains Ineluki's key queue; see keys.py
-CE_WHEREAMI = 16
+# Ids must run without gaps: the engine walks the common event list by
+# position, and a missing number is a null it will happily dereference.
+CE_KEYBOARD = 14          # drains Ineluki's key queue; see keys.py
+CE_WHEREAMI = 15
 
 # Picture layers.  Higher numbers draw in front.
 PIC_OVERLAY = 5           # the world's own film: grain, haze, scanlines
@@ -90,9 +91,6 @@ def boot() -> CommonEvent:
     """
     s = Script()
     s.comment("first frame of a new game")
-    # The stock menu is four empty lists in this game; turning it off is
-    # what makes the cancel key available for anything else.
-    s.allow_menu(False)
     s.var(VR_EQUIPPED, 0)
     s.var(VR_DREAM_DISTANCE, 0)
     s.var(VR_EFFECTS_FOUND, 0)
@@ -123,6 +121,14 @@ def arrival(worlds) -> CommonEvent:
     from .worlds import WORLD_ORDER
 
     s = Script()
+    # The stock menu was switched off for a while, back when cancel was one of
+    # only three keys this game had and saving had to be bolted onto it.  With
+    # a real keyboard there is nothing to gain by keeping it off, and plenty to
+    # lose: it is where the items are, and turning it off left the player
+    # unable to open their own inventory.  Re-enabled here rather than in
+    # ``boot`` because ``boot`` runs once on a new game, and a save made while
+    # the menu was off would otherwise keep it off forever.
+    s.allow_menu(True)
     s.comment("apply this world's colour grade, film and music")
     for index, key in enumerate(WORLD_ORDER, start=1):
         world = worlds[key]
@@ -586,7 +592,7 @@ def _open_diary(s: Script) -> None:
 
 
 def _show_position(s: Script) -> None:
-    """C: coordinates."""
+    """P for position: coordinates."""
     s.call_event(CE_WHEREAMI)
 
 
@@ -596,7 +602,7 @@ def _show_position(s: Script) -> None:
 # silently does nothing, which is the failure this game keeps having.
 _PRESSES = {
     "(tab)": _open_diary,
-    "c": _show_position,
+    "p": _show_position,
 }
 
 
@@ -629,33 +635,6 @@ def whereami(worlds) -> CommonEvent:
           f"world \\v[{VR_WORLD}]")
     s.msg_options(MSG_BOTTOM)
     return CommonEvent(CE_WHEREAMI, "where am i", TRIGGER_CALL, None, s)
-
-
-def save_key() -> CommonEvent:
-    """Cancel puts the game down.
-
-    Turning off the stock menu at boot is what freed this key, and that menu
-    was also the only way to save -- so whatever took its place had to carry
-    saving, or the game quietly became one you cannot put down.  Now that the
-    coordinates readout has a key of its own, this is all cancel does.
-    """
-    from ..state import VR_DEBUG_KEY
-
-    s = Script()
-    s.comment("cancel: put the game down")
-    s.key_input(VR_DEBUG_KEY, wait=False, decision=False, cancel=True,
-                shift=False)
-    with s.if_var(VR_DEBUG_KEY, 6):
-        s.msg_options(MSG_MIDDLE)
-        s.msg("save?")
-        with s.choice(["yes", "no"], cancel=2) as branch:
-            with branch(0):
-                s.open_save()
-            with branch(1):
-                pass
-        s.msg_options(MSG_BOTTOM)
-        s.var(VR_DEBUG_KEY, 0)
-    return CommonEvent(CE_DEBUG, "save key", TRIGGER_PARALLEL, None, s)
 
 
 def atmosphere_watch(worlds) -> CommonEvent:
@@ -724,7 +703,6 @@ def build(worlds) -> list[CommonEvent]:
         wake(worlds),
         diary_key(),
         atmosphere_watch(worlds),
-        save_key(),
         keyboard(),
         whereami(worlds),
     ]

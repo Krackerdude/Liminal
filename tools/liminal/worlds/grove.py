@@ -41,7 +41,9 @@ from .. import maps
 from ..maps import (ANIM_CONTINUOUS, LAYER_BELOW, LAYER_SAME, MOVE_RANDOM,
                     MOVE_STATIONARY, TRIGGER_ACTION, TRIGGER_AUTO,
                     TRIGGER_PARALLEL, Page)
-from ..state import (SW_INTERVAL, SW_INTERVAL_SEEN, VR_SECRET_ROLL,
+from ..state import (SW_FOLLOWER, SW_HAS_EFFECT, SW_WORLD_STATE_BASE,
+                     VR_SCRATCH,
+                     SW_INTERVAL, SW_INTERVAL_SEEN, VR_SECRET_ROLL,
                      SW_FACE_BULB, SW_FACE_COIN, SW_FACE_ENDED, SW_FACE_HEARD,
                      SW_FACE_MAST, SW_FACE_SEED, SW_FACE_TAPE, VR_CHANNEL,
                      VR_AMBIENCE, VR_RING_DIR, VR_RING_WAIT, VR_RING_X,
@@ -317,6 +319,11 @@ def _tuned(s: Script, world, target_key: str) -> None:
 # maps have to know each other's numbers and they are only allocated once
 # every world has been generated.
 _MAP_IDS: dict[str, int] = {}
+
+# Where the bus puts you down, and what is behind the door of the ruined
+# house.  Both are filled in by grove_events once every map has a number.
+_BUS_STOP: tuple[int, int] = (0, 0)
+_HOUSE_INSIDE: tuple[int, int, int] = (0, 0, 0)
 
 
 def _receiver(world) -> None:
@@ -940,7 +947,15 @@ def grove_events(world, worlds: dict, rng: random.Random) -> None:
     the effect that lives in it.  The other three are layers: same chipset
     family, same cast family, same music family, no door of their own.
     """
+    global _BUS_STOP, _HOUSE_INSIDE
     _MAP_IDS.update({key: worlds[key].map_id for key in CHANNELS})
+    # The bus goes to the far corner of the town from the first crossing --
+    # the longest ride the map can offer, which is the point of it.
+    junctions = worlds["faces"].landmarks.get("junctions") or [(2, 2)]
+    _BUS_STOP = junctions[-1]
+    # The ruined house opens onto the overgrown channel's own hidden room.
+    inside = worlds.get("box2") or worlds["under1"]
+    _HOUSE_INSIDE = (inside.map_id, inside.spawn[0], inside.spawn[1])
     if os.environ.get("GROVE_DEBUG_RECEIVER"):
         # A build switch, for the engine test that has to prove the ring works
         # without also proving that a scripted walk can find a phone box.
@@ -1106,6 +1121,21 @@ def _secret_sets(world, channel: int) -> None:
     woke.var_from_event(VR_DEBUG_X, PLAYER, 1)
     woke.var_from_event(VR_DEBUG_Y, PLAYER, 2)
     woke.msg(f"\\v[{VR_DEBUG_X}].  \\v[{VR_DEBUG_Y}].")
+    woke.wait(10)
+    woke.msg("that is where you are standing.")
+    woke.wait(10)
+    # And then it puts you there.  The four channels are the same map, so the
+    # coordinates it just read are a real place on the dead one -- the set
+    # does not move the player anywhere new, it moves them into the picture.
+    woke.se("StaticBurst", volume=88)
+    woke.bgm_fadeout(2)
+    woke.call_event(sys.CE_OVERLAY_OFF)
+    woke.fade_out(19)
+    woke.var_from_event(VR_RING_X, 10001, 1)
+    woke.var_from_event(VR_RING_Y, 10001, 2)
+    woke.teleport_var(_MAP_IDS["faces4"], VR_RING_X, VR_RING_Y)
+    woke.call_event(sys.CE_ARRIVE)
+    woke.fade_in(19)
     woke.se("TapeStop", volume=70)
     woke.switch(SW_SET_LIT, True)
 
@@ -1137,6 +1167,11 @@ def _secret_watcher(world) -> None:
     s.wait(14)
     s.se("Vanish", volume=52)
     s.erase_picture(sys.PIC_FLASH)
+    # It leaves something behind.  The eye is the effect that makes hidden
+    # things visible, which is the only sensible thing for the eye to give.
+    with s.if_switch(SW_HAS_EFFECT["eye"], False):
+        s.var(VR_SCRATCH, 8)
+        s.call_event(sys.CE_GIVE_EFFECT)
     s.switch(SW_WATCHED, True)
     s.wait(600)          # once a minute at the very most
     world.map.add_event("the watcher", 1, 2,
@@ -1173,6 +1208,14 @@ def _secret_number(world, channel: int) -> None:
     twice.msg("\"...you came back.\"")
     twice.se("TapeStop", volume=64)
     twice.flash(196, 44, 38, 22, 2, False)
+    twice.wait(10)
+    # It follows you out.  SW_FOLLOWER is read by every world, not just this
+    # one, so the call is answered somewhere the player did not make it.
+    twice.switch(SW_FOLLOWER, True)
+    twice.se("StepStone", volume=40, balance=30)
+    twice.msg("you put the handset back.")
+    twice.wait(8)
+    twice.se("StepStone", volume=44, balance=70)
 
     x, y = spots[len(spots) // 2]
     _place_object(world, "phone_box", [
@@ -1212,7 +1255,15 @@ def _secret_house(world, channel: int) -> None:
     answer.msg("something knocks back.", "", "twice, for your once.")
     answer.se("Heartbeat", volume=70)
     answer.wait(12)
-    answer.msg("the handle does not turn.")
+    answer.se("Latch", volume=64)
+    answer.msg("the handle turns from the other side.")
+    answer.wait(10)
+    answer.bgm_fadeout(4)
+    answer.call_event(sys.CE_OVERLAY_OFF)
+    answer.se("DoorOpen", volume=70)
+    answer.fade_out(atmosphere.of("faces").leave)
+    answer.teleport(_HOUSE_INSIDE[0], _HOUSE_INSIDE[1], _HOUSE_INSIDE[2])
+    answer.fade_in(atmosphere.of("faces").enter)
 
     _place_object(world, "mark_house", [
         Page(script=quiet, trigger=TRIGGER_ACTION),
@@ -1295,6 +1346,29 @@ def _secret_shelter(world, channel: int) -> None:
         again.wait(8)
         again.se("Watch", volume=64)
         again.msg("it was later than this a minute ago.")
+        # And then one turns up.  A secret that costs a second secret has to
+        # pay in something the player keeps, and what this pays in is the
+        # only ride in the game: the far side of a town a hundred and forty
+        # tiles across, which is otherwise a walk.
+        again.wait(14)
+        again.se("WindGust", volume=70)
+        again.wait(10)
+        again.flash(250, 240, 190, 24, 4, False)
+        again.se("Carrier", volume=60)
+        again.msg("something with its lights on stops at the kerb.")
+        again.wait(10)
+        again.se("DoorOpen", volume=70)
+        again.msg("the doors fold open.", "", "there is nobody driving it.")
+        again.bgm_fadeout(4)
+        again.call_event(sys.CE_OVERLAY_OFF)
+        again.fade_out(atmosphere.of("faces").leave)
+        again.var(VR_RING_X, _BUS_STOP[0])
+        again.var(VR_RING_Y, _BUS_STOP[1])
+        again.teleport_var(_MAP_IDS[world.key], VR_RING_X, VR_RING_Y)
+        again.se("DoorShut", volume=64)
+        again.call_event(sys.CE_ARRIVE)
+        again.fade_in(atmosphere.of("faces").enter)
+        again.msg("you get off somewhere you have not walked to.")
         pages = [Page(script=read, trigger=TRIGGER_ACTION),
                  Page(script=again, trigger=TRIGGER_ACTION,
                       switch_a=SW_FACE_COIN)]
@@ -1332,8 +1406,11 @@ def _secret_vending(world, channel: int) -> None:
     paid.se("LowThud", volume=52)
     paid.msg("there is something in the tray.")
     paid.wait(8)
-    paid.se("ItemGet", volume=70)
-    paid.msg("a coin, warm, and not the one you put in.")
+    paid.msg("not a coin.")
+    paid.wait(8)
+    with paid.if_switch(SW_HAS_EFFECT["static"], False):
+        paid.var(VR_SCRATCH, 12)
+        paid.call_event(sys.CE_GIVE_EFFECT)
     paid.switch(SW_FACE_COIN, True)
 
     _place_object(world, "vending", [
@@ -1366,6 +1443,16 @@ def _secret_light(world, channel: int) -> None:
     look.msg("it goes green.")
     look.wait(10)
     look.msg("nothing is coming.", "", "nothing has ever been coming.")
+    look.wait(12)
+    # And then the town stops being the town.  Arrival already knows how to
+    # render a permanently changed world -- a colder grade, the Wrong track,
+    # live static over everything -- and this is the grove's way in to it.
+    look.se("Wrong", volume=76)
+    look.flash(255, 255, 255, 30, 3, True)
+    from .worlds import WORLD_ORDER
+    look.switch(SW_WORLD_STATE_BASE + WORLD_ORDER.index(world.key), True)
+    look.call_event(sys.CE_ARRIVE)
+    look.msg("the light stays green.")
     _place_object(world, "traffic_light",
                   [Page(script=look, trigger=TRIGGER_ACTION)],
                   at=spots[len(spots) // 3], name="the one that works")

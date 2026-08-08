@@ -504,14 +504,15 @@ def draw_him(cell: Canvas, facing: int, frame: int) -> None:
         cell.rect(lx, 21, 3, 5 + step, fur)
         cell.vline(lx, 21, 25 + step, fur_dk)
         cell.rect(lx - 1, 24 + step, 5, 2, glove)                 # sock cuff
-        # The shoe is a shoe, not a red brick: the toe rises at the front, the
-        # strap runs across the instep, and the sole is a pale slab under all
-        # of it that sticks a pixel past the toe.
         # Built row by row rather than out of rounded rectangles, because a
         # rounded rectangle at seven pixels across is a square with the
-        # corners knocked off.  The outline is the shoe: it climbs towards the
-        # toe and cuts away behind, so the back is a heel and the front is a
-        # bulb, and the sole is the one straight edge in it.
+        # corners knocked off.  The outline is the shoe.
+        #
+        # In profile that outline climbs towards the toe and cuts away behind,
+        # so the back is a heel and the front is a bulb.  Head-on and from
+        # behind it is a *different drawing*: the toe points at you, so both
+        # shoes are symmetrical and parallel.  Reusing the profile shape there
+        # aimed both of his feet off to one side.
         toe = lead if side else 1
         fx, span = lx - 2, 7
         top = 25 + step
@@ -525,17 +526,24 @@ def draw_him(cell: Canvas, facing: int, frame: int) -> None:
                            colour)
 
         # At seven by five the outline is the whole read, so it does the work
-        # and almost nothing goes inside it: a toe two pixels wide at the top
-        # opening out to the full width at the floor, a heel cut in under the
-        # back, the pale sole, and one mark for the strap.
-        row(0, 5, 6, shoe)
-        row(0, 5, 5, toe_hi)
-        row(1, 3, 6, shoe)
-        row(1, 3, 3, toe_hi)
-        row(2, 1, 6, shoe)
-        row(3, 0, 6, shoe)
-        row(3, 0, 0, shoe_dk)                                     # the heel
-        row(2, 2, 3, glove)                                       # the strap
+        # and almost nothing goes inside it: the pale sole, and one mark for
+        # the strap.
+        if side:
+            row(0, 5, 6, shoe)          # the toe, two pixels at the top,
+            row(0, 5, 5, toe_hi)        # opening out to full width at the floor
+            row(1, 3, 6, shoe)
+            row(1, 3, 3, toe_hi)
+            row(2, 1, 6, shoe)
+            row(3, 0, 6, shoe)
+            row(3, 0, 0, shoe_dk)                                 # the heel
+            row(2, 2, 3, glove)                                   # the strap
+        else:
+            row(0, 2, 4, shoe)          # straight at you: symmetrical, and
+            row(1, 1, 5, shoe)          # the same shoe on both feet
+            row(1, 2, 3, toe_hi)
+            row(2, 0, 6, shoe)
+            row(3, 0, 6, shoe)
+            row(2, 2, 4, glove)                                   # the strap
         row(4, 0, 6, sole)
 
     # --- torso ----------------------------------------------------------------

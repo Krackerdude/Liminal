@@ -2276,10 +2276,17 @@ def _island(fld, m, t) -> None:
                 fld.set(x, y, layout.FLOOR)
 
 
-def _drown_the_rest(m, fld, t) -> None:
-    """Water outside the island, shore where it meets the land."""
+def _coast(m, fld, t) -> set[tuple[int, int]]:
+    """Water outside, and a graded beach on the last few tiles of land.
+
+    Forest running straight into the sea gives the island an outline rather
+    than a shoreline.  Two grades is enough -- wet sand at the tideline, dry
+    sand behind it -- and then the grass takes over.  Returns the sand so the
+    planting pass knows to put beach things on it and not palms.
+    """
     if "water" not in t:
-        return
+        return set()
+    sand: set[tuple[int, int]] = set()
     for y in range(m.height):
         for x in range(m.width):
             if fld.is_floor(x, y):
@@ -2289,6 +2296,24 @@ def _drown_the_rest(m, fld, t) -> None:
                             for dy in (-2, -1, 0, 1, 2))
             m.set_lower(x, y, t["shore"] if near_land else t["water"])
             m.set_upper(x, y, maps.EMPTY_UPPER)
+
+    if "sand" not in t:
+        return sand
+    for y in range(m.height):
+        for x in range(m.width):
+            if not fld.is_floor(x, y) or (x, y) in fld.protected:
+                continue
+            reach = None
+            for step in range(1, 7):
+                if any(not fld.is_floor((x + dx) % m.width, (y + dy) % m.height)
+                       for dx in (-step, 0, step) for dy in (-step, 0, step)):
+                    reach = step
+                    break
+            if reach is None:
+                continue
+            m.set_lower(x, y, t["sand_wet"] if reach <= 2 else t["sand"])
+            sand.add((x, y))
+    return sand
 
 
 def _wander(m, fld, t, rng, *, start, end, wobble=14.0, width=3,
@@ -2406,6 +2431,32 @@ def _clearings(spine, branches, m) -> list[tuple[int, int]]:
     return out[:9]
 
 
+def _beach_things(m, fld, cs, sand, rng) -> None:
+    """What stands on the sand: palms leaning out, driftwood, boulders.
+
+    A bare beach is a ramp.  These are thin on the ground -- a beach is meant
+    to be the one open place on the island -- but never absent.
+    """
+    def put(name, x, y):
+        if name not in cs.objects:
+            return
+        grid = cs.obj(name)
+        ox, oy = x - grid.cols // 2, y - grid.rows // 2
+        for row in range(grid.rows):
+            for col in range(grid.cols):
+                px, py = (ox + col) % m.width, (oy + row) % m.height
+                if not fld.is_floor(px, py) or (px, py) in fld.protected:
+                    return
+        gen.stamp(m, grid, ox, oy, overlap=True)
+
+    for (x, y) in sorted(sand):
+        if (x * 7 + y * 5) % 23:
+            continue
+        roll = (x + y) % 6
+        put("palm" if roll < 2 else
+            "boulder" if roll < 4 else "driftwood", x, y)
+
+
 def _forest(fur, m, fld, cs, t, spine, branches, clearings, shape, rng) -> None:
     """Cover the island.
 
@@ -2442,6 +2493,9 @@ def _forest(fur, m, fld, cs, t, spine, branches, clearings, shape, rng) -> None:
         for x in range(4, m.width - 4, 3):
             if not fld.is_floor(x, y) or (x, y) in fld.protected:
                 continue
+            if t.get("sand") is not None and m.get_lower(x, y) in (
+                    t["sand"], t["sand_wet"]):
+                continue                              # the beach has its own
             jx, jy = x + rng.randint(-1, 1), y + rng.randint(-1, 1)
             verge = near_path(x, y, 7)
             if in_clearing(x, y):
@@ -2449,20 +2503,29 @@ def _forest(fur, m, fld, cs, t, spine, branches, clearings, shape, rng) -> None:
                     put("flower" if rng.random() < 0.7 else "bones", jx, jy)
                 continue
             if verge:
-                # The verge is *framed*, not sprinkled.  Flowers bank up
-                # immediately against the edge, bushes sit behind them, and a
-                # palm leans in every so often -- so the path has sides
-                # rather than merely stopping.
+                # The forest comes right up to the track.  The first version
+                # kept trees seven tiles back and the path ran through a bald
+                # corridor -- everything avoiding it like the plague.  Now
+                # flowers bank against the very edge, and palms, bushes and
+                # the occasional totem stand *on* the verge behind them, thin
+                # enough to see through and close enough to line the walk.
                 edge = min(abs(x - px) + abs(y - py) for px, py in route)
-                if edge <= 4:
+                if edge <= 3:
                     if (x + y) % 3 == 0:
                         put("flower", jx, jy)
-                elif edge <= 6:
-                    if (x * 2 + y) % 5 == 0:
+                    elif (x * 3 + y) % 17 == 0:
                         put("bush", jx, jy)
-                    elif (x + y * 3) % 11 == 0:
-                        put("bones", jx, jy)
-                elif (x + y) % 4 == 0:
+                elif edge <= 6:
+                    roll = (x * 5 + y * 3) % 12
+                    if roll < 4:
+                        put("palm", jx, jy)
+                    elif roll < 7:
+                        put("bush", jx, jy)
+                    elif roll == 7:
+                        put("totem", jx, jy)
+                    elif roll == 8:
+                        put("flower", jx, jy)
+                elif (x + y) % 3 == 0:
                     put("palm", jx, jy)
             else:
                 roll = rng.random()
@@ -2583,7 +2646,7 @@ def _build_hills_region(key: str):
         layout.shade_walls(m, fld, t)
         spine, branches = _paths(m, fld, t, rng)
         plots = _clearings(spine, branches, m)
-        _drown_the_rest(m, fld, t)
+        sand = _coast(m, fld, t)
 
         fur = Furnisher(m, fld, cs, rng)
         # Every plot is dressed, every time.  A plot that only sometimes
@@ -2593,6 +2656,7 @@ def _build_hills_region(key: str):
             _dress(m, fld, cs, t, PLOTS[index % len(PLOTS)][0], px, py, rng)
 
         _forest(fur, m, fld, cs, t, spine, branches, plots, shape, rng)
+        _beach_things(m, fld, cs, sand, rng)
 
         # The gate stands on the ring itself, where it cannot be missed.
         gx, gy = plots[0]

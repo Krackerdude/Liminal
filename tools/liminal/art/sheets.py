@@ -2271,6 +2271,8 @@ def _hills_common(cb: ChipsetBuilder, pal: Palette, look, world: str) -> Canvas:
     for variant in range(3):
         cb.add(f"track_{variant}", hl.track(look, variant))
     cb.add("track", hl.track(look, 0))
+    cb.add("sand", hl.beach(look, 0))
+    cb.add("sand_wet", hl.beach(look, 1))
     cb.add("stone", hl.stone(look, 0))
     cb.add("stone_b", hl.stone(look, 2))
     cb.add("plate", hl.plate(look))
@@ -2295,6 +2297,8 @@ def _hills_common(cb: ChipsetBuilder, pal: Palette, look, world: str) -> Canvas:
     cb.add_object("spikes", hl.spikes(look, 2, 2), solid="all")
     cb.add_object("monitor", hl.monitor(look, 2, 2, 0), solid="all")
     cb.add_object("cairn", hl.cairn(look, 2, 2), solid="all")
+    cb.add_object("driftwood", hl.driftwood(look, 2, 1), solid="all")
+    cb.add_object("boulder", hl.boulder(look, 2, 2), solid="all")
     cb.add_object("bones", hl.bones(look, 1, 1), solid="none")
     cb.add_object("flower", hl.flower(look, 0), solid="none")
     cb.add_object("ring", hl.ring(look, 0), solid="none")

@@ -49,6 +49,7 @@ class Look:
     metal: mt.Material
     bone: mt.Material
     gold: mt.Material
+    sand: mt.Material
     wrong: float = 0.0          # 0 fine, 1 entirely gone
 
 
@@ -67,6 +68,7 @@ HILLS = Look(
     metal=_m("metal", (152, 158, 170)),
     bone=_m("bone", (228, 216, 200)),
     gold=_m("gold", (248, 200, 56)),
+    sand=_m("sand", (238, 214, 148)),
 )
 
 DROWN = replace(
@@ -78,6 +80,7 @@ DROWN = replace(
     water=_m("water", (38, 98, 172)),
     bark=_m("bark", (96, 92, 104)),
     leaf=_m("leaf", (34, 110, 106)),
+    sand=_m("sand", (170, 176, 186)),
     wrong=0.25,
 )
 
@@ -92,6 +95,7 @@ SCRAP = replace(
     leaf=_m("leaf", (94, 106, 84)),
     metal=_m("metal", (180, 182, 190)),
     gold=_m("gold", (188, 168, 96)),
+    sand=_m("sand", (166, 158, 140)),
     wrong=0.45,
 )
 
@@ -107,6 +111,7 @@ RED = replace(
     metal=_m("metal", (100, 64, 64)),
     bone=_m("bone", (232, 222, 210)),
     gold=_m("gold", (204, 44, 38)),
+    sand=_m("sand", (150, 96, 78)),
     wrong=1.0,
 )
 
@@ -173,6 +178,66 @@ def track(look: Look, variant: int = 0) -> Canvas:
             art.dot(x, top, g.mid)
         for x in range(0, TILE, 7):
             art.dot(x, (x * 3 + 5) % TILE, s.deep)
+    return art
+
+
+def beach(look: Look, variant: int = 0) -> Canvas:
+    """Sand, in two grades, for the band between the trees and the sea.
+
+    An island whose forest runs straight into the water has no shoreline, only
+    an outline.  Two grades is enough: dry sand up against the grass and wet
+    sand down at the tideline, with shells and weed in it so the beach has
+    something to look at rather than being a blank ramp.
+    """
+    s, w = look.sand, look.water
+    art = Canvas(TILE, TILE, s.mid)
+    mt.plane(art, 0, 0, TILE, TILE, s.mid if variant == 0 else s.shade)
+    if variant == 0:                                   # dry, rippled
+        mt.seam(art, 0, 0, TILE, TILE, s.mid, s.lit)
+        for y in range(2, TILE, 5):
+            for x in range((y // 5) * 2, TILE, 4):
+                art.dot(x, y, s.lit)
+                art.dot(x + 1, y + 1, s.shade)
+        art.dot(11, 4, look.bone.lit)                  # a shell
+        art.dot(12, 4, look.bone.mid)
+        art.dot(3, 12, s.deep)
+    else:                                              # wet, near the water
+        mt.seam(art, 0, 0, TILE, TILE, s.shade, blend(s.shade, w.mid, 0.28))
+        for y in range(0, TILE, 3):
+            art.hline(y, 0, TILE - 1, blend(s.shade, w.deep, 0.18))
+        for x in range(1, TILE, 6):
+            art.dot(x, (x * 3) % TILE, look.leaf.deep)  # weed
+            art.dot(x + 1, (x * 3 + 1) % TILE, look.leaf.shade)
+    return art
+
+
+def driftwood(look: Look, cols: int = 2, rows: int = 1) -> Canvas:
+    """A bleached log on the sand, for the beach to have something on it."""
+    art = _canvas(cols, rows)
+    w, h = cols * TILE, rows * TILE
+    b = look.bone
+    mt.plane(art, 2, h // 2 - 2, w - 4, 5, b.mid)
+    art.hline(h // 2 - 2, 2, w - 3, b.lit)
+    art.hline(h // 2 + 2, 2, w - 3, b.shade)
+    for x in range(4, w - 4, 5):
+        art.vline(x, h // 2 - 1, h // 2 + 1, b.shade)
+    art.dot(2, h // 2, b.deep)
+    art.dot(w - 3, h // 2, b.deep)
+    foot(art, 2, h - 2, w - 4, b)
+    return art
+
+
+def boulder(look: Look, cols: int = 2, rows: int = 2) -> Canvas:
+    """A rock, for beaches and outcrops.  One mass, three faces, no outline."""
+    art = _canvas(cols, rows)
+    w, h = cols * TILE, rows * TILE
+    r = look.rock
+    art.ellipse(w / 2, h - 4, w * 0.40, h * 0.28, r.deep)
+    art.blob(w / 2, h - 9, w * 0.36, r.mid)
+    art.blob(w / 2 - 2, h - 11, w * 0.26, r.lit)
+    art.blob(w / 2 + 4, h - 7, w * 0.16, r.shade)
+    mt.seam(art, int(w * 0.2), h - 13, int(w * 0.5), 2, r.lit, r.mid)
+    foot(art, int(w * 0.18), h - 3, int(w * 0.64), r)
     return art
 
 

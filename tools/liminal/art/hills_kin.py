@@ -508,12 +508,12 @@ def draw_him(cell: Canvas, facing: int, frame: int) -> None:
         # strap runs across the instep, and the sole is a pale slab under all
         # of it that sticks a pixel past the toe.
         toe = lead if side else 1
-        fx = lx - 3
-        cell.round_rect(fx + 1, 26 + step, 6, 3, 1, shoe)
-        cell.round_rect(fx + (5 if toe > 0 else 0), 25 + step, 3, 3, 1, shoe)
-        cell.hline(27 + step, fx + 2, fx + 5, sole)               # the strap
-        cell.round_rect(fx, 28 + step, 9, 2, 1, sole)
-        cell.hline(29 + step, fx + 1, fx + 7, shoe_dk)
+        fx = lx - 2
+        cell.round_rect(fx + 1, 26 + step, 5, 3, 1, shoe)
+        cell.round_rect(fx + (4 if toe > 0 else 0), 25 + step, 3, 3, 1, shoe)
+        cell.hline(27 + step, fx + 2, fx + 4, sole)               # the strap
+        cell.round_rect(fx, 28 + step, 7, 2, 1, sole)
+        cell.hline(29 + step, fx + 1, fx + 5, shoe_dk)
 
     # --- torso ----------------------------------------------------------------
     cell.ellipse(CX, 18, 4.6, 4.4, fur_dk)

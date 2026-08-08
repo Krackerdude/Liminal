@@ -417,6 +417,72 @@ def build_all(music_dir: str, sound_dir: str, *, workers: int = 4,
     return made
 
 
+# --- the world behind the television -----------------------------------------
+# Every other theme in this game forbids percussion, because those places are
+# not allowed a pulse.  This one is the exception and has to be: it is a
+# sixteen-bit console stage theme, and a stage theme without a beat is not
+# lying about being a stage theme, it is just ambient music.  The horror has
+# to arrive *through* the format rather than by dropping it.
+
+_GENESIS = ("authentic Sega Genesis Mega Drive YM2612 FM synthesis, "
+            "four-operator FM bass and bright FM lead, SN76489 PSG square "
+            "arpeggios and gritty noise-channel hi-hats, 1991 cartridge "
+            "soundtrack, no real instruments, no orchestra, no vocals")
+
+MUSIC += [
+    Music("Hills",
+          "Upbeat 16-bit Sega Genesis platformer stage theme for a green "
+          "cartoon hillside, played slightly too slow and slightly out of "
+          "tune, like a cartridge with a dying clock crystal. Cheerful major "
+          "key FM lead melody over a bassline that is quietly in a different, "
+          "minor key. Driving FM slap bass, punchy PSG hi-hats. It should be "
+          "genuinely catchy and genuinely wrong at the same time -- the "
+          f"listener should want to hum it and not want to. {_GENESIS}.",
+          seconds=50),
+    Music("HillsRed",
+          "The same 16-bit Genesis stage theme as before, now degraded: "
+          "pitched down a whole tone, tape-warped, notes dropping out of the "
+          "melody one at a time and never coming back, bass distorting, "
+          "occasional sharp digital glitch bursts. The beat keeps going "
+          "perfectly in time underneath all of it, which is the frightening "
+          f"part. {_GENESIS}.",
+          seconds=50),
+    Music("Chase",
+          "Frantic 16-bit Sega Genesis boss theme, very fast, relentless "
+          "driving FM bass ostinato, screaming detuned FM lead, hammering PSG "
+          "noise percussion, tritone stabs, no melody you could hum -- just "
+          "pursuit. Distorted, clipping, the console being pushed past what "
+          f"it can do. {_GENESIS}.",
+          seconds=40),
+    Music("Halt",
+          "A single sustained detuned FM organ chord over silence, 16-bit "
+          "Genesis, with slow tape wow and a faint high whine. Nothing "
+          "develops. It is the sound of a game that has stopped running but "
+          f"not stopped playing. {_GENESIS}.",
+          seconds=30, loop_overlap=6.0),
+]
+
+SFX += [
+    Sfx("Ring", "a bright short 16-bit chiptune coin pickup chime, clean FM "
+        "bell, classic platformer ring collect", 0.7),
+    Sfx("RingLost", "a scattering cascade of 16-bit chiptune coin sounds "
+        "falling and bouncing away, retro platformer losing rings", 1.6),
+    Sfx("Laugh", "a short distorted childlike laugh, pitched down, buried in "
+        "tape hiss and digital clipping, cut off abruptly", 1.4),
+    Sfx("ExeAppear", "a violent burst of 16-bit digital noise and a low "
+        "detuned FM stab hitting at the same instant, very short, harsh, "
+        "like a console crashing", 0.9),
+    Sfx("Crunch", "a wet heavy crunch with a low bass impact under it, "
+        "muffled, short, not splashy", 1.0),
+    Sfx("Corrupt", "a stutter of 16-bit digital garbage, glitching sample "
+        "loop, bit-crushed data being read wrong", 1.2),
+    Sfx("Heartbeat2", "a single slow heavy heartbeat, close and dry, with a "
+        "faint high ringing tone after it", 1.6),
+    Sfx("Static2", "a short burst of harsh untuned television static with a "
+        "low hum under it", 1.1),
+]
+
+
 if __name__ == "__main__":
     import sys
 

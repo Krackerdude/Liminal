@@ -513,7 +513,7 @@ def draw_him(cell: Canvas, facing: int, frame: int) -> None:
         # behind it is a *different drawing*: the toe points at you, so both
         # shoes are symmetrical and parallel.  Reusing the profile shape there
         # aimed both of his feet off to one side.
-        toe = lead if side else 1
+        toe = -lead if side else 1
         fx, span = lx - 2, 7
         top = 25 + step
         toe_hi = blend(shoe, (255, 255, 255), 0.24)

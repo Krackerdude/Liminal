@@ -47,6 +47,7 @@ CHANGE_EVENT_LOCATION = 10860
 STORE_TERRAIN_ID = 10910
 STORE_EVENT_ID = 10920
 ERASE_SCREEN = 11010
+GAME_OVER = 12420
 SHOW_SCREEN = 11020
 TINT_SCREEN = 11030
 FLASH_SCREEN = 11040
@@ -531,6 +532,16 @@ class Script:
 
     def open_menu(self) -> "Script":
         return self.raw(OPEN_MAIN_MENU)
+
+    def game_over(self) -> "Script":
+        """End the game and go to the game over screen.
+
+        Used nowhere in LIMINAL until now, because nothing in it could kill
+        you -- the screen exists and says YOU WOKE UP.  The island behind the
+        television is the exception, and it is the exception on purpose: it
+        is the one place in this game with something in it that wants to.
+        """
+        return self.raw(GAME_OVER)
 
     def open_save(self) -> "Script":
         return self.raw(OPEN_SAVE_MENU)

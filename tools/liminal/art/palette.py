@@ -245,4 +245,33 @@ PALETTES: dict[str, Palette] = {
         accent=(188, 188, 182), accent_soft=(140, 146, 148),
         void=(184, 186, 184),
     ),
+    # --- the world behind the television -------------------------------------
+    # Four regions of one hillside.  The ramps are pulled off hills.LOOKS so
+    # the palette and the tileset cannot drift apart, and ``accent`` is the
+    # ring in every one of them -- gold where the place still works, red where
+    # it does not.
+    "hills": Palette(
+        ground=(92, 184, 76), ground_b=(74, 160, 62),
+        form=(198, 142, 78), form_light=(226, 174, 108), form_dark=(140, 88, 44),
+        accent=(248, 200, 56), accent_soft=(252, 232, 150),
+        void=(24, 46, 28),
+    ),
+    "drown": Palette(
+        ground=(44, 130, 116), ground_b=(34, 108, 98),
+        form=(112, 112, 132), form_light=(146, 146, 168), form_dark=(66, 66, 86),
+        accent=(120, 208, 232), accent_soft=(176, 224, 238),
+        void=(10, 28, 46),
+    ),
+    "scrap": Palette(
+        ground=(98, 106, 94), ground_b=(84, 90, 82),
+        form=(124, 114, 106), form_light=(162, 152, 142), form_dark=(74, 68, 64),
+        accent=(214, 168, 62), accent_soft=(200, 196, 184),
+        void=(26, 26, 30),
+    ),
+    "red": Palette(
+        ground=(104, 24, 24), ground_b=(82, 18, 18),
+        form=(86, 20, 20), form_light=(140, 34, 32), form_dark=(42, 10, 12),
+        accent=(226, 46, 40), accent_soft=(240, 130, 118),
+        void=(8, 4, 6),
+    ),
 }

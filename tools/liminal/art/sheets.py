@@ -17,6 +17,7 @@ from typing import Callable
 
 from . import chipsets as ct
 from . import grove as gv
+from . import hills as hl
 from . import material as mt
 from . import landmarks as lm
 from .canvas import Canvas, TRANSPARENT, blend, cooler, outline_in, warmer
@@ -45,6 +46,12 @@ def _shadows(cb: ChipsetBuilder, pal: Palette) -> None:
 # The motif each world's boundary walls are built from.  This is the surface
 # the player looks at whenever they cannot go somewhere, so it carries more of
 # a world's identity than anything they can walk on.
+# The hills are bounded by rock rather than by anything built, in every
+# region: the checkerboard is the *cliff*, and what lies past the edge of the
+# world is more hillside you cannot get to.
+_HILLS_WALLS = {"hills": "strata", "drown": "strata", "scrap": "grid",
+                "red": "strata"}
+
 WALL_MOTIF: dict[str, str] = {
     "room": "paper", "nexus": "doors", "pink": "brick", "numbers": "digits",
     "blocks": "blocks", "stairs": "steps", "sand": "strata", "faces": "trunks",
@@ -53,6 +60,7 @@ WALL_MOTIF: dict[str, str] = {
     # The grove's boundary is the same canopy on all four channels, received
     # differently: grown shut, stripped bare, or gone altogether.
     "faces2": "thicket", "faces3": "bare", "faces4": "bars",
+    **_HILLS_WALLS,
 }
 
 
@@ -92,6 +100,19 @@ def _basics(cb: ChipsetBuilder, pal: Palette, ground: Canvas,
 # Three ground marks per world.  Nothing shared: the litter of one dream must
 # never be mistakable for the litter of another, and on a looping map these
 # double as the small landmarks that let it lie about its size.
+# Three ground marks per region.  Nothing shared with any other world: the
+# litter of one dream must never be mistakable for the litter of another.
+_HILLS_DECALS = {
+    "hills": [("prints", "form_dark"), ("pebble", "form_light"),
+              ("crack", "form_dark")],
+    "drown": [("ring", "accent"), ("pebble", "form_light"),
+              ("drainhole", "form_dark")],
+    "scrap": [("loose_brick", "form_light"), ("crack", "form_dark"),
+              ("drainhole", "form_dark")],
+    "red": [("crack", "accent"), ("prints", "form_dark"),
+            ("spark", "accent")],
+}
+
 DECALS: dict[str, list[tuple[str, str]]] = {
     "room":      [("crack", "form_dark"), ("pebble", "accent"), ("dropped", "form")],
     "nexus":     [("ring", "accent"), ("spark", "accent"), ("prints", "form")],
@@ -129,6 +150,14 @@ DECALS: dict[str, list[tuple[str, str]]] = {
 # The floor patterns each world is carpeted in, and the murals painted on it.
 # Density is what makes a dream floor worth looking at; composition is what
 # keeps it from being noise.  Both lists are per-world and share nothing.
+# Ground patterns, which the carpets are laid from.  The hills get organic
+# shapes rather than the geometric ones the built worlds use -- a hillside has
+# no tiling.
+_HILLS_PATTERNS = {
+    "hills": ["bloom", "dots", "rings"], "drown": ["rings", "concentric"],
+    "scrap": ["grid", "dots"], "red": ["bloom", "concentric", "rings"],
+}
+
 PATTERNS: dict[str, list[str]] = {
     "room":      ["weave", "grid", "dots"],
     "nexus":     ["concentric", "dots", "grid"],
@@ -148,6 +177,13 @@ PATTERNS: dict[str, list[str]] = {
     "faces2":    ["bloom", "weave", "dots"],
     "faces3":    ["grid", "tick", "stripes"],
     "faces4":    ["stripes", "grid", "cross", "square_frame"],
+}
+
+# The painting on the ground each region gets.  Ground drawings rather than
+# wall art, because this world has no interior walls to hang anything on.
+_HILLS_MURALS = {
+    "hills": ["sun", "rings"], "drown": ["rings", "eye"],
+    "scrap": ["eyes_ring", "sun"], "red": ["eye", "mouth"],
 }
 
 MURALS: dict[str, list[str]] = {
@@ -246,6 +282,11 @@ def _decals(cb: ChipsetBuilder, pal: Palette, world: str, ground: Canvas) -> Non
 # while the lower layer is nearly full — and upper tiles draw over the floor
 # with the player in front of them, which is what a tall thing you walk past
 # needs.  Nothing here is repeated between worlds.
+MURALS.update(_HILLS_MURALS)
+PATTERNS.update(_HILLS_PATTERNS)
+DECALS.update(_HILLS_DECALS)
+
+
 LANDMARKS: dict[str, list[tuple[str, object, dict]]] = {}
 
 
@@ -2211,4 +2252,76 @@ LANDMARKS.update({
     "hands": [("colossus", lm.colossal_hand, {"cols": 6, "rows": 10}),
               ("ring", lm.hand_ring, {"cols": 7, "rows": 6}),
               ("holding", lm.hand_holding_door, {"cols": 5, "rows": 7})],
+})
+
+
+# --- the world behind the television ------------------------------------------
+
+def _hills_common(cb: ChipsetBuilder, pal: Palette, look, world: str) -> Canvas:
+    """Everything all four regions of the hills have, in the same order.
+
+    Same discipline the grove uses: the geometry is generated once and the
+    regions differ only by ``Look``, so a player who has walked THE HILLS is
+    walking the same ground when they reach THE RED.  Writing the tile list
+    out four times is how four receptions of one town drifted apart, and this
+    world is bigger.
+    """
+    ground = hl.turf(look, 0)
+    _basics(cb, pal, ground, hl.turf(look, 1), world=world)
+    cb.add("track", hl.track(look))
+    cb.add("stone", hl.stone(look, 0))
+    cb.add("stone_b", hl.stone(look, 2))
+    cb.add("plate", hl.plate(look))
+    # The checker is a *wall*: it is what a grass edge drops away into.
+    cb.add("checker", hl.checker(look, 0), passable=False)
+    cb.add("checker_b", hl.checker(look, 1), passable=False)
+    cb.add("brow", hl.brow(look), passable=False)
+
+    # Three animated slots is all a chipset has, and water wants all three.
+    cb.add_animated("water", [hl.water(look, n) for n in range(3)],
+                    passable=False, terrain=2)
+    cb.add_animated("shore", [hl.shore(look, n) for n in range(3)],
+                    passable=True, terrain=2)
+    cb.add_animated("spill", [hl.spill(look, n) for n in range(3)],
+                    passable=False)
+
+    cb.add_object("palm", hl.palm(look, 3, 4), solid="bottom")
+    cb.add_object("bush", hl.bush(look, 2, 2), solid="bottom")
+    cb.add_object("totem", hl.totem(look, 2, 4), solid="bottom2")
+    cb.add_object("sign", hl.sign(look, 2, 3), solid="bottom")
+    cb.add_object("gate", hl.gate(look, 4, 3), solid="none")
+    cb.add_object("spikes", hl.spikes(look, 2, 2), solid="all")
+    cb.add_object("monitor", hl.monitor(look, 2, 2, 0), solid="all")
+    cb.add_object("cairn", hl.cairn(look, 2, 2), solid="all")
+    cb.add_object("bones", hl.bones(look, 1, 1), solid="none")
+    cb.add_object("flower", hl.flower(look, 0), solid="none")
+    cb.add_object("ring", hl.ring(look, 0), solid="none")
+    cb.add_object("door", ct.door_frame(pal, 2, 3,
+                                        reflect=_reflection(cb.name)))
+    return ground
+
+
+def _build_hills(key: str, region: str):
+    """One region's chipset.  Named so the build table can hold four of them."""
+    def build() -> ChipsetBuild:
+        pal = PALETTES[key]
+        cb = ChipsetBuilder(key, pal)
+        look = hl.LOOKS[region]
+        ground = _hills_common(cb, pal, look, key)
+        _shadows(cb, pal)
+        _landmarks(cb, pal, key)
+        _decals(cb, pal, key, ground)
+        return _finish(cb, ground)
+    return build
+
+
+build_hills = _build_hills("hills", "hills")
+build_drown = _build_hills("drown", "drown")
+build_scrap = _build_hills("scrap", "scrap")
+build_red = _build_hills("red", "red")
+
+
+BUILDERS.update({
+    "hills": build_hills, "drown": build_drown,
+    "scrap": build_scrap, "red": build_red,
 })

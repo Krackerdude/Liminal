@@ -37,8 +37,8 @@ from liminal import db, keys, state, validate                    # noqa: E402
 from liminal.art import cast, menu, ui                           # noqa: E402
 from liminal.art.canvas import save_indexed                      # noqa: E402
 from liminal.maps import MapInfo, build_treemap                  # noqa: E402
-from liminal.worlds import (ascent, events, grove, murals,        # noqa: E402
-                            systems, worlds as W)                 # noqa: E402
+from liminal.worlds import (ascent, events, grove, hills_events,  # noqa: E402
+                            murals, systems, worlds as W)         # noqa: E402
 
 GAME = ROOT / "game"
 
@@ -183,6 +183,9 @@ def author_events(worlds: dict[str, W.World]) -> int:
     import random
     import zlib
 
+    for key in W.HILLS_ORDER:
+        hills_events.hills_events(worlds[key], worlds,
+                                  random.Random(zlib.crc32(key.encode())))
     events.room_events(worlds["room"], worlds)
     events.balcony_events(worlds["balcony"], worlds)
     for key in W.BLOCK_ORDER:

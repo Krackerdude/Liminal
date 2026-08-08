@@ -77,6 +77,14 @@ HIDDEN_ORDER = ["cave1", "cave2", "cave3", "cave4",
 # tool the engine gives for making a place feel a particular way before the
 # player has consciously registered why.
 TINTS: dict[str, tuple[int, int, int, int]] = {
+    # The world behind the television.  The first region is graded *brighter*
+    # than anywhere else in the game and slightly oversaturated -- the shock is
+    # meant to be that it looks well, not that it looks wrong -- and the
+    # grading walks down from there until the red region has no light in it.
+    "hills": (116, 114, 100, 118),
+    "drown": (86, 96, 118, 104),
+    "scrap": (92, 90, 88, 70),
+    "red": (104, 62, 62, 58),
     "room": (104, 100, 94, 96),          # warm, slightly faded
     "balcony": (96, 98, 110, 84),        # night air, colder than indoors
     # Down the block the light fails by degrees and the colour goes with it.
@@ -165,9 +173,14 @@ OVERLAYS: dict[str, tuple[str, int]] = {
     # under it stops being findable — the whole point of this reception is
     # that it is the most *legible* the street plan ever gets.
     "faces4": ("StaticB", 76),
+    # The hills wear the film of a console being played on an old set: grain
+    # everywhere, and the red region drowning in it.
+    "hills": ("Grain", 86), "drown": ("HazePink", 88),
+    "scrap": ("Dust", 82), "red": ("StaticB", 72),
 }
 
 MUSIC: dict[str, str] = {
+    "hills": "Hills", "drown": "Hills", "scrap": "HillsRed", "red": "HillsRed",
     "room": "Room", "balcony": "Room", "nexus": "Nexus",
     "hall5": "Room", "hall4": "Room", "hall3": "Room", "hall2": "Deep",
     "lobby": "Deep", "pink": "Pink", "numbers": "Numbers",
@@ -288,9 +301,11 @@ BLOCK_ORDER = ["hall5", "hall4", "hall3", "hall2", "lobby"]
 HOME_FLOOR = "hall4"
 
 
+HILLS_ORDER = ["hills", "drown", "scrap", "red"]
+
 WORLD_ORDER = ["room", "balcony", *BLOCK_ORDER, "nexus", *HIDDEN_ORDER, *DREAM_ORDER, *STAIR_FLOORS,
                *FACE_CHANNELS[1:], *MURAL_INSIDE_ORDER,
-               *ASCENT_ORDER]
+               *ASCENT_ORDER, *HILLS_ORDER]
 
 # How far down each floor is, which drives everything that gets worse.
 DEPTH = {"stairs": 0, "stairs2": 1, "stairs3": 2, "stairs4": 3, "stairs5": 4}
@@ -2182,6 +2197,131 @@ def _hidden_build(key: str):
     return make
 
 
+# --- the world behind the television ------------------------------------------
+# Four regions of one hillside, laid out open rather than gridded: a great
+# hall with a lot of alcoves is a *landscape* in this generator, because the
+# walls end up far away and irregular.  The broadcast world's rule applies
+# again -- the four regions share their geometry and differ only in Look, so
+# reaching THE RED means recognising ground already walked.
+
+# How each region sits: how much of the map is open, how many bays come off
+# it, how much water, and how densely it is planted.
+HILLS_SHAPE: dict[str, dict] = {
+    "hills": dict(fill=0.80, bays=13, pools=4, planted=1.00, tracks=5),
+    "drown": dict(fill=0.74, bays=10, pools=11, planted=0.70, tracks=3),
+    "scrap": dict(fill=0.70, bays=16, pools=2, planted=0.35, tracks=6),
+    "red":   dict(fill=0.84, bays=11, pools=5, planted=0.85, tracks=4),
+}
+
+
+def _hills_water(m, fld, t, zone, rng) -> None:
+    """A pool with a shore round it, sunk into the open ground."""
+    if "water" not in t:
+        return
+    rx, ry = max(3, zone.w // 2), max(2, zone.h // 2)
+    for dy in range(-ry, ry + 1):
+        for dx in range(-rx, rx + 1):
+            x, y = zone.cx + dx, zone.cy + dy
+            if not fld.is_floor(x, y):
+                continue
+            far = (dx / rx) ** 2 + (dy / ry) ** 2
+            if far > 1.0:
+                continue
+            m.set_lower(x % m.width, y % m.height,
+                        t["water"] if far < 0.55 else t["shore"])
+
+
+def _build_hills_region(key: str):
+    """One region of the hills.  Four of these make the world."""
+
+    def build(map_id: int) -> World:
+        shape = HILLS_SHAPE[key]
+        world, cs, rng = _new(key, map_id, 144, 132)
+        m, t = world.map, cs.tiles
+        fld = Field(m.width, m.height)
+
+        # One big open landscape with bays off it, which in this generator is
+        # a hillside: the boundaries end up distant and ragged rather than
+        # ruled, and the player is never in a corridor.
+        halls = layout.great_hall(fld, rng, alcoves=shape["bays"],
+                                  fill=shape["fill"])
+        open_ground, bays = halls[0], halls[1:]
+        meadows = layout.regions(fld, rng, open_ground, count=9,
+                                 size=(30, 24))
+        fld.ensure_connected()
+        fld.protect_chokepoints()
+        fld.build_walls(3)
+        layout.paint(m, fld, t, rng=rng, decal_chance=0.006)
+        layout.shade_walls(m, fld, t)
+
+        # Worn tracks across the open ground, so the landscape has routes
+        # through it without having corridors in it.
+        if "track" in t:
+            for index in range(shape["tracks"]):
+                a = meadows[index % len(meadows)]
+                b = meadows[(index * 3 + 2) % len(meadows)]
+                for step in range(0, 120):
+                    f = step / 119
+                    x = int(a.cx + (b.cx - a.cx) * f)
+                    y = int(a.cy + (b.cy - a.cy) * f)
+                    for wobble in (-1, 0, 1):
+                        if fld.is_floor(x + wobble, y):
+                            m.set_lower((x + wobble) % m.width,
+                                        y % m.height, t["track"])
+
+        # Water, in the bays rather than in the middle of the walk.
+        for index, bay in enumerate(bays[:shape["pools"]]):
+            _hills_water(m, fld, t, bay, rng)
+
+        fur = Furnisher(m, fld, cs, rng)
+        planted = shape["planted"]
+        from .rooms import ring as _ring, corners as _corners
+
+        for index, meadow in enumerate(meadows):
+            layout.carpet(m, fld, meadow, t, rng,
+                          ["bloom", "rings", "dots"][index % 3])
+            if rng.random() > planted:
+                continue
+            # Palms round the rim, a totem or a sign at the middle: the
+            # arrangement is what tells one meadow from another.
+            for slot, (px, py) in enumerate(_ring(meadow, 6, inset=5)):
+                fur.put("palm" if (slot + index) % 3 else "bush", px, py, pad=1)
+            centre = ["totem", "sign", "cairn", "monitor"][index % 4]
+            fur.put(centre, meadow.cx, meadow.cy, pad=2)
+            for px, py in _corners(meadow, 4):
+                fur.put("flower" if (px + py) % 2 else "bones", px, py, pad=0)
+
+        # The gate stands in the open, once, and does nothing.
+        if meadows:
+            far = meadows[len(meadows) // 2]
+            fur.put("gate", far.cx + 8, far.cy - 6, pad=1)
+
+        for index, bay in enumerate(bays):
+            layout.carpet(m, fld, bay, t, rng, "rings" if index % 2 else "dots")
+            fur.put(["spikes", "cairn", "bush", "monitor"][index % 4],
+                    bay.cx, bay.cy, pad=1)
+
+        repair_connectivity(m, fld, cs, (open_ground.cx, open_ground.cy),
+                            t["ground"])
+        world.plan = fld
+        world.spawn = (open_ground.cx, open_ground.cy)
+        world.landmarks = {
+            "meadows": [(z.cx, z.cy) for z in meadows],
+            "bays": [(z.cx, z.cy) for z in bays],
+            "open": [(open_ground.cx, open_ground.cy)],
+        }
+        world.npcs = []
+        return world
+
+    return build
+
+
+build_hills = _build_hills_region("hills")
+build_drown = _build_hills_region("drown")
+build_scrap = _build_hills_region("scrap")
+build_red = _build_hills_region("red")
+
+
 BUILD = {
     "room": build_room, "balcony": build_balcony, "nexus": build_nexus,
     **{key: _build_floor(key) for key in BLOCK_ORDER},
@@ -2190,6 +2330,7 @@ BUILD = {
     "sand": build_sand, "faces": build_faces, "hands": build_hands,
     "checker": build_checker, "toys": build_toys, "neon": build_neon,
     "umbrellas": build_umbrellas, "stars": build_stars,
+    **{key: globals()[f"build_{key}"] for key in HILLS_ORDER},
     **{key: _stair_floor(DEPTH[key]) for key in STAIR_FLOORS},
     **{key: _face_channel(i)
        for i, key in enumerate(FACE_CHANNELS) if i},

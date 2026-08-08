@@ -461,7 +461,41 @@ def room_events(world: World, worlds: dict[str, World]) -> None:
                "it stops when you look directly at it.")
     with tv.if_var(VR_DREAM_DISTANCE, 0):
         tv.msg("it is not plugged in.")
-    _place_object(world, "television", [Page(script=tv, trigger=TRIGGER_ACTION)])
+
+    # ...and once you have walked far enough, it is on, and it is a way in.
+    # The set is the only door in this game that is not a door: it does not
+    # open, it *changes channel*, and the place on the other side is running
+    # whether or not anybody is watching it.
+    hills = worlds.get("hills")
+    warm = Script()
+    warm.se("Corrupt", volume=64)
+    warm.show_picture(sys.PIC_FLASH, "Static", 160, 120, transparency=30)
+    warm.wait(6)
+    warm.se("Carrier", volume=70)
+    warm.msg("it is on.")
+    warm.wait(8)
+    warm.msg("green hills. a sky with nothing in it.", "",
+             "the music is one you know.")
+    warm.wait(10)
+    warm.se("Laugh", volume=40)
+    warm.msg("something on it turns to face the camera.")
+    warm.wait(12)
+    warm.erase_picture(sys.PIC_FLASH)
+    warm.se("ExeAppear", volume=80)
+    warm.flash(255, 255, 255, 30, 3, True)
+    warm.bgm_fadeout(2)
+    warm.call_event(sys.CE_OVERLAY_OFF)
+    warm.fade_out(19)
+    if hills is not None:
+        warm.teleport(hills.map_id, *hills.spawn)
+    warm.call_event(sys.CE_ARRIVE)
+    warm.fade_in(19)
+
+    pages = [Page(script=tv, trigger=TRIGGER_ACTION)]
+    if hills is not None:
+        pages.append(Page(script=warm, trigger=TRIGGER_ACTION,
+                          switch_a=SW_WOKE_ONCE))
+    _place_object(world, "television", pages)
 
     # The mirror: after you have been away long enough, it is late.
     mirror = Script()

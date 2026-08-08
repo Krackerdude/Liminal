@@ -14,12 +14,14 @@ dithered seam between them, light from the upper left.  A palm in profile
 would be a sticker of a palm.  A palm from a raised three-quarter is a tree
 you are walking underneath.
 
-**Five values, structured texture, no noise.**  Every surface is a
+**Five values, structured texture, no noise, and almost no dithering.**  Every surface is a
 ``Material``, which is one base colour hue-shifted into deep/shade/mid/lit/hot
 — warmer as it brightens, cooler as it darkens, so a red hill and a green hill
 are lit by the same sun.  Texture is planes, seams, courses and clumps.  The
-only dithering in the game is ``mt.seam``, two pixels wide, where one face
-meets another.  Nothing is outlined and nothing is scattered.
+only dithering in the game is ``mt.seam``, two or three pixels wide, at the
+joint where one face meets another — never across a whole tile.  A ground
+texture is a plane with structure drawn on it: wear lines, pebbles, ripples,
+blades.  Nothing is outlined and nothing is scattered.
 
 The four regions are the same tileset under four ``Look``s, which is the
 broadcast world's trick spent again: the geometry never changes, so arriving
@@ -144,70 +146,72 @@ def turf(look: Look, variant: int = 0) -> Canvas:
 
 
 def track(look: Look, variant: int = 0) -> Canvas:
-    """Worn ground, in three textures that blend into one another.
+    """Worn ground, in three surfaces that read as one path.
 
-    A path laid from a single tile reads as a stripe of paint.  These are the
-    same soil at the same value with different *surfaces* -- packed and
-    smooth, loose and pebbled, and one the grass is creeping back into -- so a
-    run of them mixed together reads as ground that has been walked on for a
-    long time rather than as a decal.
+    Built the way the grove builds a road: a plane of one value with
+    *structure* laid over it -- wear lines, pebbles, blades -- and no
+    dithering.  An earlier version ran ``mt.seam`` across the whole sixteen
+    pixels of every one of these, which is not a material, it is a screen
+    door: the two-pixel dithered joint belongs where one face meets another
+    and nowhere else.
     """
     s, g = look.soil, look.grass
     art = Canvas(TILE, TILE, s.mid)
     mt.plane(art, 0, 0, TILE, TILE, s.mid)
 
-    if variant == 0:                                   # packed smooth
-        mt.seam(art, 0, 0, TILE, TILE, s.mid, s.shade)
-        for x in range(0, TILE, 6):
-            art.dot(x, (x * 3 + 2) % TILE, s.lit)
-            art.dot((x + 4) % TILE, (x * 5) % TILE, s.deep)
+    if variant == 0:                                   # packed, walked smooth
+        # Sparse and short.  Wear lines at the same rows in every tile line
+        # up across the whole path and read as brick courses -- which is what
+        # replacing the dithering with regular structure got wrong first.
+        art.hline(5, 1, 6, s.shade)
+        art.hline(11, 8, 14, s.shade)
+        art.dot(3, 12, s.lit)
+        art.dot(13, 2, s.lit)
+        art.dot(9, 7, s.deep)
     elif variant == 1:                                 # loose, pebbled
-        mt.plane(art, 0, 0, TILE, TILE, s.shade)
-        mt.seam(art, 0, 0, TILE, TILE, s.shade, s.mid)
-        for index, (px, py) in enumerate(((2, 3), (9, 1), (13, 6), (5, 9),
-                                          (11, 12), (1, 13), (7, 6))):
-            art.dot(px, py, s.lit)
-            art.dot(px + 1, py + 1, s.deep)
-            if index % 3 == 0:
-                art.dot(px - 1, py, look.rock.mid)
+        for px, py in ((2, 4), (10, 2), (13, 9), (5, 12), (8, 8)):
+            art.hline(py, px, px + 1, s.lit)
+            art.dot(px, py + 1, s.deep)
+        art.dot(3, 8, look.rock.mid)
+        art.dot(12, 13, look.rock.shade)
     else:                                              # the grass coming back
-        mt.seam(art, 0, 0, TILE, TILE, s.mid, s.lit)
-        for x in range(1, TILE, 4):
-            top = (x * 5) % TILE
+        for x, top in ((2, 9), (6, 3), (9, 12), (13, 6)):
             art.vline(x, top, min(TILE - 1, top + 2), g.shade)
             art.dot(x, top, g.mid)
-        for x in range(0, TILE, 7):
-            art.dot(x, (x * 3 + 5) % TILE, s.deep)
+        art.dot(11, 4, s.lit)
+        art.dot(4, 14, s.deep)
     return art
 
 
 def beach(look: Look, variant: int = 0) -> Canvas:
-    """Sand, in two grades, for the band between the trees and the sea.
+    """Sand, in two grades, between the trees and the sea.
 
-    An island whose forest runs straight into the water has no shoreline, only
-    an outline.  Two grades is enough: dry sand up against the grass and wet
-    sand down at the tideline, with shells and weed in it so the beach has
-    something to look at rather than being a blank ramp.
+    Dry sand up against the grass and wet sand at the tideline.  Ripples are
+    drawn as short broken lines on a plane -- sand *has* ripples, and drawing
+    them is both truer and cheaper than dithering two values together and
+    hoping it reads as grain.
     """
     s, w = look.sand, look.water
     art = Canvas(TILE, TILE, s.mid)
-    mt.plane(art, 0, 0, TILE, TILE, s.mid if variant == 0 else s.shade)
+
     if variant == 0:                                   # dry, rippled
-        mt.seam(art, 0, 0, TILE, TILE, s.mid, s.lit)
-        for y in range(2, TILE, 5):
-            for x in range((y // 5) * 2, TILE, 4):
-                art.dot(x, y, s.lit)
-                art.dot(x + 1, y + 1, s.shade)
-        art.dot(11, 4, look.bone.lit)                  # a shell
-        art.dot(12, 4, look.bone.mid)
-        art.dot(3, 12, s.deep)
+        mt.plane(art, 0, 0, TILE, TILE, s.mid)
+        # Ripples run at a slight angle and do not start at the tile edge, so
+        # a field of them curves rather than striping.
+        for run, (rx, ry) in enumerate(((1, 3), (7, 8), (3, 13))):
+            art.hline(ry, rx, rx + 5 + run, s.lit)
+            art.hline(ry + 1, rx + 1, rx + 4 + run, s.shade)
+        art.dot(11, 5, look.bone.lit)                  # a shell
+        art.dot(12, 5, look.bone.mid)
+        art.dot(14, 11, s.deep)
     else:                                              # wet, near the water
-        mt.seam(art, 0, 0, TILE, TILE, s.shade, blend(s.shade, w.mid, 0.28))
-        for y in range(0, TILE, 3):
-            art.hline(y, 0, TILE - 1, blend(s.shade, w.deep, 0.18))
-        for x in range(1, TILE, 6):
-            art.dot(x, (x * 3) % TILE, look.leaf.deep)  # weed
-            art.dot(x + 1, (x * 3 + 1) % TILE, look.leaf.shade)
+        mt.plane(art, 0, 0, TILE, TILE, s.shade)
+        for rx, ry in ((0, 2), (5, 7), (2, 12)):
+            art.hline(ry, rx, rx + 8, blend(s.shade, w.deep, 0.24))
+            art.hline(ry + 1, rx + 2, rx + 7, blend(s.shade, w.mid, 0.14))
+        art.dot(9, 4, look.leaf.deep)                  # weed
+        art.dot(10, 5, look.leaf.shade)
+        art.dot(3, 14, look.leaf.deep)
     return art
 
 

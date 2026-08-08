@@ -7,7 +7,8 @@ between the four.  What actually lives here comes next.
 from __future__ import annotations
 
 from ..cmds import Script
-from ..maps import LAYER_SAME, TRIGGER_ACTION, Page
+from ..maps import (ANIM_CONTINUOUS, LAYER_SAME, MOVE_RANDOM,
+                    MOVE_STATIONARY, TRIGGER_ACTION, Page)
 from . import atmosphere
 from . import systems as sys
 from .worlds import HILLS_ORDER
@@ -49,9 +50,86 @@ def _cross(target, key: str) -> Script:
     return s
 
 
+# What each animal says, per region.  Nothing here explains anything: the
+# animals do not know what has happened to their island, which is worse than
+# them knowing, and in the red region they have stopped speaking in sentences.
+LINES: dict[str, list[str]] = {
+    "bluebird": ["it hops twice and looks at you.", "",
+                 "it is not going to move off the path."],
+    "finch": ["it will not face you.", "",
+              "whichever way you go round, it turns first."],
+    "hoglet": ["it is asleep, or doing an excellent impression."],
+    "shellback": ["the shell is far too big for it.", "",
+                  "there is something written on the inside."],
+    "watcher_bird": ["it does not hop.", "", "nothing on this island"
+                     " has looked at you for this long."],
+    "smiler": ["it hops twice and looks at you.", "",
+               "it is doing the other thing with its face."],
+    "hollow": ["there is a bird-shaped hole here.", "",
+               "the grass under it has not been stood on."],
+    "him": ["", ""],
+}
+
+
+def _resident(name: str, count: int) -> list:
+    """One animal, said once and then remembered.
+
+    Every one of them moves at random except the two that do not, and which
+    two those are is the only thing on the island that is ever a warning.
+    """
+    from .cast_lookup import charset_slot
+    still = name in ("watcher_bird", "hollow", "him")
+    sheet, slot = charset_slot(name)
+    s = Script()
+    if name == "him":
+        s.se("Laugh", volume=52)
+        s.wait(6)
+        s.se("ExeAppear", volume=76)
+        s.flash(255, 255, 255, 26, 2, True)
+        s.erase_event()
+    else:
+        s.se("Rustle", volume=30)
+        s.msg(*LINES[name])
+    return [Page(script=s, trigger=TRIGGER_ACTION, layer=LAYER_SAME,
+                 charset=sheet, charset_index=slot,
+                 move_type=MOVE_STATIONARY if still else MOVE_RANDOM,
+                 move_frequency=2 if still else 4,
+                 animation_type=ANIM_CONTINUOUS if not still else 1)]
+
+
+def _populate(world, rng) -> None:
+    """Scatter the region's animals along its paths and clearings.
+
+    They live *on the routes*, not in the deep forest: an animal nobody walks
+    past is an animal nobody meets, and the island is big.
+    """
+    from ..art.cast import WORLD_CAST
+    from .events import _free_tile
+
+    roster = WORLD_CAST.get(world.key, [])
+    if not roster:
+        return
+    m = world.map
+    spine = world.landmarks.get("spine") or []
+    clearings = world.landmarks.get("plots") or []
+    spots = [spine[int(len(spine) * f)] for f in
+             (0.12, 0.26, 0.38, 0.52, 0.64, 0.78, 0.9)] + list(clearings)
+    for index, (px, py) in enumerate(spots):
+        name = roster[index % len(roster)]
+        # Beside the route rather than on it, so nothing blocks the walk.
+        for dx, dy in ((3, 2), (-3, 2), (2, -3), (-2, -3), (5, 0), (0, 5)):
+            x, y = (px + dx) % m.width, (py + dy) % m.height
+            if world.plan.is_floor(x, y) and (x, y) not in world.plan.protected:
+                world.map.add_event(f"{name} {index}", x, y,
+                                    _resident(name, index))
+                break
+
+
 def hills_events(world, worlds: dict, rng) -> None:
-    """One region's plumbing: the way out, and the way onward."""
+    """One region's plumbing: the way out, the way onward, and who is here."""
     from .events import _place_object
+
+    _populate(world, rng)
 
     index = HILLS_ORDER.index(world.key)
 

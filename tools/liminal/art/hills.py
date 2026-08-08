@@ -652,6 +652,76 @@ def bones(look: Look, cols: int = 1, rows: int = 1) -> Canvas:
     return art
 
 
+def carcass(look: Look, variant: int = 0, cols: int = 1,
+            rows: int = 1) -> Canvas:
+    """One of the birds, and it did not fly away.
+
+    Drawn in the bluebird's own colours -- the same blue body, the same gold
+    beak and legs -- because the horror is entirely in the recognition.  A
+    generic dead animal is set dressing; *that* bird, the one that hopped
+    twice and looked at you two screens ago, is a statement.
+
+    Three variants so a field of them is not one sprite repeated: one on its
+    back with the wing thrown out, one that is mostly feathers and a stain,
+    and one that is only the head.  Nothing is drawn in detail it does not
+    need -- at sixteen pixels the shapes do the work and the red does the
+    rest.
+    """
+    art = _canvas(cols, rows)
+    body, wing = (78, 140, 226), (52, 104, 190)
+    gold, bone = (246, 190, 72), look.bone
+    blood = (146, 18, 18) if look.wrong < 0.9 else (198, 28, 24)
+    dark = (74, 8, 10)
+
+    if variant == 0:                       # on its back, wing thrown out
+        art.ellipse(8, 11, 6.5, 3.6, dark)                 # what came out
+        art.ellipse(7, 11, 5.0, 2.6, blood)
+        art.ellipse(7, 8, 4.2, 3.4, wing)                  # the body, turned
+        art.ellipse(6, 7, 3.0, 2.2, body)
+        art.hline(9, 10, 14, wing)                         # the wing, out flat
+        art.hline(10, 11, 14, blend(wing, (0, 0, 0), 0.3))
+        art.dot(14, 9, body)
+        art.ellipse(4, 4, 2.6, 2.4, body)                  # the head, wrong way
+        art.dot(3, 4, (0, 0, 0))
+        art.rect(1, 4, 2, 1, gold)                         # the beak
+        art.vline(9, 12, 14, gold)                         # a leg, still up
+        art.dot(9, 14, gold)
+        art.dot(12, 13, bone.lit)
+    elif variant == 1:                     # mostly feathers and a stain
+        art.ellipse(8, 10, 7.0, 4.2, dark)
+        art.ellipse(8, 10, 5.6, 3.2, blood)
+        for fx, fy in ((2, 5), (12, 4), (5, 14), (14, 12), (9, 2)):
+            art.dot(fx, fy, wing)
+            art.dot(fx + 1, fy + 1, body)
+        art.hline(9, 5, 9, wing)
+        art.dot(10, 10, bone.lit)
+        art.dot(11, 11, bone.mid)
+        art.dot(6, 9, gold)
+    else:                                  # only the head
+        art.ellipse(8, 12, 4.4, 2.4, dark)
+        art.ellipse(8, 12, 3.2, 1.6, blood)
+        art.ellipse(8, 8, 3.6, 3.2, wing)
+        art.ellipse(7, 7, 2.4, 2.0, body)
+        art.dot(6, 7, (0, 0, 0))
+        art.dot(9, 7, (0, 0, 0))
+        art.rect(10, 8, 3, 2, gold)
+        art.vline(8, 10, 11, dark)                         # what is left of it
+        art.dot(7, 11, blood)
+    return art
+
+
+def feather(look: Look, cols: int = 1, rows: int = 1) -> Canvas:
+    """A single blue feather in the grass.  The quiet version of the above."""
+    art = _canvas(cols, rows)
+    body, wing = (78, 140, 226), (52, 104, 190)
+    art.line(4, 12, 11, 4, wing)
+    art.line(5, 12, 12, 4, body)
+    art.dot(11, 3, body)
+    art.dot(4, 13, blend(wing, (0, 0, 0), 0.4))
+    art.dot(9, 6, blend(body, (255, 255, 255), 0.35))
+    return art
+
+
 def cairn(look: Look, cols: int = 2, rows: int = 2) -> Canvas:
     """A stack somebody made, with something on top.
 

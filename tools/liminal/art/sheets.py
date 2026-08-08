@@ -2300,6 +2300,12 @@ def _hills_common(cb: ChipsetBuilder, pal: Palette, look, world: str) -> Canvas:
     cb.add_object("driftwood", hl.driftwood(look, 2, 1), solid="all")
     cb.add_object("boulder", hl.boulder(look, 2, 2), solid="all")
     cb.add_object("bones", hl.bones(look, 1, 1), solid="none")
+    # What is left of the birds.  Every region carries them so the tile ids
+    # line up across the four, and only the wrong ones ever place any.
+    for variant in range(3):
+        cb.add_object(f"carcass_{variant}", hl.carcass(look, variant, 1, 1),
+                      solid="none")
+    cb.add_object("feather", hl.feather(look, 1, 1), solid="none")
     cb.add_object("flower", hl.flower(look, 0), solid="none")
     cb.add_object("ring", hl.ring(look, 0), solid="none")
     cb.add_object("door", ct.door_frame(pal, 2, 3,

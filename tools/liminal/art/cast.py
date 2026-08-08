@@ -13,6 +13,7 @@ that is the point.
 from __future__ import annotations
 
 from . import kin
+from . import hills_kin as _hk
 from .dreamer import Dreamer, dreamer_block
 from .canvas import Canvas, TRANSPARENT
 from .charsets import (Body, creature_block, gleam_block, draw_block_cat, draw_cloud_ladder,
@@ -468,6 +469,35 @@ BESPOKE: dict[str, dict] = {"pink": kin.PINK, "numbers": kin.NUMBERS,
                             "umbrellas5": kin.ASCENT_TOP}
 
 
+# The island behind the television.  Eight designs on one sheet, which is
+# exactly what a sheet holds, and the roster is split by region: the ordinary
+# animals live where the world still works, the wrong ones only appear where
+# it has stopped, and he is on every one of them.
+HILLS_ROSTER: dict[str, object] = {
+    "bluebird": _hk.draw_bluebird,
+    "finch": _hk.draw_finch,
+    "hoglet": _hk.draw_hoglet,
+    "shellback": _hk.draw_shellback,
+    "smiler": _hk.draw_smiler,
+    "hollow": _hk.draw_hollow,
+    "watcher_bird": _hk.draw_watcher,
+    "him": _hk.draw_him,
+}
+
+HILLS_SHEETS = {"KinHills": list(HILLS_ROSTER.items())}
+
+HILLS_CAST = {
+    # what the island is supposed to be full of
+    "hills": ["bluebird", "finch", "hoglet", "shellback"],
+    # under water, the beach animals do better than the birds
+    "drown": ["shellback", "bluebird", "watcher_bird", "hoglet"],
+    # the machines took it: fewer animals, and one that is watching
+    "scrap": ["hoglet", "watcher_bird", "finch", "hollow"],
+    # nothing ordinary is left
+    "red": ["smiler", "hollow", "watcher_bird", "him"],
+}
+
+
 def _sheets() -> dict[str, list[tuple[str, object]]]:
     """Every charset, with the extra residents folded in beside the originals.
 
@@ -489,6 +519,7 @@ def _sheets() -> dict[str, list[tuple[str, object]]]:
     for stale in [k for k in out if k.startswith("KinFaces")]:
         del out[stale]
     out.update(GROVE_SHEETS)
+    out.update(HILLS_SHEETS)
     return out
 
 
@@ -500,6 +531,7 @@ for _world, _designs in BESPOKE.items():
 # scattered extras, because sixteen residents placed by hand is already the
 # whole population of a town
 WORLD_CAST.update(GROVE_CAST)
+WORLD_CAST.update(HILLS_CAST)
 
 
 def build_sheets() -> dict[str, Canvas]:

@@ -138,17 +138,41 @@ def turf(look: Look, variant: int = 0) -> Canvas:
     return art
 
 
-def track(look: Look) -> Canvas:
-    """Where the grass has been walked off and the soil shows."""
+def track(look: Look, variant: int = 0) -> Canvas:
+    """Worn ground, in three textures that blend into one another.
+
+    A path laid from a single tile reads as a stripe of paint.  These are the
+    same soil at the same value with different *surfaces* -- packed and
+    smooth, loose and pebbled, and one the grass is creeping back into -- so a
+    run of them mixed together reads as ground that has been walked on for a
+    long time rather than as a decal.
+    """
     s, g = look.soil, look.grass
     art = Canvas(TILE, TILE, s.mid)
     mt.plane(art, 0, 0, TILE, TILE, s.mid)
-    mt.seam(art, 0, 0, TILE, TILE, s.mid, s.shade)
-    for x in range(0, TILE, 5):
-        art.dot(x, (x * 3) % TILE, s.lit)
-        art.dot((x + 3) % TILE, (x * 5 + 4) % TILE, s.deep)
-    for x in range(1, TILE, 7):
-        art.vline(x, (x * 2) % TILE, min(TILE - 1, (x * 2) % TILE + 1), g.shade)
+
+    if variant == 0:                                   # packed smooth
+        mt.seam(art, 0, 0, TILE, TILE, s.mid, s.shade)
+        for x in range(0, TILE, 6):
+            art.dot(x, (x * 3 + 2) % TILE, s.lit)
+            art.dot((x + 4) % TILE, (x * 5) % TILE, s.deep)
+    elif variant == 1:                                 # loose, pebbled
+        mt.plane(art, 0, 0, TILE, TILE, s.shade)
+        mt.seam(art, 0, 0, TILE, TILE, s.shade, s.mid)
+        for index, (px, py) in enumerate(((2, 3), (9, 1), (13, 6), (5, 9),
+                                          (11, 12), (1, 13), (7, 6))):
+            art.dot(px, py, s.lit)
+            art.dot(px + 1, py + 1, s.deep)
+            if index % 3 == 0:
+                art.dot(px - 1, py, look.rock.mid)
+    else:                                              # the grass coming back
+        mt.seam(art, 0, 0, TILE, TILE, s.mid, s.lit)
+        for x in range(1, TILE, 4):
+            top = (x * 5) % TILE
+            art.vline(x, top, min(TILE - 1, top + 2), g.shade)
+            art.dot(x, top, g.mid)
+        for x in range(0, TILE, 7):
+            art.dot(x, (x * 3 + 5) % TILE, s.deep)
     return art
 
 

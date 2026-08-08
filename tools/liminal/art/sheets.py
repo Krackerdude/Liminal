@@ -2268,7 +2268,9 @@ def _hills_common(cb: ChipsetBuilder, pal: Palette, look, world: str) -> Canvas:
     """
     ground = hl.turf(look, 0)
     _basics(cb, pal, ground, hl.turf(look, 1), world=world)
-    cb.add("track", hl.track(look))
+    for variant in range(3):
+        cb.add(f"track_{variant}", hl.track(look, variant))
+    cb.add("track", hl.track(look, 0))
     cb.add("stone", hl.stone(look, 0))
     cb.add("stone_b", hl.stone(look, 2))
     cb.add("plate", hl.plate(look))

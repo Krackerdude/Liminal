@@ -2214,21 +2214,358 @@ HILLS_SHAPE: dict[str, dict] = {
 }
 
 
-def _hills_water(m, fld, t, zone, rng) -> None:
-    """A pool with a shore round it, sunk into the open ground."""
+# The plan.  Not a random layout with props thrown at it: a landmass with a
+# ring road round it, four spokes into the middle, and twelve plots between
+# them that are each a *designed* thing rather than a scattering.  Broadcast's
+# grid was the right instinct and this keeps it -- consistent routes, so the
+# player always knows which way is back -- while letting the edges curve,
+# because a hillside with square blocks is a car park.
+HILLS_W, HILLS_H = 168, 152
+MARGIN = 14                  # tiles of water round the whole island
+RING_INSET = 22              # how far in the ring path runs
+PATH_W = 2                   # 5 tiles across, the same everywhere
+
+# What each plot *is*.  Twelve entries, walked in order round the ring, so the
+# world reads the same way every time and the player can be told "the totems
+# are north of the pond" and have that mean something.
+PLOTS = (
+    ("grove",    "a stand of palms, thick enough to lose the path in"),
+    ("totems",   "a ring of totems facing inward"),
+    ("meadow",   "flowers, and nothing else at all"),
+    ("pond",     "water, with a shore you can walk"),
+    ("outcrop",  "bare rock pushing up through the grass"),
+    ("orchard",  "palms in rows, planted by somebody"),
+    ("bones",    "a field of small bones"),
+    ("monitors", "a row of screens, all showing the same thing"),
+    ("hedge",    "bushes grown into a maze that is not a maze"),
+    ("cairns",   "stacks, one per corner, and one in the middle"),
+    ("spikes",   "a floor of iron, and nothing growing"),
+    ("still",    "grass, cut short, and a single sign"),
+)
+
+HILLS_SHAPE: dict[str, dict] = {
+    "hills": dict(planted=1.00, ponds=2, wrecked=0.0),
+    "drown": dict(planted=0.80, ponds=5, wrecked=0.2),
+    "scrap": dict(planted=0.45, ponds=1, wrecked=0.6),
+    "red":   dict(planted=0.90, ponds=2, wrecked=1.0),
+}
+
+
+def _island(fld, m, t) -> None:
+    """Carve the landmass and drown everything outside it.
+
+    The water is not a backdrop.  It is a real animated tile filling every
+    cell the island does not occupy, with a shore ring where the two meet, so
+    the edge of the world is a coast rather than a colour.
+    """
+    cx, cy = m.width // 2, m.height // 2
+    rx, ry = m.width // 2 - MARGIN, m.height // 2 - MARGIN
+    for y in range(m.height):
+        for x in range(m.width):
+            # A rounded *rectangle* with a wander on the coast, not an
+            # ellipse.  The ring road is a rounded rectangle too, and when the
+            # island was elliptical its four corners fell in the sea and the
+            # road shipped as four disconnected straights.  The land and the
+            # road are the same shape now, and there is more of it.
+            wobble = 3.0 * math.sin(x * 0.11) + 2.5 * math.cos(y * 0.13)
+            dx, dy = abs(x - cx), abs(y - cy)
+            radius = 34.0
+            inner_x, inner_y = rx + wobble - radius, ry + wobble - radius
+            reach = math.hypot(max(0.0, dx - inner_x), max(0.0, dy - inner_y))
+            if dx <= rx + wobble and dy <= ry + wobble and reach <= radius:
+                fld.set(x, y, layout.FLOOR)
+
+
+def _drown_the_rest(m, fld, t) -> None:
+    """Water outside the island, shore where it meets the land."""
     if "water" not in t:
         return
-    rx, ry = max(3, zone.w // 2), max(2, zone.h // 2)
-    for dy in range(-ry, ry + 1):
-        for dx in range(-rx, rx + 1):
-            x, y = zone.cx + dx, zone.cy + dy
-            if not fld.is_floor(x, y):
+    for y in range(m.height):
+        for x in range(m.width):
+            if fld.is_floor(x, y):
+                continue
+            near_land = any(fld.is_floor(x + dx, y + dy)
+                            for dx in (-2, -1, 0, 1, 2)
+                            for dy in (-2, -1, 0, 1, 2))
+            m.set_lower(x, y, t["shore"] if near_land else t["water"])
+            m.set_upper(x, y, maps.EMPTY_UPPER)
+
+
+def _wander(m, fld, t, rng, *, start, end, wobble=14.0, width=3,
+            seed=0.0) -> list[tuple[int, int]]:
+    """One path that wanders from somewhere to somewhere, and is walkable.
+
+    Not a road.  A *track worn by use*: it leaves at one point on the coast,
+    arrives at another, and gets there by drifting rather than by aiming.  The
+    drift is two sine waves at unrelated frequencies across the run, so it
+    bends more than once and never doubles back.
+
+    The previous layout put a ring round the island and four spokes through
+    the middle, which read as a no-entry sign painted on a field.  Structured
+    does not mean geometric: it means the player can always tell where the
+    path goes and what is off it.
+    """
+    ax, ay = start
+    bx, by = end
+    spine: list[tuple[int, int]] = []
+    steps = int(math.hypot(bx - ax, by - ay) * 2.2)
+    nx, ny = -(by - ay), (bx - ax)
+    length = max(1.0, math.hypot(nx, ny))
+    nx, ny = nx / length, ny / length
+    for step in range(steps + 1):
+        f = step / steps
+        swing = (math.sin(f * math.tau * 1.15 + seed) * wobble
+                 + math.sin(f * math.tau * 2.7 + seed * 2.1) * wobble * 0.45)
+        taper = math.sin(f * math.pi) ** 0.35        # pinned at both coasts
+        x = ax + (bx - ax) * f + nx * swing * taper
+        y = ay + (by - ay) * f + ny * swing * taper
+        spine.append((int(x), int(y)))
+
+    # One thickness everywhere.  A track that swells and narrows reads as a
+    # river; a track that holds its width reads as something maintained, and
+    # the whole point of the path is that the player can trust it.
+    for (x, y) in spine:
+        for dy in range(-width, width + 1):
+            for dx in range(-width, width + 1):
+                if dx * dx + dy * dy > width * width + 1:
+                    continue
+                px, py = (x + dx) % m.width, (y + dy) % m.height
+                if not fld.is_floor(px, py):
+                    continue
+                # Three surfaces mixed on a coarse lattice with a wobble, so
+                # the packed middle, the loose patches and the bits the grass
+                # is retaking blend instead of tiling.
+                pick = (px // 3 + py // 4 + int(math.sin(px * 0.4) * 1.6)
+                        + int(math.cos(py * 0.3) * 1.4)) % 7
+                name = ("track_0" if pick < 4 else
+                        "track_1" if pick < 6 else "track_2")
+                m.set_lower(px, py, t.get(name, t["ground"]))
+                fld.protected.add((px, py))
+    return spine
+
+
+def _paths(m, fld, t, rng) -> tuple[list, list]:
+    """A web of tracks across the whole island.
+
+    Not a trunk with twigs.  The first version grew three branches off one
+    spine and they all left it near the middle, so the paths ran parallel down
+    the centre and left the coasts untouched -- a lot of track covering very
+    little island.
+
+    So: nine junctions spread deliberately -- eight round the island at
+    alternating depths, one in the middle -- and then every junction is joined
+    to its two nearest neighbours and to the middle.  Wandering lines between
+    spread points cross each other on their own, which is what makes the
+    junctions read as places rather than as decisions somebody made.
+    """
+    cx, cy = m.width // 2, m.height // 2
+    rx, ry = m.width // 2 - RING_INSET, m.height // 2 - RING_INSET
+
+    nodes: list[tuple[int, int]] = []
+    for index in range(8):
+        angle = index * math.tau / 8 + math.tau / 16
+        reach = 0.92 if index % 2 else 0.66
+        nodes.append((int(cx + math.cos(angle) * rx * reach),
+                      int(cy + math.sin(angle) * ry * reach)))
+    nodes.append((cx + 4, cy - 3))
+
+    # Every rim junction to the next one round, so the coast is walkable all
+    # the way round; every other one to the middle, so crossing is possible
+    # without going round.  Nine edges, no two the same length.
+    # Eight round the rim and *two* across, not four.  Four crossings all
+    # arrive at the same middle and turn it into a yard of bare dirt; two
+    # give the island a way through without the centre becoming the map.
+    edges = [(index, (index + 1) % 8) for index in range(8)]
+    edges += [(1, 8), (5, 8)]
+
+    runs = []
+    for order, (a, b) in enumerate(edges):
+        ax, ay = nodes[a]
+        bx, by = nodes[b]
+        # Enough wander to look walked, not so much that neighbouring runs
+        # cross each other twice and the island turns to dirt.
+        runs.append(_wander(m, fld, t, rng, start=(ax, ay), end=(bx, by),
+                            wobble=5.5 + (order % 3) * 2.0, width=PATH_W,
+                            seed=order * 1.37))
+    return runs[0], runs[1:]
+
+
+def _clearings(spine, branches, m) -> list[tuple[int, int]]:
+    """Where the forest opens: beside a junction, never on one.
+
+    A clearing on a junction is a crossroads with a totem in it and reads as
+    an obstruction.  Beside it, the player comes round a bend and finds
+    something in the trees.
+    """
+    out = []
+    runs = [spine, *branches]
+    for index, run in enumerate(runs):
+        x, y = run[int(len(run) * 0.5)]
+        away = 13 if index % 2 else -13
+        out.append(((x + away) % m.width, (y + (away // 2)) % m.height))
+    return out[:9]
+
+
+def _forest(fur, m, fld, cs, t, spine, branches, clearings, shape, rng) -> None:
+    """Cover the island.
+
+    The reference is a forest map, not a park: trees packed shoulder to
+    shoulder with the path cut through them, and the verge either side thick
+    with small growth.  So this walks every land tile on a jittered lattice
+    and plants by *distance from the nearest path* -- flowers and bushes on
+    the verge where you can see them, palms everywhere beyond it, and holes
+    left where a clearing has been marked.
+    """
+    route = [p for p in spine] + [p for b in branches for p in b]
+
+    def near_path(x, y, limit):
+        return any(abs(x - px) < limit and abs(y - py) < limit
+                   for px, py in route)
+
+    def in_clearing(x, y):
+        return any((x - ox) ** 2 + (y - oy) ** 2 < 90 for ox, oy in clearings)
+
+    def put(name, x, y):
+        if name not in cs.objects:
+            return
+        grid = cs.obj(name)
+        ox, oy = x - grid.cols // 2, y - grid.rows // 2
+        for row in range(grid.rows):
+            for col in range(grid.cols):
+                px, py = (ox + col) % m.width, (oy + row) % m.height
+                if not fld.is_floor(px, py) or (px, py) in fld.protected:
+                    return
+        gen.stamp(m, grid, ox, oy, overlap=True)
+
+    density = shape["planted"]
+    for y in range(4, m.height - 4, 3):
+        for x in range(4, m.width - 4, 3):
+            if not fld.is_floor(x, y) or (x, y) in fld.protected:
+                continue
+            jx, jy = x + rng.randint(-1, 1), y + rng.randint(-1, 1)
+            verge = near_path(x, y, 7)
+            if in_clearing(x, y):
+                if rng.random() < 0.22 * density:
+                    put("flower" if rng.random() < 0.7 else "bones", jx, jy)
+                continue
+            if verge:
+                # The verge is *framed*, not sprinkled.  Flowers bank up
+                # immediately against the edge, bushes sit behind them, and a
+                # palm leans in every so often -- so the path has sides
+                # rather than merely stopping.
+                edge = min(abs(x - px) + abs(y - py) for px, py in route)
+                if edge <= 4:
+                    if (x + y) % 3 == 0:
+                        put("flower", jx, jy)
+                elif edge <= 6:
+                    if (x * 2 + y) % 5 == 0:
+                        put("bush", jx, jy)
+                    elif (x + y * 3) % 11 == 0:
+                        put("bones", jx, jy)
+                elif (x + y) % 4 == 0:
+                    put("palm", jx, jy)
+            else:
+                roll = rng.random()
+                if roll < 0.62 * density:
+                    put("palm", jx, jy)
+                elif roll < 0.80 * density:
+                    put("bush", jx, jy)
+                elif roll < 0.86 * density:
+                    put("flower", jx, jy)
+
+
+def _dress(m, fld, cs, t, kind: str, px: int, py: int, rng) -> None:
+    """Make one clearing the thing it is.
+
+    Every arrangement is written out rather than sampled.  A clearing that is
+    "a ring of totems facing inward" has to be a ring of totems every time or
+    it cannot be a landmark, and landmarks are the only reason a forest this
+    dense is navigable.
+    """
+    from .rooms import ring as _ring, corners as _corners
+    zone = layout.Zone(kind, px, py, 22, 18)
+
+    def put(name, x, y):
+        if name not in cs.objects:
+            return
+        grid = cs.obj(name)
+        ox, oy = x - grid.cols // 2, y - grid.rows // 2
+        for row in range(grid.rows):
+            for col in range(grid.cols):
+                qx, qy = (ox + col) % m.width, (oy + row) % m.height
+                if not fld.is_floor(qx, qy) or (qx, qy) in fld.protected:
+                    return
+        gen.stamp(m, grid, ox, oy, overlap=True)
+
+    if kind == "totems":
+        for x, y in _ring(zone, 7, inset=4):
+            put("totem", x, y)
+        put("cairn", px, py)
+    elif kind == "pond":
+        _pool(m, fld, t, px + 9, py, 7, 5)
+        for x, y in _ring(zone, 6, inset=2):
+            put("bush", x, y)
+        put("sign", px - 7, py)
+    elif kind == "outcrop":
+        _rock_patch(m, fld, t, px, py, 7, 5)
+        for x, y in _ring(zone, 5, inset=6):
+            put("cairn", x, y)
+    elif kind == "monitors":
+        for col in range(-6, 7, 5):
+            put("monitor", px + col, py)
+    elif kind == "spikes":
+        _plate_patch(m, fld, t, px, py, 7, 5)
+        for col in range(-5, 6, 5):
+            put("spikes", px + col, py)
+    elif kind == "cairns":
+        for x, y in _corners(zone, 5):
+            put("cairn", x, y)
+        put("totem", px, py)
+    elif kind == "bones":
+        for index in range(12):
+            put("bones", px + ((index * 7) % 17) - 8,
+                py + ((index * 5) % 13) - 6)
+        put("cairn", px, py)
+    else:                                            # a place to stand still
+        put("sign", px, py)
+        for x, y in _ring(zone, 5, inset=7):
+            put("flower", x, y)
+
+
+def _pool(m, fld, t, px, py, rx, ry) -> None:
+    if "water" not in t:
+        return
+    for dy in range(-ry - 1, ry + 2):
+        for dx in range(-rx - 1, rx + 2):
+            x, y = (px + dx) % m.width, (py + dy) % m.height
+            if not fld.is_floor(x, y) or (x, y) in fld.protected:
                 continue
             far = (dx / rx) ** 2 + (dy / ry) ** 2
-            if far > 1.0:
+            if far <= 0.62:
+                m.set_lower(x, y, t["water"])
+                fld.set(x, y, layout.WALL)
+            elif far <= 1.0:
+                m.set_lower(x, y, t["shore"])
+
+
+def _rock_patch(m, fld, t, px, py, rx, ry) -> None:
+    for dy in range(-ry, ry + 1):
+        for dx in range(-rx, rx + 1):
+            x, y = (px + dx) % m.width, (py + dy) % m.height
+            if not fld.is_floor(x, y) or (x, y) in fld.protected:
                 continue
-            m.set_lower(x % m.width, y % m.height,
-                        t["water"] if far < 0.55 else t["shore"])
+            if (dx / rx) ** 2 + (dy / ry) ** 2 <= 1.0:
+                m.set_lower(x, y, t["stone" if (dx + dy) % 3 else "stone_b"])
+
+
+def _plate_patch(m, fld, t, px, py, rx, ry) -> None:
+    if "plate" not in t:
+        return
+    for dy in range(-ry, ry + 1):
+        for dx in range(-rx, rx + 1):
+            x, y = (px + dx) % m.width, (py + dy) % m.height
+            if fld.is_floor(x, y) and (x, y) not in fld.protected:
+                m.set_lower(x, y, t["plate"])
 
 
 def _build_hills_region(key: str):
@@ -2236,79 +2573,51 @@ def _build_hills_region(key: str):
 
     def build(map_id: int) -> World:
         shape = HILLS_SHAPE[key]
-        world, cs, rng = _new(key, map_id, 144, 132)
+        world, cs, rng = _new(key, map_id, HILLS_W, HILLS_H)
         m, t = world.map, cs.tiles
         fld = Field(m.width, m.height)
 
-        # One big open landscape with bays off it, which in this generator is
-        # a hillside: the boundaries end up distant and ragged rather than
-        # ruled, and the player is never in a corridor.
-        halls = layout.great_hall(fld, rng, alcoves=shape["bays"],
-                                  fill=shape["fill"])
-        open_ground, bays = halls[0], halls[1:]
-        meadows = layout.regions(fld, rng, open_ground, count=9,
-                                 size=(30, 24))
-        fld.ensure_connected()
-        fld.protect_chokepoints()
+        _island(fld, m, t)
         fld.build_walls(3)
         layout.paint(m, fld, t, rng=rng, decal_chance=0.006)
         layout.shade_walls(m, fld, t)
-
-        # Worn tracks across the open ground, so the landscape has routes
-        # through it without having corridors in it.
-        if "track" in t:
-            for index in range(shape["tracks"]):
-                a = meadows[index % len(meadows)]
-                b = meadows[(index * 3 + 2) % len(meadows)]
-                for step in range(0, 120):
-                    f = step / 119
-                    x = int(a.cx + (b.cx - a.cx) * f)
-                    y = int(a.cy + (b.cy - a.cy) * f)
-                    for wobble in (-1, 0, 1):
-                        if fld.is_floor(x + wobble, y):
-                            m.set_lower((x + wobble) % m.width,
-                                        y % m.height, t["track"])
-
-        # Water, in the bays rather than in the middle of the walk.
-        for index, bay in enumerate(bays[:shape["pools"]]):
-            _hills_water(m, fld, t, bay, rng)
+        spine, branches = _paths(m, fld, t, rng)
+        plots = _clearings(spine, branches, m)
+        _drown_the_rest(m, fld, t)
 
         fur = Furnisher(m, fld, cs, rng)
-        planted = shape["planted"]
-        from .rooms import ring as _ring, corners as _corners
+        # Every plot is dressed, every time.  A plot that only sometimes
+        # exists cannot be a landmark, and landmarks are the whole reason the
+        # ring road is there.
+        for index, (px, py) in enumerate(plots):
+            _dress(m, fld, cs, t, PLOTS[index % len(PLOTS)][0], px, py, rng)
 
-        for index, meadow in enumerate(meadows):
-            layout.carpet(m, fld, meadow, t, rng,
-                          ["bloom", "rings", "dots"][index % 3])
-            if rng.random() > planted:
-                continue
-            # Palms round the rim, a totem or a sign at the middle: the
-            # arrangement is what tells one meadow from another.
-            for slot, (px, py) in enumerate(_ring(meadow, 6, inset=5)):
-                fur.put("palm" if (slot + index) % 3 else "bush", px, py, pad=1)
-            centre = ["totem", "sign", "cairn", "monitor"][index % 4]
-            fur.put(centre, meadow.cx, meadow.cy, pad=2)
-            for px, py in _corners(meadow, 4):
-                fur.put("flower" if (px + py) % 2 else "bones", px, py, pad=0)
+        _forest(fur, m, fld, cs, t, spine, branches, plots, shape, rng)
 
-        # The gate stands in the open, once, and does nothing.
-        if meadows:
-            far = meadows[len(meadows) // 2]
-            fur.put("gate", far.cx + 8, far.cy - 6, pad=1)
+        # The gate stands on the ring itself, where it cannot be missed.
+        gx, gy = plots[0]
+        if "gate" in cs.objects:
+            fur.put("gate", gx, gy - 10, pad=1)
 
-        for index, bay in enumerate(bays):
-            layout.carpet(m, fld, bay, t, rng, "rings" if index % 2 else "dots")
-            fur.put(["spikes", "cairn", "bush", "monitor"][index % 4],
-                    bay.cx, bay.cy, pad=1)
-
-        repair_connectivity(m, fld, cs, (open_ground.cx, open_ground.cy),
+        repair_connectivity(m, fld, cs, (m.width // 2, m.height // 2),
                             t["ground"])
         world.plan = fld
-        world.spawn = (open_ground.cx, open_ground.cy)
+        world.spawn = (m.width // 2, m.height // 2)
+        # Beside the path, not on it.  The path is protected ground and the
+        # door pass refuses to stand anything on protected ground, so a spawn
+        # on the track left the whole region with no way out of it.
+        sx, sy = spine[len(spine) // 2]
+        for dx, dy in ((7, 0), (-7, 0), (0, 7), (0, -7), (10, 6), (-10, -6)):
+            px, py = (sx + dx) % m.width, (sy + dy) % m.height
+            if fld.is_floor(px, py) and (px, py) not in fld.protected:
+                world.spawn = (px, py)
+                break
+        else:
+            world.spawn = (sx, sy)
         world.landmarks = {
-            "meadows": [(z.cx, z.cy) for z in meadows],
-            "bays": [(z.cx, z.cy) for z in bays],
-            "open": [(open_ground.cx, open_ground.cy)],
+            "plots": plots, "spine": spine,
+            **{PLOTS[index % len(PLOTS)][0]: [spot]
+               for index, spot in enumerate(plots)},
         }
         world.npcs = []
         return world
@@ -2704,9 +3013,12 @@ def build_all() -> dict[str, World]:
         place_landmarks(world)
         enforce_density(world)
         snap_spawn(world)
-        if key in DREAM_ORDER:
+        if key in DREAM_ORDER or key in HILLS_ORDER:
             # after snap_spawn, so the door goes where the player really lands,
-            # and before the connectivity repair, which gets the last word
+            # and before the connectivity repair, which gets the last word.
+            # The hills need it too: it is the way back to the room, and
+            # without it every region of that world is a place you cannot
+            # leave -- which the validator caught, and should have.
             place_door(world)
         if world.plan is not None:
             # Last line of defence: nothing the decoration pass added is

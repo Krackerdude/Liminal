@@ -447,84 +447,137 @@ def draw_hollow(cell: Canvas, facing: int, frame: int) -> None:
 
 # --- him ----------------------------------------------------------------------
 
+def _quill(cell: Canvas, x0: int, y0: int, x1: int, y1: int, colour: RGB,
+           thick: int = 5) -> None:
+    """One swept spine: thick where it leaves the skull, a point at the end.
+
+    Drawn as a tapering run rather than a rectangle, because a rectangle at
+    this size merges into the head and the silhouette stops being his.  The
+    taper is what makes a handful of these read as quills rather than lumps.
+    """
+    steps = max(abs(x1 - x0), abs(y1 - y0), 1)
+    flat = abs(x1 - x0) >= abs(y1 - y0)
+    for index in range(steps + 1):
+        t = index / steps
+        x = round(x0 + (x1 - x0) * t)
+        y = round(y0 + (y1 - y0) * t)
+        half = int(round(thick * (1.0 - t) / 2.0))
+        if flat:
+            cell.vline(x, y - half, y + half, colour)
+        else:
+            cell.hline(y, x - half, x + half, colour)
+
+
 def draw_him(cell: Canvas, facing: int, frame: int) -> None:
     """The thing the world is about.
 
-    Drawn to exactly the same twenty-four pixels as a bird, which is the only
-    honest way: the horror is not that he is large, it is that he is standing
-    in a field at the same scale as everything else and none of the animals
-    will go near him.
+    He stands at the player's height -- the full thirty-two pixels, the same
+    as anybody else who walks around in this game -- because the horror is
+    not that he is large.  It is that he is a person-sized figure standing in
+    a field of small animals, and none of them will go near him.
 
-    Black, and the one figure in this game the light does not touch.  The
-    spines are the silhouette and they are the same length in every view --
-    swept back in profile, fanned across the skull from the front, and from
-    behind they are all there is, so a player who watches him turn away loses
-    him against the trees.
+    Three quills, not a hedge.  The silhouette only works if each spine is
+    big enough to be read on its own and the skull stays a clear round mass
+    underneath them.
+
+    There are no teeth.  A row of white pixels across a face this small reads
+    as a typewriter -- what sits under the quills is a socket with something
+    lit a long way down inside it, and the red coming out of it.
     """
-    dark, darker = (26, 24, 44), (10, 8, 18)
-    red, white = (216, 32, 28), (236, 232, 226)
+    fur_dk, fur, fur_hi = (20, 20, 58), (44, 44, 108), (82, 84, 164)
+    skin, skin_dk = (224, 168, 126), (170, 116, 84)
+    glove, glove_dk = (238, 234, 228), (166, 164, 174)
+    shoe, shoe_dk, sole = (186, 26, 24), (120, 14, 14), (214, 212, 216)
+    socket, iris, glint = (8, 6, 12), (222, 32, 28), (255, 250, 244)
+    blood = (150, 14, 14)
+
     side = facing in (LEFT, RIGHT)
+    back = facing == UP
     lead = -1 if facing == LEFT else 1
-    cy, hy = 20, 11
-    step = 2 if frame == 1 else 0
+    hy = 8                                            # skull centre
+    swing = (0, 1, -1)[frame % 3]
 
-    # Legs and shoes first, so the body sits down over the top of them.  He
-    # was drawn with two white blocks parked at the bottom of the cell and
-    # nothing joining them to anything -- a figure hovering above its own
-    # feet.  Now the shins come out of the body and the shoes stand on the
-    # floor, and in profile one foot leads the other so he reads as walking.
-    shoe = (168, 26, 24)
+    # --- legs, socks and shoes ------------------------------------------------
     for sign in (-1, 1):
-        fx = CX + sign * 4 - 3
-        lift = step if sign * (lead if side else 1) > 0 else 0
-        if side:
-            fx = CX + lead * (sign * 3) - 3
-        cell.rect(fx + 1, cy + 2, 4, GROUND - 4 - cy - lift, darker)
-        cell.round_rect(fx, GROUND - 4 - lift, 7, 4, 1, shoe)
-        cell.hline(GROUND - 4 - lift, fx + 1, fx + 5, white)
-        cell.hline(GROUND - 1 - lift, fx + 1, fx + 5,
-                   blend(shoe, (0, 0, 0), 0.45))
+        step = swing if (sign * (lead if side else 1)) > 0 else -swing
+        lx = CX + (lead * sign * 2 if side else sign * 4) - 1
+        cell.rect(lx, 21, 3, 5 + step, fur)
+        cell.vline(lx, 21, 25 + step, fur_dk)
+        cell.rect(lx - 1, 24 + step, 5, 2, glove)                 # sock cuff
+        fx = lx - 3
+        cell.round_rect(fx, 26 + step, 8, 4, 1, shoe)
+        cell.hline(26 + step, fx + 1, fx + 6, sole)
+        cell.rect(fx, 29 + step, 8, 1, shoe_dk)
 
-    # the body: a squat mass, no highlight anywhere on it
-    cell.ellipse(CX, cy, 7.0, 5.0, darker)
-    cell.ellipse(CX, cy - 1, 6.2, 4.2, dark)
-    # Gloves, overlapping the body by a couple of pixels so they are hands on
-    # the ends of arms and not two white squares hanging in the air beside him.
-    for gx in (CX - 9, CX + 5):
-        cell.rect(CX - 7 if gx < CX else CX + 2, cy, 6, 3, dark)   # the arm
-        cell.round_rect(gx, cy - 1, 4, 4, 1, white)
+    # --- torso ----------------------------------------------------------------
+    cell.ellipse(CX, 18, 4.6, 4.4, fur_dk)
+    cell.ellipse(CX, 17, 4.0, 3.8, fur)
+    if not back:
+        cell.ellipse(CX + (lead * 2 if side else 0), 19,
+                     1.8 if side else 2.8, 2.4, skin)
 
-    # the spines, at one length in every view
+    # --- arms and gloves ------------------------------------------------------
+    for sign in (-1, 1):
+        reach = swing if sign > 0 else -swing
+        ax = CX + sign * 4
+        cell.rect(ax - 1, 15 + reach, 3, 4, skin)
+        cell.round_rect(ax + (0 if sign > 0 else -3), 18 + reach, 4, 4, 1,
+                        glove)
+        cell.hline(21 + reach, ax + (1 if sign > 0 else -2),
+                   ax + (2 if sign > 0 else -1), glove_dk)
+
+    # --- quills ---------------------------------------------------------------
+    hx = CX + (lead * 2 if side else 0)
     if side:
-        for index, drop in enumerate((0, 4, 8)):
-            x0 = CX - lead * (5 + index)
-            cell.rect(min(x0, x0 - lead * 7) if lead > 0 else x0,
-                      hy - 2 + drop, 8, 4, darker if index % 2 else dark)
-    elif facing == UP:
-        for index, (ox, oy) in enumerate(((-9, -1), (-3, -4), (3, -4), (7, -1))):
-            cell.rect(CX + ox, hy + oy, 5, 8, darker if index % 2 else dark)
+        root = hx - lead * 4
+        for dy, drop, thick in ((-4, -7, 6), (0, 0, 7), (4, 7, 6)):
+            _quill(cell, root, hy + dy, root - lead * 10, hy + drop, fur_dk,
+                   thick)
+            _quill(cell, root, hy + dy - 1, root - lead * 7, hy + drop - 1,
+                   fur, thick - 3)
+    elif back:
+        for dx, ex, ey, thick in ((-4, -11, 2, 7), (-2, -5, 11, 7),
+                                  (2, 5, 11, 7), (4, 11, 2, 7)):
+            _quill(cell, CX + dx, hy, CX + ex, hy + ey, fur_dk, thick)
+            _quill(cell, CX + dx, hy - 1, CX + int(ex * .7), hy + int(ey * .7),
+                   fur, thick - 3)
     else:
-        for index, (ox, oy) in enumerate(((-11, 2), (-8, -2), (5, -2), (8, 2))):
-            cell.rect(CX + ox, hy + oy, 6, 5, darker if index % 2 else dark)
+        for sign in (-1, 1):
+            for dy, drop in ((-3, -6), (2, 8)):
+                _quill(cell, CX + sign * 3, hy + dy, CX + sign * 11, hy + drop,
+                       fur_dk, 7)
+                _quill(cell, CX + sign * 3, hy + dy - 1, CX + sign * 8,
+                       hy + drop - 1, fur, 4)
 
-    cell.ellipse(CX, hy, 8.0, 7.2, dark)
-    cell.ellipse(CX - 2, hy - 2, 4.6, 3.6, darker)
+    # --- the skull ------------------------------------------------------------
+    cell.ellipse(hx, hy, 5.6, 5.4, fur_dk)
+    cell.ellipse(hx, hy - 1, 5.0, 4.6, fur)
+    cell.ellipse(hx - lead, hy - 3, 2.6, 1.6, fur_hi)
+    for sign in ((lead,) if side else (-1, 1)):                   # ears
+        _quill(cell, hx + sign * 3, hy - 4, hx + sign * 4, hy - 9, fur, 4)
 
-    if facing == UP:
-        return                                           # nothing to read
+    if back:
+        return                                    # nothing on this side to read
 
+    # --- face -----------------------------------------------------------------
     if side:
-        cell.rect(CX + lead * 2, hy - 3, 3, 3, red)
-        cell.dot(CX + lead * 3, hy - 2, white)
-        jaw = CX - (7 if lead > 0 else 0)
-        cell.rect(jaw, hy + 3, 8, 3, darker)
-        for step in range(1, 8, 2):
-            cell.vline(jaw + step, hy + 3, hy + 4, white)
+        mx = hx + lead * 4
+        cell.ellipse(mx, hy + 3, 3.6, 2.8, skin)
+        cell.ellipse(mx, hy + 4, 3.0, 1.8, skin_dk)
+        cell.rect(mx + lead * 2 - (1 if lead < 0 else 0), hy + 1, 2, 2, fur_dk)
+        cell.rect(hx - (1 if lead > 0 else 3), hy - 3, 5, 5, socket)
+        cell.rect(hx + lead - (1 if lead < 0 else 0), hy - 1, 2, 2, iris)
+        cell.dot(hx + lead, hy - 1, glint)
+        cell.vline(hx + lead, hy + 2, hy + 6, blood)
+        cell.vline(hx + lead * 3, hy + 2, hy + 4, blood)
+        cell.hline(hy + 5, mx - 2, mx + 1, blood)
     else:
-        cell.rect(CX - 5, hy - 3, 4, 4, red)
-        cell.rect(CX + 2, hy - 3, 4, 4, red)
-        cell.dot(CX - 4, hy - 2, white)
-        cell.dot(CX + 3, hy - 2, white)
-        cell.rect(CX - 7, hy + 3, 15, 4, darker)
-        for step in range(1, 14, 2):
-            cell.vline(CX - 7 + step, hy + 3, hy + 5, white)
+        cell.ellipse(hx, hy + 4, 4.4, 2.8, skin)
+        cell.ellipse(hx, hy + 5, 3.8, 1.8, skin_dk)
+        cell.rect(hx - 1, hy + 2, 2, 2, fur_dk)
+        for sign in (-1, 1):
+            cell.rect(hx + (1 if sign > 0 else -5), hy - 3, 4, 5, socket)
+            cell.rect(hx + (2 if sign > 0 else -3), hy - 1, 2, 2, iris)
+            cell.dot(hx + (2 if sign > 0 else -2), hy - 1, glint)
+            cell.vline(hx + (2 if sign > 0 else -3), hy + 2, hy + 5, blood)
+        cell.hline(hy + 6, hx - 2, hx + 2, blood)

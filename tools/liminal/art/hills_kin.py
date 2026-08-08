@@ -550,14 +550,22 @@ def draw_him(cell: Canvas, facing: int, frame: int) -> None:
     cell.ellipse(CX, 18, 4.6, 4.4, fur_dk)
     cell.ellipse(CX, 17, 4.0, 3.8, fur)
     if not back:
-        cell.ellipse(CX + (lead * 2 if side else 0), 19,
-                     1.8 if side else 2.8, 2.4, skin)
+        bx = CX + (lead * 2 if side else 0)
+        cell.ellipse(bx, 19, (1.8 if side else 2.8) + 0.7, 3.0, skin_dk)
+        cell.ellipse(bx, 19, 1.8 if side else 2.8, 2.4, skin)
 
     # --- arms and gloves ------------------------------------------------------
     for sign in (-1, 1):
         reach = swing if sign > 0 else -swing
         ax = CX + sign * 4
+        # Three values across the arm: a shadow on the side nearest the body,
+        # which doubles as the line that cuts the arm off the belly, the lit
+        # face, and a highlight on the outer edge.  Flat skin the whole way
+        # across, it was the same value as the belly and the two ran together.
         cell.rect(ax - 1, 15 + reach, 3, 4, skin)
+        cell.vline(ax - sign, 15 + reach, 18 + reach, skin_dk)
+        cell.vline(ax + sign, 15 + reach, 18 + reach,
+                   blend(skin, (255, 255, 255), 0.24))
         # A hand, not a white square: round, with the shaded side under it and
         # a cuff band where it meets the wrist.
         gx = ax + (1 if sign > 0 else -2)
@@ -568,11 +576,16 @@ def draw_him(cell: Canvas, facing: int, frame: int) -> None:
     # --- quills ---------------------------------------------------------------
     hx = CX + (lead * 2 if side else 0)
     if side:
-        root = hx - lead * 4
+        # The root goes one pixel off the middle of the skull, not four.  The
+        # top and bottom quills leave the head on a slant, and out at four the
+        # slant cleared the skull's outline before the taper had any width to
+        # it -- so both of them had a pixel of daylight behind them.  The tips
+        # are where they were; only the roots moved in.
+        root = hx - lead
         for dy, drop, thick in ((-4, -7, 6), (0, 0, 7), (4, 7, 6)):
-            _quill(cell, root, hy + dy, root - lead * 10, hy + drop, fur_dk,
+            _quill(cell, root, hy + dy, root - lead * 13, hy + drop, fur_dk,
                    thick)
-            _quill(cell, root, hy + dy - 1, root - lead * 7, hy + drop - 1,
+            _quill(cell, root, hy + dy - 1, root - lead * 10, hy + drop - 1,
                    fur, thick - 3)
     elif back:
         for dx, ex, ey, thick in ((-4, -11, 2, 7), (-2, -5, 11, 7),
@@ -592,8 +605,23 @@ def draw_him(cell: Canvas, facing: int, frame: int) -> None:
     cell.ellipse(hx, hy, 5.6, 5.4, fur_dk)
     cell.ellipse(hx, hy - 1, 5.0, 4.6, fur)
     cell.ellipse(hx - lead, hy - 3, 2.6, 1.6, fur_hi)
-    for sign in ((lead,) if side else (-1, 1)):                   # ears
-        _quill(cell, hx + sign * 3, hy - 4, hx + sign * 4, hy - 9, fur, 4)
+    if not side:
+        # The top quill, seen end-on.  Drawn over the skull, because
+        # underneath it -- with the rest of the quills, before the head goes
+        # down -- the head simply painted it out and the crown came out bald.
+        cell.ellipse(hx, hy - 5, 3.6, 3.4, fur_dk)
+        cell.ellipse(hx, hy - 6, 2.8, 2.6, fur)
+        cell.ellipse(hx, hy - 8, 1.8, 1.0, fur_hi)
+
+    # Ears last, on every facing including the profiles.  Rooted three pixels
+    # in from the middle of the skull -- well inside it -- so they grow out of
+    # the head instead of hovering beside it, and the inside of an ear is
+    # skin, not more fur.
+    # From behind you are looking at the backs of them, so they fill blue.
+    inner = fur if back else skin
+    for sign in ((lead,) if side else (-1, 1)):
+        _quill(cell, hx + sign * 3, hy - 3, hx + sign * 4, hy - 7, fur_dk, 5)
+        _quill(cell, hx + sign * 3, hy - 3, hx + sign * 4, hy - 6, inner, 2)
 
     if back:
         return                                    # nothing on this side to read

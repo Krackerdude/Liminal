@@ -507,13 +507,36 @@ def draw_him(cell: Canvas, facing: int, frame: int) -> None:
         # The shoe is a shoe, not a red brick: the toe rises at the front, the
         # strap runs across the instep, and the sole is a pale slab under all
         # of it that sticks a pixel past the toe.
+        # Built row by row rather than out of rounded rectangles, because a
+        # rounded rectangle at seven pixels across is a square with the
+        # corners knocked off.  The outline is the shoe: it climbs towards the
+        # toe and cuts away behind, so the back is a heel and the front is a
+        # bulb, and the sole is the one straight edge in it.
         toe = lead if side else 1
-        fx = lx - 2
-        cell.round_rect(fx + 1, 26 + step, 5, 3, 1, shoe)
-        cell.round_rect(fx + (4 if toe > 0 else 0), 25 + step, 3, 3, 1, shoe)
-        cell.hline(27 + step, fx + 2, fx + 4, sole)               # the strap
-        cell.round_rect(fx, 28 + step, 7, 2, 1, sole)
-        cell.hline(29 + step, fx + 1, fx + 5, shoe_dk)
+        fx, span = lx - 2, 7
+        top = 25 + step
+        toe_hi = blend(shoe, (255, 255, 255), 0.24)
+
+        def row(index: int, a: int, b: int, colour: RGB) -> None:
+            if toe > 0:
+                cell.hline(top + index, fx + a, fx + b, colour)
+            else:
+                cell.hline(top + index, fx + span - 1 - b, fx + span - 1 - a,
+                           colour)
+
+        # At seven by five the outline is the whole read, so it does the work
+        # and almost nothing goes inside it: a toe two pixels wide at the top
+        # opening out to the full width at the floor, a heel cut in under the
+        # back, the pale sole, and one mark for the strap.
+        row(0, 5, 6, shoe)
+        row(0, 5, 5, toe_hi)
+        row(1, 3, 6, shoe)
+        row(1, 3, 3, toe_hi)
+        row(2, 1, 6, shoe)
+        row(3, 0, 6, shoe)
+        row(3, 0, 0, shoe_dk)                                     # the heel
+        row(2, 2, 3, glove)                                       # the strap
+        row(4, 0, 6, sole)
 
     # --- torso ----------------------------------------------------------------
     cell.ellipse(CX, 18, 4.6, 4.4, fur_dk)

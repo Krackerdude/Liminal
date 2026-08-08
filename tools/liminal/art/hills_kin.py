@@ -504,10 +504,16 @@ def draw_him(cell: Canvas, facing: int, frame: int) -> None:
         cell.rect(lx, 21, 3, 5 + step, fur)
         cell.vline(lx, 21, 25 + step, fur_dk)
         cell.rect(lx - 1, 24 + step, 5, 2, glove)                 # sock cuff
+        # The shoe is a shoe, not a red brick: the toe rises at the front, the
+        # strap runs across the instep, and the sole is a pale slab under all
+        # of it that sticks a pixel past the toe.
+        toe = lead if side else 1
         fx = lx - 3
-        cell.round_rect(fx, 26 + step, 8, 4, 1, shoe)
-        cell.hline(26 + step, fx + 1, fx + 6, sole)
-        cell.rect(fx, 29 + step, 8, 1, shoe_dk)
+        cell.round_rect(fx + 1, 26 + step, 6, 3, 1, shoe)
+        cell.round_rect(fx + (5 if toe > 0 else 0), 25 + step, 3, 3, 1, shoe)
+        cell.hline(27 + step, fx + 2, fx + 5, sole)               # the strap
+        cell.round_rect(fx, 28 + step, 9, 2, 1, sole)
+        cell.hline(29 + step, fx + 1, fx + 7, shoe_dk)
 
     # --- torso ----------------------------------------------------------------
     cell.ellipse(CX, 18, 4.6, 4.4, fur_dk)
@@ -521,10 +527,12 @@ def draw_him(cell: Canvas, facing: int, frame: int) -> None:
         reach = swing if sign > 0 else -swing
         ax = CX + sign * 4
         cell.rect(ax - 1, 15 + reach, 3, 4, skin)
-        cell.round_rect(ax + (0 if sign > 0 else -3), 18 + reach, 4, 4, 1,
-                        glove)
-        cell.hline(21 + reach, ax + (1 if sign > 0 else -2),
-                   ax + (2 if sign > 0 else -1), glove_dk)
+        # A hand, not a white square: round, with the shaded side under it and
+        # a cuff band where it meets the wrist.
+        gx = ax + (1 if sign > 0 else -2)
+        cell.ellipse(gx, 20 + reach, 2.0, 1.8, glove)
+        cell.hline(21 + reach, gx - 1, gx + 1, glove_dk)
+        cell.hline(18 + reach, gx - 1, gx + 1, glove)
 
     # --- quills ---------------------------------------------------------------
     hx = CX + (lead * 2 if side else 0)

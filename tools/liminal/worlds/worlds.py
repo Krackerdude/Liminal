@@ -2389,7 +2389,11 @@ def _paths(m, fld, t, rng) -> tuple[list, list]:
     nodes: list[tuple[int, int]] = []
     for index in range(8):
         angle = index * math.tau / 8 + math.tau / 16
-        reach = 0.92 if index % 2 else 0.66
+        # Adjacent junctions used to alternate 0.92 and 0.66 of the radius,
+        # which made every rim run swing hard in and hard out again -- and
+        # where two of those swings met they doubled back over each other and
+        # knotted.  A gentler alternation keeps the ring readable.
+        reach = 0.86 if index % 2 else 0.74
         nodes.append((int(cx + math.cos(angle) * rx * reach),
                       int(cy + math.sin(angle) * ry * reach)))
     nodes.append((cx + 4, cy - 3))
@@ -2407,10 +2411,11 @@ def _paths(m, fld, t, rng) -> tuple[list, list]:
     for order, (a, b) in enumerate(edges):
         ax, ay = nodes[a]
         bx, by = nodes[b]
-        # Enough wander to look walked, not so much that neighbouring runs
-        # cross each other twice and the island turns to dirt.
+        # Rim runs are short and sit next to each other, so they wander
+        # least; the two crossings are long and alone, so they can afford to.
+        rim = b != 8 and a != 8
         runs.append(_wander(m, fld, t, rng, start=(ax, ay), end=(bx, by),
-                            wobble=5.5 + (order % 3) * 2.0, width=PATH_W,
+                            wobble=3.5 if rim else 12.0, width=PATH_W,
                             seed=order * 1.37))
     return runs[0], runs[1:]
 
@@ -2612,22 +2617,42 @@ def _pool(m, fld, t, px, py, rx, ry) -> None:
 
 
 def _rock_patch(m, fld, t, px, py, rx, ry) -> None:
-    for dy in range(-ry, ry + 1):
-        for dx in range(-rx, rx + 1):
+    """Bare rock pushing through, with the same broken edge as the iron."""
+    for dy in range(-ry - 2, ry + 3):
+        for dx in range(-rx - 2, rx + 3):
             x, y = (px + dx) % m.width, (py + dy) % m.height
             if not fld.is_floor(x, y) or (x, y) in fld.protected:
                 continue
-            if (dx / rx) ** 2 + (dy / ry) ** 2 <= 1.0:
-                m.set_lower(x, y, t["stone" if (dx + dy) % 3 else "stone_b"])
+            wobble = 1.0 + 0.25 * math.sin(dx * 0.8) + 0.20 * math.cos(dy * 1.3)
+            far = (dx / (rx * wobble)) ** 2 + (dy / (ry * wobble)) ** 2
+            stone = t["stone" if (dx + dy) % 3 else "stone_b"]
+            if far <= 0.70:
+                m.set_lower(x, y, stone)
+            elif far <= 1.0 and (dx * 3 + dy) % 2 == 0:
+                m.set_lower(x, y, stone)
 
 
 def _plate_patch(m, fld, t, px, py, rx, ry) -> None:
+    """Iron floor with a broken edge.
+
+    The first version laid a rectangle, which put a hard-ruled metal box in
+    the middle of a forest -- the single ugliest thing on the island and
+    nothing to do with the layout.  Ground does not have corners: the extent
+    is an ellipse with a wobble on its radius, and the last ring of it is
+    dithered back into the grass.
+    """
     if "plate" not in t:
         return
-    for dy in range(-ry, ry + 1):
-        for dx in range(-rx, rx + 1):
+    for dy in range(-ry - 2, ry + 3):
+        for dx in range(-rx - 2, rx + 3):
             x, y = (px + dx) % m.width, (py + dy) % m.height
-            if fld.is_floor(x, y) and (x, y) not in fld.protected:
+            if not fld.is_floor(x, y) or (x, y) in fld.protected:
+                continue
+            wobble = 1.0 + 0.22 * math.sin(dx * 0.9) + 0.18 * math.cos(dy * 1.1)
+            far = (dx / (rx * wobble)) ** 2 + (dy / (ry * wobble)) ** 2
+            if far <= 0.72:
+                m.set_lower(x, y, t["plate"])
+            elif far <= 1.0 and (dx + dy) % 2 == 0:
                 m.set_lower(x, y, t["plate"])
 
 

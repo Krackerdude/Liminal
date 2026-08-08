@@ -500,7 +500,7 @@ def draw_him(cell: Canvas, facing: int, frame: int) -> None:
     # --- legs, socks and shoes ------------------------------------------------
     for sign in (-1, 1):
         step = swing if (sign * (lead if side else 1)) > 0 else -swing
-        lx = CX + (lead * sign * 2 if side else sign * 4) - 1
+        lx = CX + (lead * sign * 2 if side else sign * 3) - 1
         cell.rect(lx, 21, 3, 5 + step, fur)
         cell.vline(lx, 21, 25 + step, fur_dk)
         cell.rect(lx - 1, 24 + step, 5, 2, glove)                 # sock cuff
@@ -555,7 +555,9 @@ def draw_him(cell: Canvas, facing: int, frame: int) -> None:
         cell.ellipse(bx, 19, 1.8 if side else 2.8, 2.4, skin)
 
     # --- arms and gloves ------------------------------------------------------
-    for sign in (-1, 1):
+    # One arm in profile.  The far one is on the other side of his body and
+    # showing it only put a second hand out behind him.
+    for sign in ((-lead,) if side else (-1, 1)):
         reach = swing if sign > 0 else -swing
         ax = CX + sign * 4
         # Three values across the arm: a shadow on the side nearest the body,
@@ -594,8 +596,11 @@ def draw_him(cell: Canvas, facing: int, frame: int) -> None:
             _quill(cell, CX + dx, hy - 1, CX + int(ex * .7), hy + int(ey * .7),
                    fur, thick - 3)
     else:
+        # Both of them fall away from the skull.  The upper one used to rise
+        # on its way out, which put a spike above the ear on each side and
+        # made the head read as a star rather than as quills swept back.
         for sign in (-1, 1):
-            for dy, drop in ((-3, -6), (2, 8)):
+            for dy, drop in ((-3, 1), (2, 9)):
                 _quill(cell, CX + sign * 3, hy + dy, CX + sign * 11, hy + drop,
                        fur_dk, 7)
                 _quill(cell, CX + sign * 3, hy + dy - 1, CX + sign * 8,
@@ -647,4 +652,7 @@ def draw_him(cell: Canvas, facing: int, frame: int) -> None:
             cell.rect(hx + (2 if sign > 0 else -3), hy - 1, 2, 2, iris)
             cell.dot(hx + (2 if sign > 0 else -2), hy - 1, glint)
             cell.vline(hx + (2 if sign > 0 else -3), hy + 2, hy + 5, blood)
+        # The two sockets meet across the bridge of the muzzle, so what he has
+        # is one hole with two lights in it rather than a pair of eyes.
+        cell.rect(hx - 1, hy, 2, 2, socket)
         cell.hline(hy + 6, hx - 2, hx + 2, blood)
